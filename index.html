@@ -153,7 +153,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 }
 
 /* LIVE DEMO INPUT */
-.chat-body{padding:18px;min-height:200px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;max-height:260px}
+.chat-body{padding:14px 18px;min-height:180px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;max-height:240px}
 .chat-input-area{display:flex;flex-direction:column;gap:10px;padding:16px 18px;border-top:1px solid rgba(129,140,248,.2);background:rgba(129,140,248,.03)}
 .input-row{display:flex;gap:8px}
 .demo-input{flex:1;background:#0A0A1F;border:1px solid rgba(129,140,248,.3);border-radius:8px;padding:11px 15px;color:var(--text);font-family:var(--mono);font-size:.82rem;outline:none;transition:border-color .2s, box-shadow .2s}
@@ -179,7 +179,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 .line-sub{color:#94A3B8}
 .geoni-pop{animation:gpop .5s ease}
 @keyframes gpop{0%{transform:scale(1)}40%{transform:scale(1.015)}100%{transform:scale(1)}}
-.phase-sep{display:flex;align-items:center;gap:10px;padding:16px 18px 8px}
+.phase-sep{display:flex;align-items:center;gap:10px;padding:10px 18px 4px}
 .phase-sep::before,.phase-sep::after{content:'';flex:1;height:1px;background:rgba(129,140,248,.25)}
 .phase-sep span{font-size:.72rem;font-family:var(--mono);color:var(--accent);white-space:nowrap;letter-spacing:.12em;text-transform:uppercase;font-weight:500}
 #phase2{animation:slideup .45s ease}
@@ -363,7 +363,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
   <span class="logo-text">geoni</span>
 </a>
   <ul class="nav-links">
-    <li><a href="#sorun">Sorun</a></li>
+    <li><a href="#neden">Neden GEO</a></li>
     <li><a href="#geo">GEO Nedir</a></li>
     <li><a href="#nasil">Nasıl Çalışır</a></li>
     <li><a href="#paketler">Paketler</a></li>
@@ -404,7 +404,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
       <div id="phase2" style="display:none">
         <div class="phase-sep"><span>↓ Şimdi siz deneyin</span></div>
         <div class="chat-body" id="p2-body">
-          <div class="demo-empty">Şimdi kendinizi deneyin —<br>AI sizi görüyor mu?</div>
+          <div class="demo-empty" style="margin:4px auto 8px">Şimdi kendinizi deneyin —<br>AI sizi görüyor mu?</div>
         </div>
         <div class="chat-input-area">
           <div style="font-size:.65rem;font-family:var(--mono);color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:2px">Kişi veya Kurum</div>
@@ -421,7 +421,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 </section>
 
 <!-- STATS -->
-<div class="insights-bar" id="sorun">
+<div class="insights-bar" id="neden">
   <div class="insights-inner">
 
     <!-- TREND CHART -->
