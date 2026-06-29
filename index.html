@@ -209,18 +209,31 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
       </div>
     </div>
 
-    <!-- LIVE AI DEMO -->
+    <!-- TWO-PHASE DEMO -->
     <div class="chat-win">
       <div class="chat-bar">
         <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
-        <span class="chat-label">AI Yanıt Motoru — Canlı Test</span>
+        <span class="chat-label">AI Yanıt Motoru</span>
       </div>
-      <div class="chat-body" id="chat-body">
-        <div class="demo-empty">Sektörünüzü yazın ve AI'ın<br>ne önerdiğini gerçek zamanlı görün.</div>
+      <div class="chat-body" id="p1-body">
+        <div class="msg">
+          <div class="avatar av-u">SİZ</div>
+          <div class="bubble bubble-u" id="p1-user"></div>
+        </div>
+        <div class="msg" id="p1-ai-row" style="display:none">
+          <div class="avatar av-ai">AI</div>
+          <div class="bubble bubble-ai" id="p1-ai"></div>
+        </div>
       </div>
-      <div class="chat-input-area">
-        <input type="text" id="demo-input" class="demo-input" placeholder="örn: Türkiye'de lojistik yazılımı önerir misin?">
-        <button id="demo-btn" class="demo-btn" onclick="sendQuery()">Sor →</button>
+      <div id="phase2" style="display:none">
+        <div class="phase-sep"><span>Şimdi siz deneyin</span></div>
+        <div class="chat-body" id="p2-body">
+          <div class="demo-empty">Sektörünüzü yazın, AI'ın ne önerdiğini görün.</div>
+        </div>
+        <div class="chat-input-area">
+          <input type="text" id="demo-input" class="demo-input" placeholder="örn: muhasebe yazılımı önerir misin?">
+          <button id="demo-btn" class="demo-btn" onclick="sendQuery()">Sor →</button>
+        </div>
       </div>
     </div>
   </div>
