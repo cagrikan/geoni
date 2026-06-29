@@ -1,395 +1,413 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GEONI — AI Görünürlük Optimizasyonu</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:ital,wght@0,400;0,500;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#07070F;
-  --surface:#0E0E1C;
-  --surface-2:#14142A;
-  --border:rgba(129,140,248,0.10);
-  --border-mid:rgba(129,140,248,0.20);
-  --accent:#818CF8;
-  --accent-dim:rgba(129,140,248,0.08);
-  --accent-2:#22D3EE;
-  --text:#F1F5F9;
-  --text-sub:#94A3B8;
-  --text-muted:#475569;
-  --display:'Space Grotesk',sans-serif;
-  --body:'Inter',sans-serif;
-  --mono:'JetBrains Mono',monospace;
-}
-html{scroll-behavior:smooth}
-body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased}
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sabri Çağrı Çakır — CTO & Dijital Dönüşüm Uzmanı</title>
+  <meta name="description" content="Sabri Çağrı Çakır — CTO, Dijital Dönüşüm ve ERP Mimarı, Ankara">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root { --white:#FFFFFF; --off:#FAFAF9; --black:#0D0D0D; --dark:#1C1C1C; --mid:#5A5A5A; --light:#ABABAB; --rule:#E5E5E5; }
+    html { scroll-behavior: smooth; }
+    body { background:var(--white); color:var(--black); font-family:'Jost',sans-serif; font-weight:300; line-height:1.65; -webkit-font-smoothing:antialiased; }
 
-/* NAV */
-nav{position:fixed;inset:0 0 auto;z-index:100;padding:18px 48px;display:flex;justify-content:space-between;align-items:center;background:rgba(7,7,15,0.75);backdrop-filter:blur(24px);border-bottom:1px solid var(--border)}
-.logo{font-family:var(--display);font-weight:700;font-size:1.1rem;letter-spacing:.1em;color:var(--text);text-decoration:none}
-.logo em{font-style:normal;color:var(--accent)}
-.nav-links{display:flex;gap:28px;list-style:none}
-.nav-links a{color:var(--text-sub);text-decoration:none;font-size:.875rem;transition:color .2s}
-.nav-links a:hover{color:var(--text)}
-.nav-cta{background:var(--accent);color:#0D0D1A;padding:9px 22px;border-radius:7px;font-size:.875rem;font-weight:600;text-decoration:none;transition:opacity .2s}
-.nav-cta:hover{opacity:.85}
+    nav { position:fixed; inset:0 0 auto 0; z-index:200; display:flex; align-items:center; justify-content:space-between; padding:0 5rem; height:64px; background:rgba(255,255,255,0.95); backdrop-filter:blur(10px); border-bottom:1px solid var(--rule); }
+    .logo { font-family:'Cormorant Garamond',serif; font-size:1.05rem; font-weight:500; letter-spacing:0.06em; color:var(--black); text-decoration:none; }
+    .nav-right { display:flex; align-items:center; gap:3rem; }
+    nav ul { display:flex; gap:2.5rem; list-style:none; }
+    nav a { font-size:0.72rem; font-weight:400; letter-spacing:0.12em; text-transform:uppercase; color:var(--mid); text-decoration:none; transition:color 0.2s; }
+    nav a:hover { color:var(--black); }
+    .nav-cta { font-size:0.72rem !important; font-weight:500 !important; color:var(--white) !important; background:var(--black); padding:0.55rem 1.4rem; transition:opacity 0.2s; }
+    .nav-cta:hover { opacity:0.75; }
 
-/* HERO */
-.hero{min-height:100vh;display:flex;align-items:center;padding:120px 48px 80px;position:relative;overflow:hidden}
-.hero-ambient{position:absolute;top:15%;left:50%;transform:translateX(-50%);width:900px;height:600px;background:radial-gradient(ellipse at center,rgba(129,140,248,.05) 0,transparent 65%);pointer-events:none}
-.hero-inner{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:72px;align-items:center;width:100%}
-.hero-eyebrow{display:inline-block;font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:22px}
-h1{font-family:var(--display);font-size:clamp(2.4rem,3.8vw,3.4rem);font-weight:700;line-height:1.14;margin-bottom:22px}
-h1 .grad{background:linear-gradient(135deg,var(--accent) 20%,var(--accent-2) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.hero-sub{color:var(--text-sub);font-size:1.05rem;line-height:1.75;margin-bottom:38px;max-width:460px}
-.hero-btns{display:flex;gap:14px;align-items:center}
-.btn-p{background:var(--accent);color:#0D0D1A;padding:13px 26px;border-radius:8px;font-size:.925rem;font-weight:600;text-decoration:none;transition:opacity .2s,transform .2s;display:inline-block}
-.btn-p:hover{opacity:.85;transform:translateY(-1px)}
-.btn-g{color:var(--text-sub);padding:13px 22px;border-radius:8px;font-size:.925rem;text-decoration:none;border:1px solid var(--border-mid);transition:all .2s}
-.btn-g:hover{color:var(--text);border-color:rgba(129,140,248,.35)}
+    .container { max-width:1080px; margin:0 auto; padding:0 5rem; }
+    section { padding:7rem 0; }
+    .section-meta { display:flex; align-items:center; gap:0.75rem; margin-bottom:4rem; }
+    .section-num { font-family:'Cormorant Garamond',serif; font-size:0.85rem; color:var(--light); }
+    .section-line { width:2.5rem; height:1px; background:var(--rule); }
+    .section-title-sm { font-size:0.7rem; font-weight:500; letter-spacing:0.16em; text-transform:uppercase; color:var(--mid); }
 
-/* CHAT WINDOW */
-.chat-win{background:var(--surface);border:1px solid var(--border-mid);border-radius:18px;overflow:hidden;box-shadow:0 40px 100px rgba(0,0,0,.45)}
-.chat-bar{background:var(--surface-2);padding:13px 18px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border)}
-.dots{display:flex;gap:6px}
-.dot{width:10px;height:10px;border-radius:50%}
-.dot:nth-child(1){background:#FF5F57}.dot:nth-child(2){background:#FFBD2E}.dot:nth-child(3){background:#28CA42}
-.chat-label{font-family:var(--mono);font-size:.72rem;color:var(--text-muted);margin:0 auto}
-.chat-body{padding:22px;min-height:300px;display:flex;flex-direction:column;gap:16px}
-.msg{display:flex;gap:12px}
-.avatar{width:30px;height:30px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;font-family:var(--mono)}
-.av-u{background:rgba(129,140,248,.12);color:var(--accent);border:1px solid rgba(129,140,248,.2)}
-.av-ai{background:rgba(34,211,238,.1);color:var(--accent-2);border:1px solid rgba(34,211,238,.2)}
-.bubble{border-radius:12px;padding:11px 15px;font-size:.84rem;color:var(--text-sub);line-height:1.6;flex:1;font-family:var(--mono)}
-.bubble-u{background:rgba(129,140,248,.07);color:var(--text)}
-.bubble-ai{background:var(--surface-2)}
-.cur{display:inline-block;width:2px;height:13px;background:var(--accent-2);animation:blink 1s step-end infinite;vertical-align:text-bottom;margin-left:1px}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
-.not-listed{margin-top:12px;padding-top:12px;border-top:1px solid rgba(129,140,248,.08);font-size:.78rem;color:#F87171;display:none}
+    /* HERO */
+    #hero { min-height:100vh; display:flex; align-items:center; padding-bottom:4rem; padding-top:calc(64px + 4rem); border-bottom:1px solid var(--rule); }
+    .hero-inner { width:100%; }
+    .hero-tag { display:inline-flex; align-items:center; gap:0.6rem; font-size:0.7rem; font-weight:400; letter-spacing:0.14em; text-transform:uppercase; color:var(--mid); margin-bottom:2.5rem; opacity:0; animation:fadeUp 0.9s ease forwards 0.15s; }
+    .hero-tag::before { content:''; display:inline-block; width:6px; height:6px; background:var(--black); border-radius:50%; }
+    h1 { font-family:'Cormorant Garamond',serif; font-size:clamp(4rem,8.5vw,8rem); font-weight:400; line-height:0.95; letter-spacing:-0.02em; margin-bottom:3.5rem; opacity:0; animation:fadeUp 0.9s ease forwards 0.3s; }
+    h1 span { font-style:italic; color:var(--mid); }
+    .hero-bottom { display:grid; grid-template-columns:1fr 1fr; gap:4rem; align-items:end; border-top:1px solid var(--rule); padding-top:2.5rem; opacity:0; animation:fadeUp 0.9s ease forwards 0.5s; }
+    .hero-desc { font-size:1rem; color:var(--mid); line-height:1.8; max-width:420px; }
+    .hero-actions { display:flex; justify-content:flex-end; gap:1rem; align-items:center; }
+    .btn { display:inline-block; font-family:'Jost',sans-serif; font-size:0.72rem; font-weight:500; letter-spacing:0.1em; text-transform:uppercase; text-decoration:none; padding:0.85rem 2.2rem; transition:all 0.2s; }
+    .btn-fill { background:var(--black); color:var(--white); border:1px solid var(--black); }
+    .btn-fill:hover { opacity:0.8; }
+    .btn-ghost { background:transparent; color:var(--black); border:1px solid var(--rule); }
+    .btn-ghost:hover { border-color:var(--black); }
 
-/* STAT BAR */
-.stat-bar{padding:0 48px 80px}
-.stat-inner{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr);background:var(--border);border:1px solid var(--border);border-radius:18px;overflow:hidden;gap:1px}
-.stat{background:var(--surface);padding:30px 36px;text-align:center}
-.stat-n{font-family:var(--display);font-size:2.4rem;font-weight:700;color:var(--accent);display:block}
-.stat-l{color:var(--text-sub);font-size:.85rem;margin-top:4px}
+    /* ABOUT */
+    #hakkimda { border-bottom:1px solid var(--rule); }
+    .about-grid { display:grid; grid-template-columns:5fr 4fr; gap:6rem; align-items:start; }
+    h2 { font-family:'Cormorant Garamond',serif; font-size:clamp(2.4rem,4vw,3.8rem); font-weight:400; line-height:1.1; letter-spacing:-0.01em; margin-bottom:2rem; }
+    h2 em { font-style:italic; color:var(--mid); }
+    .about-body p { font-size:0.95rem; color:var(--mid); line-height:1.85; margin-bottom:1.1rem; }
+    .competencies { margin-top:2.5rem; }
+    .competencies-label { font-size:0.68rem; font-weight:500; letter-spacing:0.14em; text-transform:uppercase; color:var(--light); margin-bottom:1rem; }
+    .comp-item { display:flex; justify-content:space-between; align-items:center; padding:0.9rem 0; border-bottom:1px solid var(--rule); font-size:0.85rem; color:var(--dark); }
+    .comp-item:first-child { border-top:1px solid var(--rule); }
+    .comp-arrow { color:var(--light); }
+    .kpi-grid { display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--rule); border:1px solid var(--rule); margin-bottom:1.5rem; }
+    .kpi { background:var(--white); padding:2rem 1.75rem; }
+    .kpi-val { font-family:'Cormorant Garamond',serif; font-size:3rem; font-weight:400; line-height:1; margin-bottom:0.4rem; }
+    .kpi-lbl { font-size:0.72rem; color:var(--mid); }
+    .profile-note { background:var(--off); padding:1.5rem 1.75rem; border:1px solid var(--rule); }
+    .profile-note p { font-size:0.82rem; color:var(--mid); line-height:1.75; }
+    .profile-note strong { font-weight:500; color:var(--dark); }
 
-/* SECTIONS */
-section{padding:96px 48px}
-.inner{max-width:1200px;margin:0 auto}
-.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);display:block;margin-bottom:14px}
-h2{font-family:var(--display);font-size:clamp(1.8rem,2.8vw,2.4rem);font-weight:700;margin-bottom:18px;line-height:1.2}
-.sub{color:var(--text-sub);font-size:1.02rem;max-width:520px;line-height:1.75}
+    /* EXPERIENCE */
+    #deneyim { border-bottom:1px solid var(--rule); }
+    .exp-header { display:grid; grid-template-columns:200px 1fr; gap:4rem; padding-bottom:1rem; border-bottom:2px solid var(--black); }
+    .exp-header-col { font-size:0.65rem; font-weight:500; letter-spacing:0.14em; text-transform:uppercase; color:var(--light); }
+    .exp-row { display:grid; grid-template-columns:200px 1fr; gap:4rem; padding:2.75rem 0; border-bottom:1px solid var(--rule); }
+    .exp-row:hover { background:var(--off); margin:0 -1rem; padding:2.75rem 1rem; }
+    .exp-date { font-size:0.78rem; color:var(--light); padding-top:0.2rem; line-height:1.6; }
+    .exp-role-title { font-family:'Cormorant Garamond',serif; font-size:1.4rem; font-weight:500; margin-bottom:0.2rem; }
+    .exp-org { font-size:0.78rem; color:var(--mid); margin-bottom:1rem; }
+    .exp-body-text { font-size:0.88rem; color:var(--mid); line-height:1.8; margin-bottom:1.2rem; max-width:580px; }
+    .tag-row { display:flex; flex-wrap:wrap; gap:0.4rem; }
+    .tag { font-size:0.65rem; font-weight:500; letter-spacing:0.1em; text-transform:uppercase; color:var(--mid); background:var(--off); border:1px solid var(--rule); padding:0.28rem 0.7rem; }
 
-/* SEO VS GEO */
-.compare{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:52px;max-width:760px}
-.cmp-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px}
-.cmp-card.active{border-color:rgba(129,140,248,.35);background:rgba(129,140,248,.04)}
-.cmp-icon{font-size:1.6rem;margin-bottom:16px}
-.cmp-title{font-family:var(--display);font-size:1rem;font-weight:600;margin-bottom:10px}
-.cmp-desc{color:var(--text-sub);font-size:.875rem;line-height:1.65}
+    /* EDUCATION */
+    #egitim { border-bottom:1px solid var(--rule); }
+    .edu-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--rule); border:1px solid var(--rule); }
+    .edu-card { background:var(--white); padding:2rem 1.75rem; transition:background 0.15s; }
+    .edu-card:hover { background:var(--off); }
+    .edu-deg { font-size:0.65rem; font-weight:500; letter-spacing:0.12em; text-transform:uppercase; color:var(--light); margin-bottom:0.75rem; }
+    .edu-field { font-family:'Cormorant Garamond',serif; font-size:1.15rem; font-weight:500; line-height:1.3; margin-bottom:0.5rem; }
+    .edu-school { font-size:0.78rem; color:var(--mid); }
 
-/* HOW IT WORKS */
-.how-bg{background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
-.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:52px}
-.step{background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:28px;transition:border-color .3s}
-.step:hover{border-color:rgba(129,140,248,.3)}
-.step-icon{width:44px;height:44px;border-radius:10px;background:var(--accent-dim);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;margin-bottom:18px;font-size:1.15rem}
-.step-name{font-family:var(--display);font-size:1rem;font-weight:600;margin-bottom:9px}
-.step-desc{color:var(--text-sub);font-size:.875rem;line-height:1.65}
+    /* SKILLS */
+    #yetenekler { border-bottom:1px solid var(--rule); }
+    .skills-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--rule); border:1px solid var(--rule); }
+    .skill-cat { background:var(--white); padding:1.75rem; }
+    .skill-cat-label { font-size:0.65rem; font-weight:500; letter-spacing:0.12em; text-transform:uppercase; color:var(--light); margin-bottom:1rem; }
+    .skill-tags { display:flex; flex-wrap:wrap; gap:0.4rem; }
 
-/* PACKAGES */
-.pkgs{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:52px}
-.pkg{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 24px;display:flex;flex-direction:column;position:relative;transition:border-color .3s}
-.pkg:hover{border-color:rgba(129,140,248,.25)}
-.pkg.hot{border-color:var(--accent);background:linear-gradient(150deg,rgba(129,140,248,.07),var(--surface))}
-.hot-badge{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--accent);color:#0D0D1A;font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 13px;border-radius:20px;font-family:var(--mono);white-space:nowrap}
-.pkg-tier{font-family:var(--mono);font-size:.7rem;color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:7px}
-.pkg-name{font-family:var(--display);font-size:1.3rem;font-weight:700;margin-bottom:8px}
-.pkg-price{font-size:.88rem;color:var(--text-sub);margin-bottom:22px;padding-bottom:22px;border-bottom:1px solid var(--border)}
-.pkg-price strong{font-family:var(--display);font-size:1.4rem;color:var(--text);font-weight:700}
-.pkg-feats{list-style:none;display:flex;flex-direction:column;gap:11px;flex:1}
-.pkg-feats li{font-size:.82rem;color:var(--text-sub);display:flex;align-items:flex-start;gap:8px;line-height:1.5}
-.pkg-feats li::before{content:'→';color:var(--accent);flex-shrink:0;font-family:var(--mono)}
-.pkg-btn{margin-top:26px;padding:11px;border-radius:8px;font-size:.84rem;font-weight:600;text-align:center;text-decoration:none;transition:all .2s;border:1px solid var(--border);color:var(--text-sub);display:block}
-.pkg.hot .pkg-btn{background:var(--accent);color:#0D0D1A;border-color:var(--accent)}
-.pkg-btn:hover{border-color:rgba(129,140,248,.4);color:var(--text)}
-.pkg.hot .pkg-btn:hover{opacity:.85;color:#0D0D1A}
+    /* CONTACT */
+    #iletisim {}
+    .contact-grid { display:grid; grid-template-columns:1fr 1fr; gap:8rem; align-items:start; }
+    .contact-left p { font-size:0.95rem; color:var(--mid); line-height:1.85; margin-top:1.5rem; max-width:380px; }
+    .contact-item { display:flex; justify-content:space-between; align-items:center; padding:1.5rem 0; border-bottom:1px solid var(--rule); text-decoration:none; color:var(--black); transition:all 0.2s; }
+    .contact-item:first-child { border-top:1px solid var(--rule); }
+    .contact-item:hover .ci-arrow { transform:translate(3px,-3px); color:var(--black); }
+    .ci-type { font-size:0.65rem; font-weight:500; letter-spacing:0.14em; text-transform:uppercase; color:var(--light); margin-bottom:0.3rem; }
+    .ci-val { font-size:0.92rem; color:var(--dark); }
+    .ci-arrow { color:var(--light); transition:all 0.2s; }
 
-/* CTA */
-.cta-wrap{padding:96px 48px}
-.cta-box{max-width:1200px;margin:0 auto;background:var(--surface);border:1px solid rgba(129,140,248,.18);border-radius:24px;padding:72px 56px;text-align:center;position:relative;overflow:hidden}
-.cta-box::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0,rgba(129,140,248,.06) 0,transparent 65%);pointer-events:none}
-.cta-box h2{font-family:var(--display);font-size:clamp(1.8rem,2.8vw,2.4rem);font-weight:700;margin-bottom:14px;position:relative}
-.cta-box p{color:var(--text-sub);font-size:1.02rem;margin-bottom:38px;position:relative}
-.cta-btns{display:flex;gap:14px;justify-content:center;position:relative}
+    footer { border-top:1px solid var(--rule); padding:1.75rem 5rem; max-width:1080px; margin:0 auto; display:flex; justify-content:space-between; }
+    footer p { font-size:0.75rem; color:var(--light); }
 
-/* FOOTER */
-footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;color:var(--text-muted);font-size:.78rem;font-family:var(--mono)}
+    .reveal { opacity:0; transform:translateY(20px); transition:opacity 0.65s ease,transform 0.65s ease; }
+    .reveal.visible { opacity:1; transform:none; }
+    @keyframes fadeUp { to { opacity:1; transform:none; } }
 
-/* REVEAL */
-.reveal{opacity:0;transform:translateY(18px);transition:opacity .55s ease,transform .55s ease}
-.reveal.shown{opacity:1;transform:translateY(0)}
-
-/* RESPONSIVE */
-@media(max-width:1024px){.pkgs{grid-template-columns:1fr 1fr}}
-@media(max-width:900px){
-  .hero-inner,.compare{grid-template-columns:1fr}
-  .steps{grid-template-columns:1fr}
-  nav{padding:14px 20px}
-  .nav-links{display:none}
-  .stat-inner{grid-template-columns:1fr}
-}
-@media(max-width:600px){
-  .pkgs{grid-template-columns:1fr}
-  section,.hero,.cta-wrap,.stat-bar{padding-left:20px;padding-right:20px}
-}
-</style>
+    @media (max-width:900px) {
+      nav { padding:0 1.5rem; }
+      .nav-right ul { display:none; }
+      .container { padding:0 1.5rem; }
+      .about-grid,.contact-grid { grid-template-columns:1fr; gap:3.5rem; }
+      .hero-bottom { grid-template-columns:1fr; }
+      .hero-actions { justify-content:flex-start; }
+      .exp-row,.exp-header { grid-template-columns:1fr; gap:0.5rem; }
+      .exp-header { display:none; }
+      .edu-grid,.skills-grid { grid-template-columns:1fr 1fr; }
+      footer { padding:1.5rem; flex-direction:column; gap:0.5rem; }
+    }
+    @media (max-width:560px) {
+      h1 { font-size:3.2rem; }
+      .edu-grid,.skills-grid { grid-template-columns:1fr; }
+    }
+  </style>
 </head>
 <body>
 
-<!-- NAV -->
-<nav>
-  <a class="logo" href="#">GEO<em>NI</em></a>
-  <ul class="nav-links">
-    <li><a href="#sorun">Sorun</a></li>
-    <li><a href="#geo">GEO Nedir</a></li>
-    <li><a href="#nasil">Nasıl Çalışır</a></li>
-    <li><a href="#paketler">Paketler</a></li>
-  </ul>
-  <a href="#iletisim" class="nav-cta">Ücretsiz Audit</a>
-</nav>
-
-<!-- HERO -->
-<section class="hero">
-  <div class="hero-ambient"></div>
-  <div class="hero-inner">
-    <div>
-      <span class="hero-eyebrow">// Yeni Nesil Görünürlük</span>
-      <h1>Rakibiniz her <span class="grad">AI yanıtında</span> var. Siz yoksunuz.</h1>
-      <p class="hero-sub">ChatGPT, Perplexity ve Gemini artık müşterilerinize ürün önerecek şekilde yanıt veriyor. Google sıralamaları yetmiyor — AI motorlarında da var olmanız gerekiyor.</p>
-      <div class="hero-btns">
-        <a href="#iletisim" class="btn-p">Ücretsiz AI Audit Al</a>
-        <a href="#geo" class="btn-g">Nasıl Çalışır? →</a>
-      </div>
+  <nav>
+    <a href="#hero" class="logo">S. Çağrı Çakır</a>
+    <div class="nav-right">
+      <ul>
+        <li><a href="#hakkimda">Hakkımda</a></li>
+        <li><a href="#deneyim">Deneyim</a></li>
+        <li><a href="#egitim">Eğitim</a></li>
+        <li><a href="#yetenekler">Yetkinlikler</a></li>
+      </ul>
+      <a href="#iletisim" class="nav-cta">İletişim</a>
     </div>
+  </nav>
 
-    <!-- ANIMATED CHAT -->
-    <div class="chat-win">
-      <div class="chat-bar">
-        <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
-        <span class="chat-label">AI Yanıt Motoru — Canlı Demo</span>
-      </div>
-      <div class="chat-body">
-        <div class="msg">
-          <div class="avatar av-u">SİZ</div>
-          <div class="bubble bubble-u">Türkiye'de B2B yazılım çözümü sunan güvenilir firma önerir misin?</div>
-        </div>
-        <div class="msg">
-          <div class="avatar av-ai">AI</div>
-          <div class="bubble bubble-ai">
-            <div id="tw"></div><span class="cur" id="cur"></span>
-            <div class="not-listed" id="nl">⚠ Markanız bu yanıtta yer almıyor.</div>
+  <!-- HERO -->
+  <div class="container">
+    <section id="hero">
+      <div class="hero-inner">
+        <p class="hero-tag" style="text-transform:none;">Chief Technology Officer · Yönetim Kurulu Üyesi · Stratejik Danışman · Ankara</p>
+        <h1>Sabri Çağrı<br><span>Çakır</span></h1>
+        <div class="hero-bottom">
+          <p class="hero-desc">Teknoloji organizasyonlarını yöneten, dijital dönüşüm mimarisi kuran ve kurumları geleceğe taşıyan bir CTO. 15+ yıllık liderlik deneyimiyle karmaşık sistemleri stratejik büyümeye dönüştürüyorum.</p>
+          <div class="hero-actions">
+            <a href="#iletisim" class="btn btn-ghost">İletişime Geç</a>
+            <a href="#deneyim" class="btn btn-fill">Deneyimi İncele</a>
           </div>
         </div>
       </div>
-    </div>
+    </section>
   </div>
-</section>
 
-<!-- STATS -->
-<div class="stat-bar" id="sorun">
-  <div class="stat-inner">
-    <div class="stat reveal">
-      <span class="stat-n">%58</span>
-      <div class="stat-l">Kullanıcı araştırmalarına artık AI ile başlıyor</div>
-    </div>
-    <div class="stat reveal">
-      <span class="stat-n">%23</span>
-      <div class="stat-l">Google arama trafiği son 2 yılda düşüşte</div>
-    </div>
-    <div class="stat reveal">
-      <span class="stat-n">%91</span>
-      <div class="stat-l">Marka, AI yanıtlarında hiç yer almıyor</div>
-    </div>
+  <!-- HAKKIMDA -->
+  <div class="container">
+    <section id="hakkimda">
+      <div class="section-meta reveal">
+        <span class="section-num">01</span><span class="section-line"></span><span class="section-title-sm">Hakkımda</span>
+      </div>
+      <div class="about-grid">
+        <div class="reveal">
+          <h2>İnsan odaklı<br>teknoloji stratejisi —<br><em>kanıtlanmış sonuçlar,</em><br>gerçek büyüme.</h2>
+          <div class="about-body">
+            <p>Karmaşık sistemleri büyümeye dönüştürüyorum. Çok disiplinli bir akademik altyapı ve 15+ yıllık saha deneyimiyle teknoloji ile iş dünyası arasında köprü kuran, sonuç odaklı bir liderlik anlayışı geliştirdim. Bu anlayış yalnızca teknolojiyle değil, insanla da şekilleniyor — İnsan odaklı yönetim anlayışımız sayesinde çalıştığım kurum <strong>Great Place to Work®</strong> sertifikasına layık görüldü.</p>
+            <p>ARD Grup'ta 15 yıl boyunca Director, CTO, CRO ve Board Member olarak görev yaptım. Şirketin BIST Yıldız Pazarı'na yükselişi ve halka arz sürecinde kilit rol üstlendim. 50.000'i aşkın mükellef müşteriye hizmet eden e-Dönüşüm platformlarının teknik mimarisini kurguladım. Yüz binlerce kullanıcının aktif olarak kullandığı ulusal hukuk, sağlık ve kamu yazılım projelerinin teknik altyapılarının kurgulanmasında kilit rol üstlendim. ITEA, TÜBİTAK ve Celtic kapsamında uluslararası Ar-Ge projelerini yönettim.</p>
+            <p>NATO akreditasyonlu savunma ve güvenlik projelerinden kamu bilişim altyapılarına kadar geniş bir yelpazede kurumsal çözümler geliştirdim.</p>
+          </div>
+          <div class="competencies">
+            <p class="competencies-label">Temel Yetkinlikler</p>
+            <div class="comp-item"><span>Dijital Dönüşüm & ERP Mimarisi</span><span class="comp-arrow">→</span></div>
+            <div class="comp-item"><span>e-Dönüşüm (e-Fatura, e-Arşiv, e-Defter)</span><span class="comp-arrow">→</span></div>
+            <div class="comp-item"><span>Siber Güvenlik & Hassas Güvenlik Sistemleri</span><span class="comp-arrow">→</span></div>
+            <div class="comp-item"><span>Kurumsal Yönetim & Yatırım Stratejileri</span><span class="comp-arrow">→</span></div>
+            <div class="comp-item"><span>Uluslararası Ar-Ge Proje Yönetimi (ITEA, TÜBİTAK, Horizon)</span><span class="comp-arrow">→</span></div>
+            <div class="comp-item"><span>BT Altyapı, Sanallaştırma & Cloud Computing</span><span class="comp-arrow">→</span></div>
+            <div class="comp-item"><span>Video Analytics & Yapay Zeka</span><span class="comp-arrow">→</span></div>
+            <div class="comp-item"><span>İş Zekası & Veri Analizi</span><span class="comp-arrow">→</span></div>
+          </div>
+        </div>
+        <div class="reveal">
+          <div class="kpi-grid">
+            <div class="kpi"><div class="kpi-val">15+</div><div class="kpi-lbl">Yıl teknoloji liderliği</div></div>
+            <div class="kpi"><div class="kpi-val">160+</div><div class="kpi-lbl">Tamamlanan proje</div></div>
+            <div class="kpi"><div class="kpi-val">1M+</div><div class="kpi-lbl">Platform kullanıcısı</div></div>
+            <div class="kpi"><div class="kpi-val">5</div><div class="kpi-lbl">Akademik derece</div></div>
+          </div>
+          <div class="profile-note">
+            <p><strong>Danışmanlık & Yöneticilik fırsatlarına açığım.</strong> Dijital dönüşüm, ERP mimarisi, Ar-Ge yönetimi ve kurumsal strateji konularında hizmet sunmaya hazırım.</p>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
-</div>
 
-<!-- WHAT IS GEO -->
-<section id="geo">
-  <div class="inner">
-    <span class="eyebrow">// GEO Nedir?</span>
-    <h2>SEO Google için ne yaptıysa,<br>GEO AI motorları için yapar.</h2>
-    <p class="sub">Generative Engine Optimization — ChatGPT, Perplexity, Claude ve Gemini gibi yapay zeka yanıt motorlarında markanızın öne çıkması için yapılan sistematik optimizasyon disiplini.</p>
-    <div class="compare">
-      <div class="cmp-card reveal">
-        <div class="cmp-icon">🔍</div>
-        <div class="cmp-title">SEO (Klasik)</div>
-        <p class="cmp-desc">Google sana 10 mavi link verir. Kullanıcı seçim yapar ve tıklar. Arama sonuçlarında sıra almak için çalışılır.</p>
+  <!-- DENEYİM -->
+  <div class="container">
+    <section id="deneyim">
+      <div class="section-meta reveal">
+        <span class="section-num">02</span><span class="section-line"></span><span class="section-title-sm">Deneyim</span>
       </div>
-      <div class="cmp-card active reveal">
-        <div class="cmp-icon">🤖</div>
-        <div class="cmp-title">GEO (Yeni)</div>
-        <p class="cmp-desc">AI sana <strong>tek bir yanıt</strong> verir. Ya o yanıtta markanız geçer, ya geçmez. Link yok, trafik yok, ikinci şans yok.</p>
+      <div class="exp-header">
+        <div class="exp-header-col">Dönem</div>
+        <div class="exp-header-col">Pozisyon & Kurum</div>
       </div>
-    </div>
+
+      <div class="exp-row reveal">
+        <div class="exp-date">Oca 2025 — Nis 2026</div>
+        <div>
+          <div class="exp-role-title">Stratejik Teknoloji ve Yönetim Danışmanı & Yönetim Kurulu Üyesi</div>
+          <div class="exp-org">Lunadenta Teknoloji Bilişim Arge AŞ · Tam zamanlı · Ankara</div>
+          <p class="exp-body-text">Stratejik teknoloji planlaması, dijital dönüşüm, Ar-Ge yönetimi ve organizasyonel yeniden yapılandırma alanlarında uzman danışmanlık. Ulusal ve uluslararası projelerde çoklu paydaşlarla çalışarak ekosistem bazlı yönetim modeli ile teknolojiyle büyümeyi hedefleyen kuruma yol gösterme.</p>
+          <div class="tag-row">
+            <span class="tag">Stratejik Danışmanlık</span><span class="tag">Dijital Dönüşüm</span><span class="tag">Ar-Ge Yönetimi</span><span class="tag">Organizasyonel Yeniden Yapılandırma</span><span class="tag">Kurumsal Yönetim</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="exp-row reveal">
+        <div class="exp-date">Haz 2024 — Ara 2024<br><br>Oca 2024 — Ara 2024</div>
+        <div>
+          <div class="exp-role-title">Yönetim Kurulu Üyesi</div>
+          <div class="exp-org">ARDVENTURE · Tam zamanlı · Ankara</div>
+          <p class="exp-body-text">ARDVENTURE bünyesinde iki ayrı rol: GSYO (Girişim Sermayesi Yatırım Ortaklığı) Yönetim Kurulu Üyeliği ve Kitle Fonlama Platformu A.Ş. Yönetim Kurulu Üyeliği.</p>
+          <div class="tag-row">
+            <span class="tag">Girişim Sermayesi</span><span class="tag">Kitle Fonlama</span><span class="tag">Yatırım Stratejileri</span><span class="tag">Kurumsal Yönetim</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="exp-row reveal">
+        <div class="exp-date">Mar 2019 — Ara 2024</div>
+        <div>
+          <div class="exp-role-title">Yönetim Kurulu Üyesi (Board Member)</div>
+          <div class="exp-org">ARD Grup Bilişim Teknolojileri A.Ş. · BIST: ARDYZ · Ankara</div>
+          <p class="exp-body-text">Halka açık şirket yönetişim süreçlerinde kurumsal sorumluluk. Riskin Erken Saptanması Komitesi üyeliği. Şirketin BIST Yıldız Pazarı'na yükselişi ve halka arz sürecinin yönetimi. SPK uyum, şeffaflık ve kurumsal denetlenebilirlik süreçlerinin koordinasyonu.</p>
+          <div class="tag-row">
+            <span class="tag">Kurumsal Yönetim</span><span class="tag">Yatırım Stratejileri</span><span class="tag">Teknoloji Yol Haritası</span><span class="tag">BT Stratejisi</span><span class="tag">Risk Yönetimi</span><span class="tag">Halka Arz</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="exp-row reveal">
+        <div class="exp-date">Oca 2017 — Kas 2022</div>
+        <div>
+          <div class="exp-role-title">Chief Technology Officer (CTO)</div>
+          <div class="exp-org">ARD Grup Bilişim Teknolojileri A.Ş. · Bursa / Ankara</div>
+          <p class="exp-body-text">e-Fatura, e-Arşiv ve e-Defter platformlarının teknik mimarisini kurguladım; 50.000+ mükellef müşteriye hizmet eden e-Dönüşüm altyapısını yönettim. Kamu, savunma, sağlık ve siber güvenlik sektörlerinde 160+ projeyi liderledim. NATO Tesis Güvenlik Belgesi kapsamında kritik altyapı projelerinde görev aldım.</p>
+          <div class="tag-row">
+            <span class="tag">e-Dönüşüm</span><span class="tag">Siber Güvenlik</span><span class="tag">BT Altyapı Yönetimi</span><span class="tag">Video Analytics</span><span class="tag">Sanallaştırma</span><span class="tag">VPN</span><span class="tag">Güvenlik Duvarları</span><span class="tag">Hassas Güvenlik Sistemleri</span><span class="tag">SDLC</span><span class="tag">Yazılım Proje Yönetimi</span><span class="tag">ITEA</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="exp-row reveal">
+        <div class="exp-date">Şub 2017 — May 2022</div>
+        <div>
+          <div class="exp-role-title">Chief Research Officer (CRO)</div>
+          <div class="exp-org">ARD Grup Bilişim Teknolojileri A.Ş. · Uzaktan</div>
+          <p class="exp-body-text">Uluslararası ve ulusal Ar-Ge teşvik projelerinin yönetimi. ITEA, TÜBİTAK ve Celtic programları kapsamında çok paydaşlı projelerin teknik ve idari koordinasyonu.</p>
+          <div class="tag-row">
+            <span class="tag">Ar-Ge Yönetimi</span><span class="tag">ITEA</span><span class="tag">TÜBİTAK</span><span class="tag">Celtic</span><span class="tag">Uluslararası Proje Yönetimi</span><span class="tag">Araştırma</span><span class="tag">Veri Analizi</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="exp-row reveal">
+        <div class="exp-date">Oca 2010 — Şub 2017</div>
+        <div>
+          <div class="exp-role-title">Director</div>
+          <div class="exp-org">ARD Grup Bilişim Teknolojileri A.Ş. · Ankara</div>
+          <p class="exp-body-text">ARD Grup'taki 15 yıllık kariyer yolculuğunun ilk önemli liderlik pozisyonu. Teknoloji operasyonlarının yönetimi ve kurumsal büyüme süreçlerine katkı.</p>
+          <div class="tag-row">
+            <span class="tag">Teknoloji Yönetimi</span><span class="tag">Proje Yönetimi</span><span class="tag">İş Geliştirme</span><span class="tag">Süreç İyileştirme</span>
+          </div>
+        </div>
+      </div>
+
+    </section>
   </div>
-</section>
 
-<!-- HOW IT WORKS -->
-<section class="how-bg" id="nasil">
-  <div class="inner">
-    <span class="eyebrow">// Nasıl Çalışır?</span>
-    <h2>Altı temel bileşen</h2>
-    <p class="sub">AI görünürlüğü tek bir aksiyonla gelmez. Sistematik ve çok katmanlı bir yaklaşım gerektirir.</p>
-    <div class="steps">
-      <div class="step reveal">
-        <div class="step-icon">📡</div>
-        <div class="step-name">Kaynak Otoritesi</div>
-        <p class="step-desc">Sektör yayınları, Wikipedia ve güvenilir platformlarda dijital varlık inşa edilir. AI motorları bu kaynakları öğrenir ve aktarır.</p>
+  <!-- EĞİTİM -->
+  <div class="container">
+    <section id="egitim">
+      <div class="section-meta reveal">
+        <span class="section-num">03</span><span class="section-line"></span><span class="section-title-sm">Akademik Altyapı</span>
       </div>
-      <div class="step reveal">
-        <div class="step-icon">🏗️</div>
-        <div class="step-name">Yapısal İçerik</div>
-        <p class="step-desc">Tanımlar, karşılaştırmalar, soru-cevap formatları — AI'ların özümsemesi kolay içerik mimarileri kurulur.</p>
+      <div class="edu-grid reveal">
+        <div class="edu-card">
+          <div class="edu-deg">Doktora — PhD</div>
+          <div class="edu-field">Yönetim Bilişim Sistemleri</div>
+          <div class="edu-school">International Dublin University · 2024</div>
+        </div>
+        <div class="edu-card">
+          <div class="edu-deg">Yüksek Lisans</div>
+          <div class="edu-field">Endüstriyel ve Organizasyonel Psikoloji</div>
+          <div class="edu-school">International Dublin University</div>
+        </div>
+        <div class="edu-card">
+          <div class="edu-deg">Yüksek Lisans — MCA</div>
+          <div class="edu-field">Yönetim Bilişim Sistemleri</div>
+          <div class="edu-school">Ahmet Yesevi Üniversitesi · 2016–2018</div>
+        </div>
+        <div class="edu-card">
+          <div class="edu-deg">Lisans</div>
+          <div class="edu-field">İşletme Yönetimi</div>
+          <div class="edu-school">Anadolu Üniversitesi · 2006–2010</div>
+        </div>
+        <div class="edu-card">
+          <div class="edu-deg">Lisans</div>
+          <div class="edu-field">Fizik</div>
+          <div class="edu-school">Dokuz Eylül Üniversitesi · 2000–2004</div>
+        </div>
+        <div class="edu-card" style="background:var(--off);">
+          <div class="edu-deg">Toplam</div>
+          <div class="edu-field" style="font-size:2.5rem;line-height:1;margin-bottom:0.4rem;">5</div>
+          <div class="edu-school">Akademik derece &<br>sertifika programı</div>
+        </div>
       </div>
-      <div class="step reveal">
-        <div class="step-icon">🔗</div>
-        <div class="step-name">Atıf Kazanma</div>
-        <p class="step-desc">Güvenilir kaynakların sizi kaynak göstermesi sağlanır. Backlink'in GEO karşılığı olan citation engineering uygulanır.</p>
-      </div>
-      <div class="step reveal">
-        <div class="step-icon">🧠</div>
-        <div class="step-name">Entity Optimizasyonu</div>
-        <p class="step-desc">Markanız Schema.org ve Wikidata aracılığıyla AI bilgi grafiğinde bir varlık olarak tanımlanır.</p>
-      </div>
-      <div class="step reveal">
-        <div class="step-icon">🎯</div>
-        <div class="step-name">Prompt Simülasyonu</div>
-        <p class="step-desc">Hedef müşterilerinizin AI'a sorabileceği 50+ soru haritalanır, içerik bu sorulara yanıt verecek şekilde şekillendirilir.</p>
-      </div>
-      <div class="step reveal">
-        <div class="step-icon">⚡</div>
-        <div class="step-name">Tazelik & İndeksleme</div>
-        <p class="step-desc">Perplexity gibi motorlar gerçek zamanlı tarar. Güncel, tarihli ve kaynaklı içerik akışı sürekli yönetilir.</p>
-      </div>
-    </div>
+    </section>
   </div>
-</section>
 
-<!-- PACKAGES -->
-<section id="paketler">
-  <div class="inner">
-    <span class="eyebrow">// Hizmet Paketleri</span>
-    <h2>Nerede başlamak istiyorsunuz?</h2>
-    <p class="sub">Her ölçekteki işletme için uygun GEO paketi. Tüm paketler ücretsiz AI Audit raporu ile başlar.</p>
-    <div class="pkgs">
-      <div class="pkg reveal">
-        <div class="pkg-tier">Paket 01</div>
-        <div class="pkg-name">Visibility Audit</div>
-        <div class="pkg-price">Tek seferlik<br><strong>₺15.000</strong></div>
-        <ul class="pkg-feats">
-          <li>AI görünürlük analizi (ChatGPT, Perplexity, Gemini)</li>
-          <li>Entity durum raporu</li>
-          <li>Rakip AI karşılaştırması</li>
-          <li>Öncelikli aksiyon listesi</li>
-        </ul>
-        <a href="#iletisim" class="pkg-btn">Başlayın</a>
+  <!-- YETKİNLİKLER -->
+  <div class="container">
+    <section id="yetenekler">
+      <div class="section-meta reveal">
+        <span class="section-num">04</span><span class="section-line"></span><span class="section-title-sm">Yetkinlikler</span>
       </div>
-      <div class="pkg reveal">
-        <div class="pkg-tier">Paket 02</div>
-        <div class="pkg-name">Citation Builder</div>
-        <div class="pkg-price">3 aylık<br><strong>₺18.000</strong> /ay</div>
-        <ul class="pkg-feats">
-          <li>Schema markup kurulumu ve doğrulama</li>
-          <li>4 AI-uyumlu içerik / ay</li>
-          <li>2 dış platform yerleşimi</li>
-          <li>LLM.txt kurulumu</li>
-          <li>Aylık görünürlük raporu</li>
-        </ul>
-        <a href="#iletisim" class="pkg-btn">Başlayın</a>
+      <div class="skills-grid reveal">
+        <div class="skill-cat">
+          <p class="skill-cat-label">Teknoloji Yönetimi</p>
+          <div class="skill-tags">
+            <span class="tag">Teknoloji Yol Haritası</span><span class="tag">BT Stratejisi</span><span class="tag">Teknoloji Ürünleri Geliştirme</span><span class="tag">BT Altyapı Yönetimi</span><span class="tag">Sunucu Yönetimi</span><span class="tag">ITIL</span><span class="tag">Geçici Yöneticilik</span>
+          </div>
+        </div>
+        <div class="skill-cat">
+          <p class="skill-cat-label">Yazılım & Altyapı</p>
+          <div class="skill-tags">
+            <span class="tag">Software Development</span><span class="tag">SDLC</span><span class="tag">Cloud Computing</span><span class="tag">Virtualization</span><span class="tag">Depolama Sanallaştırması</span><span class="tag">Software Defined Networking</span><span class="tag">VPN</span><span class="tag">Yedekleme & Kurtarma</span><span class="tag">Enterprise Software</span><span class="tag">Integration</span>
+          </div>
+        </div>
+        <div class="skill-cat">
+          <p class="skill-cat-label">Güvenlik</p>
+          <div class="skill-tags">
+            <span class="tag">Siber Güvenlik</span><span class="tag">Güvenlik Duvarları</span><span class="tag">Video Analytics</span><span class="tag">Hassas Güvenlik Sistemleri</span>
+          </div>
+        </div>
+        <div class="skill-cat">
+          <p class="skill-cat-label">Proje & Program Yönetimi</p>
+          <div class="skill-tags">
+            <span class="tag">Project Management</span><span class="tag">Program Management</span><span class="tag">Software Project Management</span><span class="tag">Uluslararası Proje Yönetimi</span><span class="tag">ITEA</span><span class="tag">Süreç İyileştirme</span><span class="tag">Change Management</span><span class="tag">Gereksinim Analizi</span>
+          </div>
+        </div>
+        <div class="skill-cat">
+          <p class="skill-cat-label">Strateji & İş Geliştirme</p>
+          <div class="skill-tags">
+            <span class="tag">Business Strategy</span><span class="tag">İş Stratejisi</span><span class="tag">IT Strategy</span><span class="tag">Business Development</span><span class="tag">Yatırım Stratejileri</span><span class="tag">İşe Alma</span>
+          </div>
+        </div>
+        <div class="skill-cat">
+          <p class="skill-cat-label">Analiz & Araştırma</p>
+          <div class="skill-tags">
+            <span class="tag">Business Analysis</span><span class="tag">İş Analizi</span><span class="tag">Business Intelligence</span><span class="tag">Veri Analizi</span><span class="tag">Analitik Beceriler</span><span class="tag">Ar-Ge</span><span class="tag">Araştırma</span><span class="tag">Spice</span>
+          </div>
+        </div>
       </div>
-      <div class="pkg hot reveal">
-        <div class="hot-badge">En Popüler</div>
-        <div class="pkg-tier">Paket 03</div>
-        <div class="pkg-name">AI Authority</div>
-        <div class="pkg-price">6 aylık<br><strong>₺40.000</strong> /ay</div>
-        <ul class="pkg-feats">
-          <li>Aylık 8–12 AI-uyumlu içerik</li>
-          <li>Medya atıfı kazanma (HARO)</li>
-          <li>Wikidata entity yönetimi</li>
-          <li>50+ prompt simülasyon haritası</li>
-          <li>Çoklu platform dağıtımı</li>
-          <li>Aylık strateji toplantısı</li>
-        </ul>
-        <a href="#iletisim" class="pkg-btn">Başlayın</a>
-      </div>
-      <div class="pkg reveal">
-        <div class="pkg-tier">Paket 04</div>
-        <div class="pkg-name">Enterprise</div>
-        <div class="pkg-price">Özel teklif<br><strong>₺100K+</strong> /ay</div>
-        <ul class="pkg-feats">
-          <li>Dedicated GEO stratejisti</li>
-          <li>API entegrasyonlu dashboard</li>
-          <li>Çoklu marka yönetimi</li>
-          <li>Yönetim kurulu raporlaması</li>
-          <li>Beyaz etiket çıktılar</li>
-        </ul>
-        <a href="#iletisim" class="pkg-btn">Teklif Alın</a>
-      </div>
-    </div>
+    </section>
   </div>
-</section>
 
-<!-- CTA -->
-<div class="cta-wrap" id="iletisim">
-  <div class="cta-box">
-    <h2>AI motorları sizi görmüyor.<br>Bunu birlikte değiştirelim.</h2>
-    <p>Ücretsiz AI Audit ile markanızın ChatGPT, Perplexity ve Gemini'deki mevcut durumunu öğrenin.</p>
-    <div class="cta-btns">
-      <a href="mailto:mail@cagricakir.com.tr" class="btn-p">Ücretsiz Audit Talep Et</a>
-      <a href="tel:+90" class="btn-g">Bizi Arayın</a>
-    </div>
+  <!-- İLETİŞİM -->
+  <div class="container">
+    <section id="iletisim">
+      <div class="section-meta reveal">
+        <span class="section-num">05</span><span class="section-line"></span><span class="section-title-sm">İletişim</span>
+      </div>
+      <div class="contact-grid">
+        <div class="reveal">
+          <h2>Birlikte<br>çalışalım.</h2>
+          <p>Dijital dönüşüm projeleri, ERP danışmanlığı, Ar-Ge yönetimi veya üst düzey yöneticilik fırsatları için iletişime geçebilirsiniz. Her iş birliği teklifini değerlendiririm.</p>
+        </div>
+        <div class="reveal">
+          <a href="https://www.linkedin.com/in/scagricakir/" target="_blank" class="contact-item">
+            <div><div class="ci-type">LinkedIn</div><div class="ci-val">linkedin.com/in/scagricakir</div></div>
+            <span class="ci-arrow">↗</span>
+          </a>
+          <a href="/cdn-cgi/l/email-protection#7815191114381b191f0a111b1913110a561b1715560c0a" class="contact-item">
+            <div><div class="ci-type">E-posta</div><div class="ci-val"><span class="__cf_email__" data-cfemail="c9a4a8a0a589aaa8aebba0aaa8a2a0bbe7aaa6a4e7bdbb">[email&#160;protected]</span></div></div>
+            <span class="ci-arrow">↗</span>
+          </a>
+          <a href="https://cagricakir.com.tr" class="contact-item">
+            <div><div class="ci-type">Web</div><div class="ci-val">cagricakir.com.tr</div></div>
+            <span class="ci-arrow">↗</span>
+          </a>
+        </div>
+      </div>
+    </section>
   </div>
-</div>
 
-<!-- FOOTER -->
-<footer>© 2025 GEONI — Generative Engine Optimization · Ankara, Türkiye</footer>
+  <footer>
+    <p>© 2026 Sabri Çağrı Çakır · Ankara, Türkiye</p>
+    <p><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="3e535f57527e5d5f594c575d5f55574c105d5153104a4c">[email&#160;protected]</a></p>
+  </footer>
 
-<script>
-// Typewriter
-const segments=[
-  {t:"Tabii! Türkiye'de öne çıkan B2B yazılım firmaları:\n\n",c:null},
-  {t:"• Firma Alpha",c:"#22D3EE"},{t:" — Kurumsal ERP ve CRM çözümleri\n",c:null},
-  {t:"• Firma Beta",c:"#22D3EE"},{t:" — Bulut tabanlı muhasebe yazılımı\n",c:null},
-  {t:"• Firma Gamma",c:"#22D3EE"},{t:" — SaaS proje yönetim platformu\n\n",c:null},
-  {t:"Bu firmalar güçlü referanslara sahip ve...",c:null}
-];
-const tw=document.getElementById('tw');
-const cur=document.getElementById('cur');
-const nl=document.getElementById('nl');
-let flat=[];
-segments.forEach(s=>{for(const ch of s.t)flat.push({ch,c:s.c})});
-let pos=0,curSpan=null,curC=null;
-function tick(){
-  if(pos>=flat.length){cur.style.display='none';setTimeout(()=>{nl.style.display='block'},700);return}
-  const {ch,c}=flat[pos];
-  if(c!==curC){curC=c;curSpan=document.createElement('span');if(c)Object.assign(curSpan.style,{color:c,fontWeight:'600'});tw.appendChild(curSpan)}
-  if(ch==='\n'){curSpan.appendChild(document.createElement('br'));curC=null}
-  else curSpan.appendChild(document.createTextNode(ch));
-  pos++;
-  setTimeout(tick,ch==='\n'?60:Math.random()*28+18);
-}
-setTimeout(tick,1200);
-
-// Scroll reveal
-const obs=new IntersectionObserver(es=>{
-  es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('shown')})
-},{threshold:.1});
-document.querySelectorAll('.reveal').forEach(el=>obs.observe(el));
-</script>
-</body>
-</html>
+  <script data-cfasync="false" src="/cd
