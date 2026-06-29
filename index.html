@@ -33,8 +33,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:16
 
 /* NAV */
 nav{position:fixed;inset:0 0 auto;z-index:100;padding:18px 48px;display:flex;justify-content:space-between;align-items:center;background:rgba(7,7,15,0.75);backdrop-filter:blur(24px);border-bottom:1px solid var(--border)}
-.logo{font-family:var(--display);font-weight:700;font-size:1.1rem;letter-spacing:.1em;color:var(--text);text-decoration:none}
-.logo em{font-style:normal;color:var(--accent)}
+.logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+.logo-text{font-family:var(--display);font-weight:300;font-size:1.1rem;letter-spacing:.22em;color:#64748B}
 .nav-links{display:flex;gap:28px;list-style:none}
 .nav-links a{color:var(--text-sub);text-decoration:none;font-size:.875rem;transition:color .2s}
 .nav-links a:hover{color:var(--text)}
@@ -315,7 +315,34 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 
 <!-- NAV -->
 <nav>
-  <a class="logo" href="#">GEO<em>NI</em></a>
+  <a class="logo" href="#">
+  <svg viewBox="0 0 80 80" width="36" height="36" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+    <!-- Edges -->
+    <line x1="38" y1="12" x2="25" y2="22" stroke="#818CF8" stroke-width="1" opacity=".4"/>
+    <line x1="10" y1="40" x2="20" y2="25" stroke="#818CF8" stroke-width="1" opacity=".4"/>
+    <line x1="10" y1="40" x2="18" y2="56" stroke="#818CF8" stroke-width="1" opacity=".4"/>
+    <line x1="38" y1="68" x2="25" y2="58" stroke="#22D3EE" stroke-width="1" opacity=".5"/>
+    <line x1="60" y1="40" x2="70" y2="24" stroke="#22D3EE" stroke-width="1" opacity=".5"/>
+    <line x1="38" y1="12" x2="52" y2="8"  stroke="#22D3EE" stroke-width="1" opacity=".5"/>
+    <line x1="52" y1="8"  x2="70" y2="24" stroke="#22D3EE" stroke-width="1" opacity=".5"/>
+    <!-- G harfi -->
+    <path d="M 38 12 A 30 30 0 1 0 38 68" fill="none" stroke="#818CF8" stroke-width="5.5" stroke-linecap="round"/>
+    <path d="M 50 40 L 62 40" fill="none" stroke="#818CF8" stroke-width="5.5" stroke-linecap="round"/>
+    <path d="M 62 40 L 62 58" fill="none" stroke="#818CF8" stroke-width="5.5" stroke-linecap="round"/>
+    <!-- Nodes -->
+    <circle cx="38" cy="12" r="2.5" fill="#22D3EE"/>
+    <circle cx="10" cy="40" r="2"   fill="#818CF8"/>
+    <circle cx="38" cy="68" r="2.5" fill="#22D3EE"/>
+    <circle cx="62" cy="40" r="3.5" fill="#F59E0B"/>
+    <circle cx="62" cy="40" r="1.8" fill="#07070F"/>
+    <circle cx="62" cy="40" r="0.9" fill="#F59E0B"/>
+    <circle cx="50" cy="40" r="2"   fill="#818CF8"/>
+    <circle cx="62" cy="58" r="2"   fill="#818CF8"/>
+    <circle cx="70" cy="24" r="2"   fill="#22D3EE"/>
+    <circle cx="52" cy="8"  r="1.8" fill="#22D3EE"/>
+  </svg>
+  <span class="logo-text">geoni</span>
+</a>
   <ul class="nav-links">
     <li><a href="#sorun">Sorun</a></li>
     <li><a href="#geo">GEO Nedir</a></li>
@@ -530,7 +557,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 
 <!-- FOOTER -->
 <footer>
-  <p>© 2025 GEONI — Generative Engine Optimization · Ankara, Türkiye</p>
+  <p>© 2025 geoni — Generative Engine Optimization · Ankara, Türkiye</p>
   <p style="margin-top:10px;font-size:.75rem;color:var(--text-muted)">
     Kurumsal teknoloji yatırımcısı <a href="https://linkedin.com/in/scagricakir" target="_blank" rel="noopener" style="color:var(--text-sub);text-decoration:none;border-bottom:1px solid rgba(148,163,184,.3)">Sabri Çağrı Çakır</a> tarafından yatırım almıştır.
   </p>
