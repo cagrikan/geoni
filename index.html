@@ -222,7 +222,10 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
         "name": "GEONI — AI Görünürlük Optimizasyonu",
         "description": "Markanızın ChatGPT, Perplexity ve Gemini'de görünür olması için GEO hizmetleri.",
         "publisher": {
-          "@id": "https://geoni.ai/#organization"
+          "@type": "Organization",
+          "@id": "https://geoni.ai/#organization",
+          "name": "GEONI",
+          "url": "https://geoni.ai"
         },
         "inLanguage": "tr-TR"
       },
@@ -266,7 +269,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
       {
         "@type": "Service",
         "name": "AI Görünürlük Audit",
-        "provider": { "@id": "https://geoni.ai/#organization" },
+        "provider": { "@type": "Organization", "@id": "https://geoni.ai/#organization", "name": "GEONI", "url": "https://geoni.ai" },
         "description": "Markanızın ChatGPT, Perplexity ve Gemini'deki mevcut görünürlüğünü analiz eden kapsamlı audit hizmeti.",
         "offers": {
           "@type": "Offer",
