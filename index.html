@@ -150,7 +150,8 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 
 /* LIVE DEMO INPUT */
 .chat-body{padding:18px;min-height:200px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;max-height:260px}
-.chat-input-area{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border)}
+.chat-input-area{display:flex;flex-direction:column;gap:8px;padding:12px 16px;border-top:1px solid var(--border)}
+.input-row{display:flex;gap:8px}
 .demo-input{flex:1;background:var(--surface-2);border:1px solid var(--border-mid);border-radius:8px;padding:9px 13px;color:var(--text);font-family:var(--mono);font-size:.78rem;outline:none;transition:border-color .2s}
 .demo-input:focus{border-color:rgba(129,140,248,.4)}
 .demo-input::placeholder{color:var(--text-muted)}
@@ -228,11 +229,14 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
       <div id="phase2" style="display:none">
         <div class="phase-sep"><span>Şimdi siz deneyin</span></div>
         <div class="chat-body" id="p2-body">
-          <div class="demo-empty">Sektörünüzü yazın, AI'ın ne önerdiğini görün.</div>
+          <div class="demo-empty">Sektörünüzü yazın —<br>AI o alanda kimi önerdiğini görün.</div>
         </div>
         <div class="chat-input-area">
-          <input type="text" id="demo-input" class="demo-input" placeholder="örn: muhasebe yazılımı önerir misin?">
-          <button id="demo-btn" class="demo-btn" onclick="sendQuery()">Sor →</button>
+          <input type="text" id="demo-company" class="demo-input" placeholder="Şirket adınız... örn: GEONI AI">
+          <div class="input-row">
+            <input type="text" id="demo-sector" class="demo-input" placeholder="Sektörünüz... örn: yazılım geliştirme, yapay zeka uygulamaları">
+            <button id="demo-btn" class="demo-btn" onclick="sendQuery()">Sor →</button>
+          </div>
         </div>
       </div>
     </div>
@@ -442,8 +446,9 @@ function revealPhase2() {
   const p2 = document.getElementById('phase2');
   p2.style.display = 'block';
   p2.scrollIntoView({ behavior:'smooth', block:'nearest' });
-  document.getElementById('demo-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter') sendQuery();
+  ['demo-company','demo-sector'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') sendQuery(); });
   });
 }
 
@@ -467,40 +472,71 @@ let isLoading = false;
 
 async function sendQuery() {
   if (isLoading) return;
-  const input = document.getElementById('demo-input');
-  const msg = input.value.trim();
-  if (!msg) return;
+  const company = document.getElementById('demo-company').value.trim();
+  const sector = document.getElementById('demo-sector').value.trim();
+  if (!company || !sector) {
+    alert('Lütfen şirket adınızı ve sektörünüzü girin.');
+    return;
+  }
+
+  // Geoni kontrolü
+  if (company.toLowerCase().includes('geoni')) {
+    const p2body = document.getElementById('p2-body');
+    p2body.innerHTML = '';
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'msg';
+    msgDiv.innerHTML = '<div class="avatar av-ai">AI</div><div class="bubble bubble-ai"></div>';
+    const bubble = msgDiv.querySelector('.bubble-ai');
+    bubble.style.color = '#818CF8';
+    bubble.innerHTML = '😊 Biz zaten buradayız! GEONI olarak AI motorlarındaki görünürlüğünüzü yönetiyoruz. Sizi en iyi biz anlıyoruz — <a href="#iletisim" style="color:var(--accent-2);font-weight:600">hemen iletişime geçin →</a>';
+    p2body.appendChild(msgDiv);
+    return;
+  }
+
+  // Sorgu limiti: 3 hak
+  const queryCount = parseInt(localStorage.getItem('geoni_query_count') || '0');
+  if (queryCount >= 3) {
+    const p2body = document.getElementById('p2-body');
+    p2body.innerHTML = '';
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'msg';
+    msgDiv.innerHTML = '<div class="avatar av-ai">AI</div><div class="bubble bubble-ai"></div>';
+    const bubble = msgDiv.querySelector('.bubble-ai');
+    bubble.innerHTML = '⏳ 3 ücretsiz sorgu hakkınızı kullandınız. Markanızın AI motorlarındaki tam görünürlük raporunu almak için <a href="#iletisim" style="color:var(--accent);font-weight:600">bizimle iletişime geçin →</a>';
+    p2body.appendChild(msgDiv);
+    return;
+  }
 
   isLoading = true;
   const btn = document.getElementById('demo-btn');
   btn.disabled = true;
   btn.textContent = '...';
 
-  const body = document.getElementById('p2-body');
-  body.innerHTML = '';
+  const p2body = document.getElementById('p2-body');
+  p2body.innerHTML = '';
 
   const userDiv = document.createElement('div');
   userDiv.className = 'msg';
   userDiv.innerHTML = '<div class="avatar av-u">SİZ</div><div class="bubble bubble-u"></div>';
-  userDiv.querySelector('.bubble-u').textContent = msg;
-  body.appendChild(userDiv);
+  userDiv.querySelector('.bubble-u').textContent = sector + ' sektöründe öne çıkan firmalar hangileri?';
+  p2body.appendChild(userDiv);
 
   const aiDiv = document.createElement('div');
   aiDiv.className = 'msg';
   aiDiv.innerHTML = '<div class="avatar av-ai">AI</div><div class="bubble bubble-ai"><div class="typing-dots"><span></span><span></span><span></span></div></div>';
-  body.appendChild(aiDiv);
-  body.scrollTop = body.scrollHeight;
+  p2body.appendChild(aiDiv);
+  p2body.scrollTop = p2body.scrollHeight;
 
   try {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: msg })
+      body: JSON.stringify({ sector, company })
     });
     const data = await res.json();
     if (!res.ok || !data.content) {
-      const msg = data.error || 'API hatası';
-      throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+      const errMsg = data.error || 'API hatası';
+      throw new Error(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
     }
     const text = data.content[0].text;
     const aiBubble = aiDiv.querySelector('.bubble-ai');
@@ -513,13 +549,31 @@ async function sendQuery() {
         if (text[i] === '\n') span.appendChild(document.createElement('br'));
         else span.appendChild(document.createTextNode(text[i]));
         i++;
-        body.scrollTop = body.scrollHeight;
+        p2body.scrollTop = p2body.scrollHeight;
         setTimeout(typeChar, 16);
       } else {
+        // Şirket adı yanıtta geçiyor mu?
+        const found = text.toLowerCase().includes(company.toLowerCase());
         const warn = document.createElement('div');
         warn.className = 'warn-box';
-        warn.innerHTML = '⚠ Markanız bu yanıtta yer almıyor. <a href="#iletisim">GEO ile değiştirin →</a>';
+        if (found) {
+          warn.style.background = 'rgba(74,222,128,.07)';
+          warn.style.borderColor = 'rgba(74,222,128,.25)';
+          warn.style.color = '#86EFAC';
+          warn.innerHTML = '✓ Markanız bu yanıtta geçiyor! GEO ile bu görünürlüğü koruyun.';
+        } else {
+          warn.innerHTML = '⚠ Markanız bu yanıtta yer almıyor. <a href="#iletisim">GEO ile değiştirin →</a>';
+        }
         aiBubble.appendChild(warn);
+        // Sorgu sayacını artır
+        localStorage.setItem('geoni_query_count', queryCount + 1);
+        const remaining = 2 - queryCount;
+        if (remaining > 0) {
+          const note = document.createElement('div');
+          note.style.cssText = 'font-size:.7rem;color:var(--text-muted);font-family:var(--mono);margin-top:8px;text-align:right';
+          note.textContent = remaining + ' sorgu hakkınız kaldı';
+          aiBubble.appendChild(note);
+        }
         isLoading = false;
         btn.disabled = false;
         btn.textContent = 'Sor →';
