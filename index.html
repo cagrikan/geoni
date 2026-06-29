@@ -441,21 +441,22 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
       <p class="insight-sub">Sektörünüzde kaç AI sorgusu kaçırıyorsunuz?</p>
       <select id="calc-sector" class="calc-select">
         <option value="">Sektörünüzü seçin...</option>
-        <option value="45000">E-Ticaret &amp; Perakende</option>
-        <option value="38000">Yazılım &amp; Teknoloji</option>
-        <option value="32000">Sağlık &amp; Medikal</option>
-        <option value="28000">Finans &amp; Yatırım</option>
-        <option value="22000">Pazarlama &amp; Ajans</option>
-        <option value="26000">Eğitim &amp; Akademi</option>
-        <option value="18000">Hukuk &amp; Danışmanlık</option>
-        <option value="15000">Gayrimenkul</option>
-        <option value="12000">Üretim &amp; Sanayi</option>
-        <option value="20000">Turizm &amp; Konaklama</option>
+        <option value="10500000">E-Ticaret &amp; Perakende</option>
+        <option value="8400000">Yazılım &amp; Teknoloji</option>
+        <option value="7000000">Sağlık &amp; Medikal</option>
+        <option value="5600000">Finans &amp; Yatırım</option>
+        <option value="4800000">Pazarlama &amp; Ajans</option>
+        <option value="5200000">Eğitim &amp; Akademi</option>
+        <option value="3800000">Hukuk &amp; Danışmanlık</option>
+        <option value="3200000">Gayrimenkul</option>
+        <option value="2800000">Üretim &amp; Sanayi</option>
+        <option value="4200000">Turizm &amp; Konaklama</option>
       </select>
       <div class="calc-result" id="calc-result" style="display:none;margin-top:24px;text-align:center">
         <div class="calc-big-num" id="calc-num">0</div>
         <div class="calc-unit">AI sorgusu / gün</div>
-        <div class="calc-msg">sektörünüzde yapılıyor. Görünmüyorsanız<br>bunların <strong style="color:var(--text)">tamamını</strong> kaçırıyorsunuz.</div>
+        <div class="calc-msg">sektörünüzde günlük yapılıyor. Görünmüyorsanız<br>bunların <strong style="color:var(--text)">tamamını</strong> kaçırıyorsunuz.</div>
+        <div style="font-size:.68rem;font-family:var(--mono);color:var(--text-muted);margin-top:10px;letter-spacing:.04em">* Türkiye tahmini, 2025 · ~70M internet kullanıcısı baz alınmıştır</div>
         <a href="#iletisim" class="btn-p" style="display:inline-block;margin-top:22px;font-size:.85rem;padding:10px 24px">Ücretsiz Audit Al →</a>
       </div>
       <div id="calc-placeholder" style="margin-top:32px;text-align:center">
@@ -889,26 +890,76 @@ const chartWrap = document.getElementById('chart-wrap');
 if(chartWrap) chartObs.observe(chartWrap);
 
 // LOSS CALCULATOR
-document.getElementById('calc-sector').addEventListener('change', function() {
-  const val = parseInt(this.value);
-  if(!val) return;
+const sectors = [
+  {label:'E-Ticaret & Perakende', val:10500000},
+  {label:'Yazılım & Teknoloji', val:8400000},
+  {label:'Sağlık & Medikal', val:7000000},
+  {label:'Finans & Yatırım', val:5600000},
+  {label:'Pazarlama & Ajans', val:4800000},
+  {label:'Eğitim & Akademi', val:5200000},
+  {label:'Hukuk & Danışmanlık', val:3800000},
+  {label:'Gayrimenkul', val:3200000},
+  {label:'Üretim & Sanayi', val:2800000},
+  {label:'Turizm & Konaklama', val:4200000},
+];
 
+let rotateInterval = null;
+let rotateIdx = 0;
+let userSelected = false;
+
+function showCalcResult(val, label, animate) {
   document.getElementById('calc-placeholder').style.display = 'none';
   const result = document.getElementById('calc-result');
   result.style.display = 'block';
 
-  const numEl = document.getElementById('calc-num');
-  let current = 0;
-  const duration = 1200;
-  const steps = 50;
-  const increment = val / steps;
-  const interval = duration / steps;
+  // Sektör adını güncelle
+  let sectorLabel = result.querySelector('.calc-sector-label');
+  if(!sectorLabel) {
+    sectorLabel = document.createElement('div');
+    sectorLabel.className = 'calc-sector-label';
+    sectorLabel.style.cssText = 'font-family:var(--mono);font-size:.7rem;color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px';
+    result.insertBefore(sectorLabel, result.firstChild);
+  }
+  sectorLabel.textContent = label;
 
-  const counter = setInterval(() => {
-    current += increment;
-    if(current >= val) { current = val; clearInterval(counter); }
-    numEl.textContent = Math.floor(current).toLocaleString('tr-TR');
-  }, interval);
+  const numEl = document.getElementById('calc-num');
+  if(animate) {
+    let current = 0;
+    const steps = 30;
+    const increment = val / steps;
+    const iv = setInterval(() => {
+      current += increment;
+      if(current >= val) { current = val; clearInterval(iv); }
+      numEl.textContent = Math.floor(current).toLocaleString('tr-TR');
+    }, 30);
+  } else {
+    numEl.textContent = val.toLocaleString('tr-TR');
+  }
+}
+
+function startRotation() {
+  document.getElementById('calc-placeholder').style.display = 'none';
+  showCalcResult(sectors[0].val, sectors[0].label, true);
+  rotateInterval = setInterval(() => {
+    if(userSelected) return;
+    rotateIdx = (rotateIdx + 1) % sectors.length;
+    showCalcResult(sectors[rotateIdx].val, sectors[rotateIdx].label, true);
+    // Dropdown'u da güncelle
+    document.getElementById('calc-sector').value = '';
+  }, 2800);
+}
+
+// Sayfa yüklenince 1sn sonra rotasyon başlasın
+setTimeout(startRotation, 1000);
+
+// Kullanıcı seçerse rotasyon durur
+document.getElementById('calc-sector').addEventListener('change', function() {
+  const val = parseInt(this.value);
+  if(!val) return;
+  userSelected = true;
+  clearInterval(rotateInterval);
+  const label = this.options[this.selectedIndex].text;
+  showCalcResult(val, label, true);
 });
 </script>
 
