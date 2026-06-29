@@ -1146,7 +1146,7 @@ function userMsg(text) {
 }
 
 async function startAudit() {
-  await botMsg('Merhaba! 👋 Ben GEONI'nin AI asistanıyım. Size <strong>ücretsiz bir AI görünürlük ön raporu</strong> hazırlayacağım. Başlayalım mı?');
+  await botMsg("Merhaba! Ben GEONI AI asistanı. Size ücretsiz AI görünürlük ön raporu hazırlayacağım. Başlayalım mı?");
   showButtons([
     {label:'Evet, başlayalım! →', action: () => { showInput('Adınız ve şirketiniz...'); auditStep = 1; askName(); }}
   ]);
