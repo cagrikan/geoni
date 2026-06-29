@@ -386,12 +386,12 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
       <div id="phase2" style="display:none">
         <div class="phase-sep"><span>Şimdi siz deneyin</span></div>
         <div class="chat-body" id="p2-body">
-          <div class="demo-empty">Adınızı veya şirketinizi girin —<br>AI o sektörde kimi önerdiğini görün.</div>
+          <div class="demo-empty">Kendinizi veya kurumunuzu girin —<br>AI o konuda sizi görüyor mu?</div>
         </div>
         <div class="chat-input-area">
           <input type="text" id="demo-company" class="demo-input" placeholder="Adınız veya şirket adınız... örn: GEONI AI">
           <div class="input-row">
-            <input type="text" id="demo-sector" class="demo-input" placeholder="Sektörünüz... örn: yazılım, yapay zeka, fintech">
+            <input type="text" id="demo-topic" class="demo-input" placeholder="Hangi konuda aratıyorsunuz... örn: yapay zeka, iklim politikası, fintech">
             <button id="demo-btn" class="demo-btn" onclick="sendQuery()">Sor →</button>
           </div>
         </div>
@@ -608,7 +608,7 @@ function revealPhase2() {
   const p2 = document.getElementById('phase2');
   p2.style.display = 'block';
   p2.scrollIntoView({ behavior:'smooth', block:'nearest' });
-  ['demo-company','demo-sector'].forEach(id => {
+  ['demo-name','demo-topic'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') sendQuery(); });
   });
@@ -634,10 +634,10 @@ let isLoading = false;
 
 async function sendQuery() {
   if (isLoading) return;
-  const company = document.getElementById('demo-company').value.trim();
-  const sector = document.getElementById('demo-sector').value.trim();
+  const company = document.getElementById('demo-name').value.trim();
+  const sector = document.getElementById('demo-topic').value.trim();
   if (!company || !sector) {
-    alert('Lütfen şirket adınızı ve sektörünüzü girin.');
+    alert('Lütfen adınızı/kurumunuzu ve konuyu girin.');
     return;
   }
 
@@ -680,7 +680,7 @@ async function sendQuery() {
   const userDiv = document.createElement('div');
   userDiv.className = 'msg';
   userDiv.innerHTML = '<div class="avatar av-u">SİZ</div><div class="bubble bubble-u"></div>';
-  userDiv.querySelector('.bubble-u').textContent = sector + ' sektöründe öne çıkan firmalar hangileri?';
+  userDiv.querySelector('.bubble-u').textContent = '"' + sector + '" konusunda öne çıkan isimler kimler?';
   p2body.appendChild(userDiv);
 
   const aiDiv = document.createElement('div');
@@ -693,7 +693,7 @@ async function sendQuery() {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sector, company })
+      body: JSON.stringify({ name: company, topic: sector })
     });
     const data = await res.json();
     if (!res.ok || !data.content) {
