@@ -498,6 +498,10 @@ async function sendQuery() {
       body: JSON.stringify({ message: msg })
     });
     const data = await res.json();
+    if (!res.ok || !data.content) {
+      const msg = data.error || 'API hatası';
+      throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    }
     const text = data.content[0].text;
     const aiBubble = aiDiv.querySelector('.bubble-ai');
     aiBubble.innerHTML = '';
