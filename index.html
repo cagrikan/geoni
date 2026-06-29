@@ -202,6 +202,54 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 .calc-unit{font-family:var(--mono);font-size:.75rem;letter-spacing:.08em;color:var(--text-sub);margin-top:6px;text-transform:uppercase}
 .calc-msg{color:var(--text-sub);font-size:.88rem;line-height:1.7;margin-top:14px}
 @media(max-width:900px){.insights-inner{grid-template-columns:1fr}.insights-bar{padding:0 20px 60px}}
+
+/* AUDIT CHAT WIDGET */
+.audit-btn{position:fixed;bottom:28px;right:28px;z-index:1000;background:var(--accent);color:#0D0D1A;border:none;border-radius:50px;padding:13px 22px;font-size:.82rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 8px 32px rgba(129,140,248,.35);transition:transform .2s,box-shadow .2s;font-family:var(--mono);letter-spacing:.04em}
+.audit-btn:hover{transform:translateY(-2px);box-shadow:0 12px 44px rgba(129,140,248,.45)}
+.audit-btn svg{flex-shrink:0}
+.audit-panel{position:fixed;bottom:88px;right:28px;z-index:1000;width:380px;height:560px;background:#0A0A1A;border:1px solid rgba(129,140,248,.22);border-radius:20px;box-shadow:0 24px 80px rgba(0,0,0,.6);display:flex;flex-direction:column;overflow:hidden;transition:opacity .25s,transform .25s}
+.audit-panel.hidden{opacity:0;transform:translateY(12px);pointer-events:none}
+.audit-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;background:#07070F;border-bottom:1px solid rgba(129,140,248,.12)}
+.audit-head-left{display:flex;align-items:center;gap:10px}
+.audit-head-title{font-family:var(--mono);font-size:.78rem;color:var(--text);letter-spacing:.06em}
+.audit-head-sub{font-size:.65rem;color:var(--text-muted);letter-spacing:.04em}
+.audit-close{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;padding:4px 8px;border-radius:6px;transition:color .2s}
+.audit-close:hover{color:var(--text)}
+.audit-msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth}
+.audit-msgs::-webkit-scrollbar{width:3px}
+.audit-msgs::-webkit-scrollbar-thumb{background:rgba(129,140,248,.2);border-radius:2px}
+.amsg{max-width:88%;font-size:.83rem;line-height:1.6;padding:10px 14px;border-radius:14px;animation:msgpop .25s ease}
+@keyframes msgpop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.amsg-bot{background:var(--surface);color:var(--text-sub);border-bottom-left-radius:4px;align-self:flex-start;border:1px solid rgba(129,140,248,.1)}
+.amsg-user{background:rgba(129,140,248,.12);color:var(--text);border-bottom-right-radius:4px;align-self:flex-end;border:1px solid rgba(129,140,248,.2)}
+.amsg-typing{background:var(--surface);border-bottom-left-radius:4px;align-self:flex-start;padding:12px 16px;border:1px solid rgba(129,140,248,.1)}
+.typing-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#818CF8;margin:0 2px;animation:tdot2 .9s infinite}
+.typing-dot:nth-child(2){animation-delay:.2s}
+.typing-dot:nth-child(3){animation-delay:.4s}
+@keyframes tdot2{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-5px);opacity:1}}
+.company-card{background:rgba(129,140,248,.06);border:1px solid rgba(129,140,248,.2);border-radius:12px;padding:14px;margin-top:4px}
+.company-card-name{font-weight:600;color:var(--text);font-size:.88rem;margin-bottom:4px}
+.company-card-desc{font-size:.78rem;color:var(--text-sub);line-height:1.5;margin-bottom:8px}
+.company-card-status{font-size:.72rem;font-family:var(--mono);letter-spacing:.06em;padding:3px 8px;border-radius:20px;display:inline-block}
+.status-known{background:rgba(74,222,128,.1);color:#4ade80;border:1px solid rgba(74,222,128,.25)}
+.status-unknown{background:rgba(248,113,113,.1);color:#f87171;border:1px solid rgba(248,113,113,.25)}
+.abtn-group{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px;align-self:flex-start;max-width:88%}
+.abtn{background:rgba(129,140,248,.08);border:1px solid rgba(129,140,248,.25);border-radius:8px;padding:7px 13px;font-size:.78rem;color:var(--text-sub);cursor:pointer;transition:all .2s;font-family:var(--mono)}
+.abtn:hover,.abtn.sel{background:rgba(129,140,248,.18);border-color:var(--accent);color:var(--text)}
+.abtn-send{background:var(--accent);border-color:var(--accent);color:#0D0D1A;margin-top:4px}
+.abtn-send:hover{opacity:.85}
+.score-card{background:rgba(129,140,248,.06);border:1px solid rgba(129,140,248,.2);border-radius:12px;padding:16px;margin-top:4px;text-align:center}
+.score-num{font-family:var(--display);font-size:2.4rem;font-weight:700;color:var(--accent)}
+.score-label{font-size:.72rem;font-family:var(--mono);color:var(--text-muted);letter-spacing:.08em;margin-top:4px}
+.score-note{font-size:.78rem;color:var(--text-sub);margin-top:10px;line-height:1.6;text-align:left}
+.audit-input-wrap{padding:12px 14px;border-top:1px solid rgba(129,140,248,.1);display:flex;gap:8px;background:#07070F}
+.audit-input{flex:1;background:#0E0E1C;border:1px solid rgba(129,140,248,.2);border-radius:8px;padding:9px 13px;color:var(--text);font-size:.82rem;outline:none;transition:border-color .2s;font-family:var(--body)}
+.audit-input:focus{border-color:rgba(129,140,248,.5)}
+.audit-input::placeholder{color:#334155}
+.audit-send{background:var(--accent);color:#0D0D1A;border:none;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:700;font-size:.82rem;transition:opacity .2s}
+.audit-send:hover{opacity:.85}
+.audit-send:disabled{opacity:.35;cursor:not-allowed}
+@media(max-width:600px){.audit-panel{width:calc(100vw - 32px);right:16px;bottom:80px}}
 </style>
 
   <!-- LLM.txt -->
@@ -961,6 +1009,314 @@ document.getElementById('calc-sector').addEventListener('change', function() {
   const label = this.options[this.selectedIndex].text;
   showCalcResult(val, label, true);
 });
+</script>
+
+
+<!-- FLOATING AUDIT CHAT -->
+<button class="audit-btn" onclick="toggleAudit()">
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+  </svg>
+  Ücretsiz Ön Rapor
+</button>
+
+<div class="audit-panel hidden" id="audit-panel">
+  <div class="audit-head">
+    <div class="audit-head-left">
+      <svg viewBox="0 0 48 48" width="28" height="28">
+        <path d="M22 10 A 14 14 0 1 0 22 38" fill="none" stroke="#818CF8" stroke-width="4.5" stroke-linecap="round"/>
+        <path d="M30 24 L22 24 L22 32" fill="none" stroke="#818CF8" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="36" cy="24" r="3.5" fill="#F59E0B"/>
+        <circle cx="36" cy="24" r="1.8" fill="#07070F"/>
+        <circle cx="36" cy="24" r=".9" fill="#F59E0B"/>
+      </svg>
+      <div>
+        <div class="audit-head-title">GEONI AI Asistanı</div>
+        <div class="audit-head-sub">Ücretsiz AI Görünürlük Raporu</div>
+      </div>
+    </div>
+    <button class="audit-close" onclick="toggleAudit()">✕</button>
+  </div>
+  <div class="audit-msgs" id="audit-msgs"></div>
+  <div class="audit-input-wrap" id="audit-input-wrap">
+    <input class="audit-input" id="audit-input" placeholder="Yanıtınızı yazın..." onkeydown="if(event.key==='Enter')sendAudit()">
+    <button class="audit-send" id="audit-send" onclick="sendAudit()">→</button>
+  </div>
+</div>
+
+<script>
+// ── AUDIT CHAT ─────────────────────────────────────────────────────────────
+let auditOpen = false;
+let auditStep = 0;
+let auditData = { name:'', company:'', companyKnown:false, topic:'', competitors:'', goals:[], marketing:'', email:'', miniReport:'' };
+let auditGoalsSelected = [];
+let auditStarted = false;
+
+function toggleAudit() {
+  auditOpen = !auditOpen;
+  const p = document.getElementById('audit-panel');
+  p.classList.toggle('hidden', !auditOpen);
+  if (auditOpen && !auditStarted) { auditStarted = true; setTimeout(startAudit, 400); }
+}
+
+function addMsg(html, type='bot') {
+  const m = document.getElementById('audit-msgs');
+  const d = document.createElement('div');
+  d.className = `amsg amsg-${type}`;
+  d.innerHTML = html;
+  m.appendChild(d);
+  m.scrollTop = m.scrollHeight;
+  return d;
+}
+
+function showTyping() {
+  const m = document.getElementById('audit-msgs');
+  const d = document.createElement('div');
+  d.className = 'amsg amsg-typing';
+  d.id = 'typing-indicator';
+  d.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
+  m.appendChild(d);
+  m.scrollTop = m.scrollHeight;
+}
+
+function removeTyping() {
+  const t = document.getElementById('typing-indicator');
+  if(t) t.remove();
+}
+
+function botMsg(html, delay=0) {
+  return new Promise(resolve => {
+    setTimeout(() => {
+      showTyping();
+      setTimeout(() => {
+        removeTyping();
+        addMsg(html, 'bot');
+        resolve();
+      }, 900);
+    }, delay);
+  });
+}
+
+function showButtons(buttons, multi=false) {
+  const m = document.getElementById('audit-msgs');
+  const wrap = document.createElement('div');
+  wrap.className = 'abtn-group';
+  wrap.id = 'btn-group';
+  buttons.forEach(b => {
+    const btn = document.createElement('button');
+    btn.className = 'abtn';
+    btn.textContent = b.label;
+    btn.onclick = () => {
+      if(multi) {
+        btn.classList.toggle('sel');
+        if(btn.classList.contains('sel')) auditGoalsSelected.push(b.value);
+        else auditGoalsSelected = auditGoalsSelected.filter(v => v !== b.value);
+      } else {
+        b.action(b.value);
+        wrap.remove();
+      }
+    };
+    wrap.appendChild(btn);
+  });
+  if(multi) {
+    const send = document.createElement('button');
+    send.className = 'abtn abtn-send';
+    send.textContent = 'Devam →';
+    send.onclick = () => { wrap.remove(); nextAfterGoals(); };
+    wrap.appendChild(send);
+  }
+  m.appendChild(wrap);
+  m.scrollTop = m.scrollHeight;
+  // input'u gizle buton varken
+  document.getElementById('audit-input-wrap').style.display = 'none';
+}
+
+function showInput(placeholder='Yanıtınızı yazın...', type='text') {
+  const wrap = document.getElementById('audit-input-wrap');
+  wrap.style.display = 'flex';
+  const inp = document.getElementById('audit-input');
+  inp.type = type;
+  inp.placeholder = placeholder;
+  inp.value = '';
+  inp.focus();
+}
+
+function userMsg(text) {
+  addMsg(text, 'user');
+}
+
+async function startAudit() {
+  await botMsg('Merhaba! 👋 Ben GEONI'nin AI asistanıyım. Size <strong>ücretsiz bir AI görünürlük ön raporu</strong> hazırlayacağım. Başlayalım mı?');
+  showButtons([
+    {label:'Evet, başlayalım! →', action: () => { showInput('Adınız ve şirketiniz...'); auditStep = 1; askName(); }}
+  ]);
+}
+
+async function askName() {
+  await botMsg('Harika! Önce tanışalım — <strong>adınız ve şirketinizin adı</strong> nedir?');
+  showInput('örn: Ahmet Yılmaz, GEONI AI');
+}
+
+async function sendAudit() {
+  const input = document.getElementById('audit-input');
+  const val = input.value.trim();
+  if(!val) return;
+  input.value = '';
+  userMsg(val);
+
+  if(auditStep === 1) {
+    // Ad + şirket parse et
+    const parts = val.split(/,|\//).map(s => s.trim());
+    auditData.name = parts[0] || val;
+    auditData.company = parts[1] || parts[0];
+    auditStep = 2;
+    await lookupCompany(auditData.company);
+
+  } else if(auditStep === 3) {
+    auditData.topic = val;
+    auditStep = 4;
+    await botMsg(`Teşekkürler. <strong>${auditData.topic}</strong> alanında kimler sizinle rekabet ediyor? Rakip marka veya isimler varsa yazın.`);
+    showInput('örn: Competitor A, Competitor B...');
+
+  } else if(auditStep === 4) {
+    auditData.competitors = val;
+    auditStep = 5;
+    await askGoals();
+
+  } else if(auditStep === 6) {
+    auditData.marketing = val;
+    auditStep = 7;
+    await botMsg(`Son adım — raporunuzu hangi <strong>e-posta adresinize</strong> gönderelim?`);
+    showInput('ornek@sirket.com', 'email');
+
+  } else if(auditStep === 7) {
+    auditData.email = val;
+    auditStep = 8;
+    await generateReport();
+  }
+}
+
+async function lookupCompany(company) {
+  document.getElementById('audit-input-wrap').style.display = 'none';
+  await botMsg(`Bir saniye — <strong>${company}</strong>'yi AI bilgi tabanında arıyorum...`);
+
+  try {
+    const res = await fetch('/api/lookup', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name: company})
+    });
+    const data = await res.json();
+    auditData.companyKnown = data.known;
+
+    const statusClass = data.known ? 'status-known' : 'status-unknown';
+    const statusText = data.known ? '✓ AI bilgi tabanında yer alıyor' : '✗ AI bilgi tabanında görünmüyor';
+    const cardHtml = `
+      <div class="company-card">
+        <div class="company-card-name">${data.name || company}</div>
+        ${data.description ? `<div class="company-card-desc">${data.description}</div>` : ''}
+        ${data.website ? `<div style="font-size:.72rem;color:#64748B;margin-bottom:8px;font-family:var(--mono)">${data.website}</div>` : ''}
+        <span class="company-card-status ${statusClass}">${statusText}</span>
+      </div>
+    `;
+    removeTyping();
+    addMsg(cardHtml, 'bot');
+
+    const followUp = data.known
+      ? `<strong>${company}</strong> AI bilgi tabanında yer alıyor, ancak hedef sorgularınızda görünüp görünmediği ayrı bir analiz gerektiriyor.`
+      : `<strong>${company}</strong> şu an AI yanıtlarında yer almıyor. Bu tam olarak çözdüğümüz problem! 🎯`;
+
+    showTyping();
+    await new Promise(r => setTimeout(r, 800));
+    removeTyping();
+    addMsg(followUp, 'bot');
+    await new Promise(r => setTimeout(r, 400));
+
+    auditStep = 3;
+    await botMsg('Hangi <strong>alanda ya da konuda</strong> görünür olmak istiyorsunuz?');
+    showInput('örn: yapay zeka danışmanlığı, fintech çözümleri...');
+
+  } catch(e) {
+    auditData.companyKnown = false;
+    auditStep = 3;
+    await botMsg('Bilgileri aldım! Hangi alanda görünür olmak istiyorsunuz?');
+    showInput('örn: yazılım, e-dönüşüm, fintech...');
+  }
+}
+
+async function askGoals() {
+  await botMsg('Hedefleriniz neler? <strong>Birden fazla seçebilirsiniz.</strong>');
+  showButtons([
+    {label:'Marka bilinirliği', value:'Marka bilinirliği'},
+    {label:'Rakiplerin önüne geçmek', value:'Rakiplerin önüne geçmek'},
+    {label:'Yeni müşteri kazanmak', value:'Yeni müşteri kazanmak'},
+    {label:'Yatırımcı görünürlüğü', value:'Yatırımcı görünürlüğü'},
+    {label:'Medya & basın', value:'Medya & basın'},
+    {label:'Kurumsal itibar', value:'Kurumsal itibar'},
+  ], true);
+}
+
+async function nextAfterGoals() {
+  auditData.goals = auditGoalsSelected.join(', ') || 'Belirtilmedi';
+  auditStep = 6;
+  await botMsg('Şu an aktif bir <strong>SEO veya dijital pazarlama</strong> çalışması yapıyor musunuz?');
+  showButtons([
+    {label:'Evet, ajansla çalışıyoruz', action: v => { auditData.marketing = v; auditStep = 7; askEmail(); }},
+    {label:'Evet, internal ekibimiz var', action: v => { auditData.marketing = v; auditStep = 7; askEmail(); }},
+    {label:'Hayır, henüz yok', action: v => { auditData.marketing = v; auditStep = 7; askEmail(); }},
+    {label:'Sadece sosyal medya', action: v => { auditData.marketing = v; auditStep = 7; askEmail(); }},
+  ]);
+}
+
+async function askEmail() {
+  await botMsg('Son adım! Raporunuzu hangi <strong>e-posta adresinize</strong> gönderelim?');
+  showInput('ornek@sirket.com', 'email');
+}
+
+async function generateReport() {
+  document.getElementById('audit-input-wrap').style.display = 'none';
+  await botMsg('Mükemmel! Şimdi size özel ön raporu oluşturuyorum...');
+
+  // Basit skor hesapla
+  let score = 100;
+  if(!auditData.companyKnown) score -= 40;
+  if(auditData.marketing === 'Hayır, henüz yok') score -= 15;
+  const urgencyScore = Math.max(5, 100 - score);
+
+  const urgencyLabel = urgencyScore >= 60 ? 'Yüksek Öncelik' : urgencyScore >= 35 ? 'Orta Öncelik' : 'Düşük Risk';
+  const urgencyColor = urgencyScore >= 60 ? '#f87171' : urgencyScore >= 35 ? '#F59E0B' : '#4ade80';
+
+  const miniReport = `${auditData.company} için AI görünürlük analizi tamamlandı. ${auditData.companyKnown ? 'Şirket AI bilgi tabanında yer alıyor ancak hedef sorgularda görünürlük optimize edilmemiş.' : 'Şirket henüz AI bilgi tabanında yer almıyor — bu kritik bir risk.'} ${auditData.competitors ? `Rakipleriniz (${auditData.competitors}) AI yanıtlarında öne çıkıyor olabilir.` : ''} ${auditData.topic} alanında AI görünürlüğü için acil aksiyon önerilir.`;
+
+  auditData.miniReport = miniReport;
+
+  showTyping();
+  await new Promise(r => setTimeout(r, 1500));
+  removeTyping();
+
+  const scoreHtml = `
+    <div class="score-card">
+      <div class="score-num" style="color:${urgencyColor}">${urgencyScore}/100</div>
+      <div class="score-label">GEO ACİLİYET SKORU</div>
+      <div style="font-size:.72rem;font-family:var(--mono);color:${urgencyColor};margin-top:4px">${urgencyLabel}</div>
+      <div class="score-note">${miniReport}</div>
+    </div>
+  `;
+  addMsg(scoreHtml, 'bot');
+
+  await new Promise(r => setTimeout(r, 600));
+
+  // Email gönder
+  try {
+    await fetch('/api/audit-email', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({data: auditData})
+    });
+  } catch(e) {}
+
+  await botMsg(`Raporunuz <strong>${auditData.email}</strong> adresine gönderildi. Ekibimiz 24 saat içinde sizinle iletişime geçecek. 🎯`);
+  await new Promise(r => setTimeout(r, 500));
+  await botMsg(`Teşekkürler, <strong>${auditData.name}</strong>! Görüşmek üzere.`);
+}
 </script>
 
 </body>
