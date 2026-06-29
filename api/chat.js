@@ -6,12 +6,14 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { message } = req.body;
-  if (!message) return res.status(400).json({ error: 'Message required' });
+  const { sector, company } = req.body;
+  if (!sector || !company) return res.status(400).json({ error: 'Sector and company required' });
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return res.status(500).json({ error: 'API key not configured' });
   }
+
+  const query = `Türkiye'de ${sector} alanında faaliyet gösteren, yapay zeka platformlarının önerdiği öne çıkan firmalar hangileri?`;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -24,15 +26,15 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 500,
-        system: "Sen yardımcı bir yapay zeka asistanısın. Kullanıcı Türkiye'deki işletmeler, ürünler veya hizmetler hakkında öneri istediğinde kısa ve net yanıt ver. Her öneriyi yeni satırda '•' ile başlat. 3-5 öneri sun. Markdown kullanma, düz metin yaz. Türkçe yanıtla.",
-        messages: [{ role: 'user', content: message }]
+        system: "Sen yardımcı bir yapay zeka asistanısın. Türkiye'de belirli bir sektördeki tanınmış ve yaygın bilinen firmaları önerirken sadece genel piyasa bilgine dayanarak yanıt ver. Her öneriyi yeni satırda '•' ile başlat. 3-5 öneri sun. Markdown kullanma, düz metin yaz. Türkçe yanıtla.",
+        messages: [{ role: 'user', content: query }]
       })
     });
 
     const data = await response.json();
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: data.error?.message || 'Anthropic API error', detail: data });
+      return res.status(response.status).json({ error: data.error?.message || 'Anthropic API error' });
     }
 
     res.status(200).json(data);
