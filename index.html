@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GEONI — AI Görünürlük Optimizasyonu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:ital,wght@0,400;0,500;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#07070F;
+  --surface:#0E0E1C;
+  --surface-2:#14142A;
+  --border:rgba(129,140,248,0.10);
+  --border-mid:rgba(129,140,248,0.20);
+  --accent:#818CF8;
+  --accent-dim:rgba(129,140,248,0.08);
+  --accent-2:#22D3EE;
+  --text:#F1F5F9;
+  --text-sub:#94A3B8;
+  --text-muted:#475569;
+  --display:'Space Grotesk',sans-serif;
+  --body:'Inter',sans-serif;
+  --mono:'JetBrains Mono',monospace;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased}
+
+/* NAV */
+nav{position:fixed;inset:0 0 auto;z-index:100;padding:18px 48px;display:flex;justify-content:space-between;align-items:center;background:rgba(7,7,15,0.75);backdrop-filter:blur(24px);border-bottom:1px solid var(--border)}
+.logo{font-family:var(--display);font-weight:700;font-size:1.1rem;letter-spacing:.1em;color:var(--text);text-decoration:none}
+.logo em{font-style:normal;color:var(--accent)}
+.nav-links{display:flex;gap:28px;list-style:none}
+.nav-links a{color:var(--text-sub);text-decoration:none;font-size:.875rem;transition:color .2s}
+.nav-links a:hover{color:var(--text)}
+.nav-cta{background:var(--accent);color:#0D0D1A;padding:9px 22px;border-radius:7px;font-size:.875rem;font-weight:600;text-decoration:none;transition:opacity .2s}
+.nav-cta:hover{opacity:.85}
+
+/* HERO */
+.hero{min-height:100vh;display:flex;align-items:center;padding:120px 48px 80px;position:relative;overflow:hidden}
+.hero-ambient{position:absolute;top:15%;left:50%;transform:translateX(-50%);width:900px;height:600px;background:radial-gradient(ellipse at center,rgba(129,140,248,.05) 0,transparent 65%);pointer-events:none}
+.hero-inner{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:72px;align-items:center;width:100%}
+.hero-eyebrow{display:inline-block;font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:22px}
+h1{font-family:var(--display);font-size:clamp(2.4rem,3.8vw,3.4rem);font-weight:700;line-height:1.14;margin-bottom:22px}
+h1 .grad{background:linear-gradient(135deg,var(--accent) 20%,var(--accent-2) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{color:var(--text-sub);font-size:1.05rem;line-height:1.75;margin-bottom:38px;max-width:460px}
+.hero-btns{display:flex;gap:14px;align-items:center}
+.btn-p{background:var(--accent);color:#0D0D1A;padding:13px 26px;border-radius:8px;font-size:.925rem;font-weight:600;text-decoration:none;transition:opacity .2s,transform .2s;display:inline-block}
+.btn-p:hover{opacity:.85;transform:translateY(-1px)}
+.btn-g{color:var(--text-sub);padding:13px 22px;border-radius:8px;font-size:.925rem;text-decoration:none;border:1px solid var(--border-mid);transition:all .2s}
+.btn-g:hover{color:var(--text);border-color:rgba(129,140,248,.35)}
+
+/* CHAT WINDOW */
+.chat-win{background:var(--surface);border:1px solid var(--border-mid);border-radius:18px;overflow:hidden;box-shadow:0 40px 100px rgba(0,0,0,.45)}
+.chat-bar{background:var(--surface-2);padding:13px 18px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border)}
+.dots{display:flex;gap:6px}
+.dot{width:10px;height:10px;border-radius:50%}
+.dot:nth-child(1){background:#FF5F57}.dot:nth-child(2){background:#FFBD2E}.dot:nth-child(3){background:#28CA42}
+.chat-label{font-family:var(--mono);font-size:.72rem;color:var(--text-muted);margin:0 auto}
+.chat-body{padding:22px;min-height:300px;display:flex;flex-direction:column;gap:16px}
+.msg{display:flex;gap:12px}
+.avatar{width:30px;height:30px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;font-family:var(--mono)}
+.av-u{background:rgba(129,140,248,.12);color:var(--accent);border:1px solid rgba(129,140,248,.2)}
+.av-ai{background:rgba(34,211,238,.1);color:var(--accent-2);border:1px solid rgba(34,211,238,.2)}
+.bubble{border-radius:12px;padding:11px 15px;font-size:.84rem;color:var(--text-sub);line-height:1.6;flex:1;font-family:var(--mono)}
+.bubble-u{background:rgba(129,140,248,.07);color:var(--text)}
+.bubble-ai{background:var(--surface-2)}
+.cur{display:inline-block;width:2px;height:13px;background:var(--accent-2);animation:blink 1s step-end infinite;vertical-align:text-bottom;margin-left:1px}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.not-listed{margin-top:12px;padding-top:12px;border-top:1px solid rgba(129,140,248,.08);font-size:.78rem;color:#F87171;display:none}
+
+/* STAT BAR */
+.stat-bar{padding:0 48px 80px}
+.stat-inner{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr);background:var(--border);border:1px solid var(--border);border-radius:18px;overflow:hidden;gap:1px}
+.stat{background:var(--surface);padding:30px 36px;text-align:center}
+.stat-n{font-family:var(--display);font-size:2.4rem;font-weight:700;color:var(--accent);display:block}
+.stat-l{color:var(--text-sub);font-size:.85rem;margin-top:4px}
+
+/* SECTIONS */
+section{padding:96px 48px}
+.inner{max-width:1200px;margin:0 auto}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);display:block;margin-bottom:14px}
+h2{font-family:var(--display);font-size:clamp(1.8rem,2.8vw,2.4rem);font-weight:700;margin-bottom:18px;line-height:1.2}
+.sub{color:var(--text-sub);font-size:1.02rem;max-width:520px;line-height:1.75}
+
+/* SEO VS GEO */
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:52px;max-width:760px}
+.cmp-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px}
+.cmp-card.active{border-color:rgba(129,140,248,.35);background:rgba(129,140,248,.04)}
+.cmp-icon{font-size:1.6rem;margin-bottom:16px}
+.cmp-title{font-family:var(--display);font-size:1rem;font-weight:600;margin-bottom:10px}
+.cmp-desc{color:var(--text-sub);font-size:.875rem;line-height:1.65}
+
+/* HOW IT WORKS */
+.how-bg{background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:52px}
+.step{background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:28px;transition:border-color .3s}
+.step:hover{border-color:rgba(129,140,248,.3)}
+.step-icon{width:44px;height:44px;border-radius:10px;background:var(--accent-dim);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;margin-bottom:18px;font-size:1.15rem}
+.step-name{font-family:var(--display);font-size:1rem;font-weight:600;margin-bottom:9px}
+.step-desc{color:var(--text-sub);font-size:.875rem;line-height:1.65}
+
+/* PACKAGES */
+.pkgs{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:52px}
+.pkg{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 24px;display:flex;flex-direction:column;position:relative;transition:border-color .3s}
+.pkg:hover{border-color:rgba(129,140,248,.25)}
+.pkg.hot{border-color:var(--accent);background:linear-gradient(150deg,rgba(129,140,248,.07),var(--surface))}
+.hot-badge{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--accent);color:#0D0D1A;font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 13px;border-radius:20px;font-family:var(--mono);white-space:nowrap}
+.pkg-tier{font-family:var(--mono);font-size:.7rem;color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:7px}
+.pkg-name{font-family:var(--display);font-size:1.3rem;font-weight:700;margin-bottom:8px}
+.pkg-price{font-size:.88rem;color:var(--text-sub);margin-bottom:22px;padding-bottom:22px;border-bottom:1px solid var(--border)}
+.pkg-price strong{font-family:var(--display);font-size:1.4rem;color:var(--text);font-weight:700}
+.pkg-feats{list-style:none;display:flex;flex-direction:column;gap:11px;flex:1}
+.pkg-feats li{font-size:.82rem;color:var(--text-sub);display:flex;align-items:flex-start;gap:8px;line-height:1.5}
+.pkg-feats li::before{content:'→';color:var(--accent);flex-shrink:0;font-family:var(--mono)}
+.pkg-btn{margin-top:26px;padding:11px;border-radius:8px;font-size:.84rem;font-weight:600;text-align:center;text-decoration:none;transition:all .2s;border:1px solid var(--border);color:var(--text-sub);display:block}
+.pkg.hot .pkg-btn{background:var(--accent);color:#0D0D1A;border-color:var(--accent)}
+.pkg-btn:hover{border-color:rgba(129,140,248,.4);color:var(--text)}
+.pkg.hot .pkg-btn:hover{opacity:.85;color:#0D0D1A}
+
+/* CTA */
+.cta-wrap{padding:96px 48px}
+.cta-box{max-width:1200px;margin:0 auto;background:var(--surface);border:1px solid rgba(129,140,248,.18);border-radius:24px;padding:72px 56px;text-align:center;position:relative;overflow:hidden}
+.cta-box::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0,rgba(129,140,248,.06) 0,transparent 65%);pointer-events:none}
+.cta-box h2{font-family:var(--display);font-size:clamp(1.8rem,2.8vw,2.4rem);font-weight:700;margin-bottom:14px;position:relative}
+.cta-box p{color:var(--text-sub);font-size:1.02rem;margin-bottom:38px;position:relative}
+.cta-btns{display:flex;gap:14px;justify-content:center;position:relative}
+
+/* FOOTER */
+footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;color:var(--text-muted);font-size:.78rem;font-family:var(--mono)}
+
+/* REVEAL */
+.reveal{opacity:0;transform:translateY(18px);transition:opacity .55s ease,transform .55s ease}
+.reveal.shown{opacity:1;transform:translateY(0)}
+
+/* RESPONSIVE */
+@media(max-width:1024px){.pkgs{grid-template-columns:1fr 1fr}}
+@media(max-width:900px){
+  .hero-inner,.compare{grid-template-columns:1fr}
+  .steps{grid-template-columns:1fr}
+  nav{padding:14px 20px}
+  .nav-links{display:none}
+  .stat-inner{grid-template-columns:1fr}
+}
+@media(max-width:600px){
+  .pkgs{grid-template-columns:1fr}
+  section,.hero,.cta-wrap,.stat-bar{padding-left:20px;padding-right:20px}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a class="logo" href="#">GEO<em>NI</em></a>
+  <ul class="nav-links">
+    <li><a href="#sorun">Sorun</a></li>
+    <li><a href="#geo">GEO Nedir</a></li>
+    <li><a href="#nasil">Nasıl Çalışır</a></li>
+    <li><a href="#paketler">Paketler</a></li>
+  </ul>
+  <a href="#iletisim" class="nav-cta">Ücretsiz Audit</a>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-ambient"></div>
+  <div class="hero-inner">
+    <div>
+      <span class="hero-eyebrow">// Yeni Nesil Görünürlük</span>
+      <h1>Rakibiniz her <span class="grad">AI yanıtında</span> var. Siz yoksunuz.</h1>
+      <p class="hero-sub">ChatGPT, Perplexity ve Gemini artık müşterilerinize ürün önerecek şekilde yanıt veriyor. Google sıralamaları yetmiyor — AI motorlarında da var olmanız gerekiyor.</p>
+      <div class="hero-btns">
+        <a href="#iletisim" class="btn-p">Ücretsiz AI Audit Al</a>
+        <a href="#geo" class="btn-g">Nasıl Çalışır? →</a>
+      </div>
+    </div>
+
+    <!-- ANIMATED CHAT -->
+    <div class="chat-win">
+      <div class="chat-bar">
+        <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+        <span class="chat-label">AI Yanıt Motoru — Canlı Demo</span>
+      </div>
+      <div class="chat-body">
+        <div class="msg">
+          <div class="avatar av-u">SİZ</div>
+          <div class="bubble bubble-u">Türkiye'de B2B yazılım çözümü sunan güvenilir firma önerir misin?</div>
+        </div>
+        <div class="msg">
+          <div class="avatar av-ai">AI</div>
+          <div class="bubble bubble-ai">
+            <div id="tw"></div><span class="cur" id="cur"></span>
+            <div class="not-listed" id="nl">⚠ Markanız bu yanıtta yer almıyor.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<div class="stat-bar" id="sorun">
+  <div class="stat-inner">
+    <div class="stat reveal">
+      <span class="stat-n">%58</span>
+      <div class="stat-l">Kullanıcı araştırmalarına artık AI ile başlıyor</div>
+    </div>
+    <div class="stat reveal">
+      <span class="stat-n">%23</span>
+      <div class="stat-l">Google arama trafiği son 2 yılda düşüşte</div>
+    </div>
+    <div class="stat reveal">
+      <span class="stat-n">%91</span>
+      <div class="stat-l">Marka, AI yanıtlarında hiç yer almıyor</div>
+    </div>
+  </div>
+</div>
+
+<!-- WHAT IS GEO -->
+<section id="geo">
+  <div class="inner">
+    <span class="eyebrow">// GEO Nedir?</span>
+    <h2>SEO Google için ne yaptıysa,<br>GEO AI motorları için yapar.</h2>
+    <p class="sub">Generative Engine Optimization — ChatGPT, Perplexity, Claude ve Gemini gibi yapay zeka yanıt motorlarında markanızın öne çıkması için yapılan sistematik optimizasyon disiplini.</p>
+    <div class="compare">
+      <div class="cmp-card reveal">
+        <div class="cmp-icon">🔍</div>
+        <div class="cmp-title">SEO (Klasik)</div>
+        <p class="cmp-desc">Google sana 10 mavi link verir. Kullanıcı seçim yapar ve tıklar. Arama sonuçlarında sıra almak için çalışılır.</p>
+      </div>
+      <div class="cmp-card active reveal">
+        <div class="cmp-icon">🤖</div>
+        <div class="cmp-title">GEO (Yeni)</div>
+        <p class="cmp-desc">AI sana <strong>tek bir yanıt</strong> verir. Ya o yanıtta markanız geçer, ya geçmez. Link yok, trafik yok, ikinci şans yok.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="how-bg" id="nasil">
+  <div class="inner">
+    <span class="eyebrow">// Nasıl Çalışır?</span>
+    <h2>Altı temel bileşen</h2>
+    <p class="sub">AI görünürlüğü tek bir aksiyonla gelmez. Sistematik ve çok katmanlı bir yaklaşım gerektirir.</p>
+    <div class="steps">
+      <div class="step reveal">
+        <div class="step-icon">📡</div>
+        <div class="step-name">Kaynak Otoritesi</div>
+        <p class="step-desc">Sektör yayınları, Wikipedia ve güvenilir platformlarda dijital varlık inşa edilir. AI motorları bu kaynakları öğrenir ve aktarır.</p>
+      </div>
+      <div class="step reveal">
+        <div class="step-icon">🏗️</div>
+        <div class="step-name">Yapısal İçerik</div>
+        <p class="step-desc">Tanımlar, karşılaştırmalar, soru-cevap formatları — AI'ların özümsemesi kolay içerik mimarileri kurulur.</p>
+      </div>
+      <div class="step reveal">
+        <div class="step-icon">🔗</div>
+        <div class="step-name">Atıf Kazanma</div>
+        <p class="step-desc">Güvenilir kaynakların sizi kaynak göstermesi sağlanır. Backlink'in GEO karşılığı olan citation engineering uygulanır.</p>
+      </div>
+      <div class="step reveal">
+        <div class="step-icon">🧠</div>
+        <div class="step-name">Entity Optimizasyonu</div>
+        <p class="step-desc">Markanız Schema.org ve Wikidata aracılığıyla AI bilgi grafiğinde bir varlık olarak tanımlanır.</p>
+      </div>
+      <div class="step reveal">
+        <div class="step-icon">🎯</div>
+        <div class="step-name">Prompt Simülasyonu</div>
+        <p class="step-desc">Hedef müşterilerinizin AI'a sorabileceği 50+ soru haritalanır, içerik bu sorulara yanıt verecek şekilde şekillendirilir.</p>
+      </div>
+      <div class="step reveal">
+        <div class="step-icon">⚡</div>
+        <div class="step-name">Tazelik & İndeksleme</div>
+        <p class="step-desc">Perplexity gibi motorlar gerçek zamanlı tarar. Güncel, tarihli ve kaynaklı içerik akışı sürekli yönetilir.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PACKAGES -->
+<section id="paketler">
+  <div class="inner">
+    <span class="eyebrow">// Hizmet Paketleri</span>
+    <h2>Nerede başlamak istiyorsunuz?</h2>
+    <p class="sub">Her ölçekteki işletme için uygun GEO paketi. Tüm paketler ücretsiz AI Audit raporu ile başlar.</p>
+    <div class="pkgs">
+      <div class="pkg reveal">
+        <div class="pkg-tier">Paket 01</div>
+        <div class="pkg-name">Visibility Audit</div>
+        <div class="pkg-price">Tek seferlik<br><strong>₺15.000</strong></div>
+        <ul class="pkg-feats">
+          <li>AI görünürlük analizi (ChatGPT, Perplexity, Gemini)</li>
+          <li>Entity durum raporu</li>
+          <li>Rakip AI karşılaştırması</li>
+          <li>Öncelikli aksiyon listesi</li>
+        </ul>
+        <a href="#iletisim" class="pkg-btn">Başlayın</a>
+      </div>
+      <div class="pkg reveal">
+        <div class="pkg-tier">Paket 02</div>
+        <div class="pkg-name">Citation Builder</div>
+        <div class="pkg-price">3 aylık<br><strong>₺18.000</strong> /ay</div>
+        <ul class="pkg-feats">
+          <li>Schema markup kurulumu ve doğrulama</li>
+          <li>4 AI-uyumlu içerik / ay</li>
+          <li>2 dış platform yerleşimi</li>
+          <li>LLM.txt kurulumu</li>
+          <li>Aylık görünürlük raporu</li>
+        </ul>
+        <a href="#iletisim" class="pkg-btn">Başlayın</a>
+      </div>
+      <div class="pkg hot reveal">
+        <div class="hot-badge">En Popüler</div>
+        <div class="pkg-tier">Paket 03</div>
+        <div class="pkg-name">AI Authority</div>
+        <div class="pkg-price">6 aylık<br><strong>₺40.000</strong> /ay</div>
+        <ul class="pkg-feats">
+          <li>Aylık 8–12 AI-uyumlu içerik</li>
+          <li>Medya atıfı kazanma (HARO)</li>
+          <li>Wikidata entity yönetimi</li>
+          <li>50+ prompt simülasyon haritası</li>
+          <li>Çoklu platform dağıtımı</li>
+          <li>Aylık strateji toplantısı</li>
+        </ul>
+        <a href="#iletisim" class="pkg-btn">Başlayın</a>
+      </div>
+      <div class="pkg reveal">
+        <div class="pkg-tier">Paket 04</div>
+        <div class="pkg-name">Enterprise</div>
+        <div class="pkg-price">Özel teklif<br><strong>₺100K+</strong> /ay</div>
+        <ul class="pkg-feats">
+          <li>Dedicated GEO stratejisti</li>
+          <li>API entegrasyonlu dashboard</li>
+          <li>Çoklu marka yönetimi</li>
+          <li>Yönetim kurulu raporlaması</li>
+          <li>Beyaz etiket çıktılar</li>
+        </ul>
+        <a href="#iletisim" class="pkg-btn">Teklif Alın</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<div class="cta-wrap" id="iletisim">
+  <div class="cta-box">
+    <h2>AI motorları sizi görmüyor.<br>Bunu birlikte değiştirelim.</h2>
+    <p>Ücretsiz AI Audit ile markanızın ChatGPT, Perplexity ve Gemini'deki mevcut durumunu öğrenin.</p>
+    <div class="cta-btns">
+      <a href="mailto:mail@cagricakir.com.tr" class="btn-p">Ücretsiz Audit Talep Et</a>
+      <a href="tel:+90" class="btn-g">Bizi Arayın</a>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>© 2025 GEONI — Generative Engine Optimization · Ankara, Türkiye</footer>
+
+<script>
+// Typewriter
+const segments=[
+  {t:"Tabii! Türkiye'de öne çıkan B2B yazılım firmaları:\n\n",c:null},
+  {t:"• Firma Alpha",c:"#22D3EE"},{t:" — Kurumsal ERP ve CRM çözümleri\n",c:null},
+  {t:"• Firma Beta",c:"#22D3EE"},{t:" — Bulut tabanlı muhasebe yazılımı\n",c:null},
+  {t:"• Firma Gamma",c:"#22D3EE"},{t:" — SaaS proje yönetim platformu\n\n",c:null},
+  {t:"Bu firmalar güçlü referanslara sahip ve...",c:null}
+];
+const tw=document.getElementById('tw');
+const cur=document.getElementById('cur');
+const nl=document.getElementById('nl');
+let flat=[];
+segments.forEach(s=>{for(const ch of s.t)flat.push({ch,c:s.c})});
+let pos=0,curSpan=null,curC=null;
+function tick(){
+  if(pos>=flat.length){cur.style.display='none';setTimeout(()=>{nl.style.display='block'},700);return}
+  const {ch,c}=flat[pos];
+  if(c!==curC){curC=c;curSpan=document.createElement('span');if(c)Object.assign(curSpan.style,{color:c,fontWeight:'600'});tw.appendChild(curSpan)}
+  if(ch==='\n'){curSpan.appendChild(document.createElement('br'));curC=null}
+  else curSpan.appendChild(document.createTextNode(ch));
+  pos++;
+  setTimeout(tick,ch==='\n'?60:Math.random()*28+18);
+}
+setTimeout(tick,1200);
+
+// Scroll reveal
+const obs=new IntersectionObserver(es=>{
+  es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('shown')})
+},{threshold:.1});
+document.querySelectorAll('.reveal').forEach(el=>obs.observe(el));
+</script>
+</body>
+</html>
