@@ -1,0 +1,29 @@
+# GEONI (geoni.ai)
+
+> GEONI, markaların yapay zeka arama motorlarında (ChatGPT, Perplexity, Gemini, Claude vb.) görünürlüğünü, atıf oranlarını ve itibarını optimize eden bir Üretken Motor Optimizasyonu (GEO - Generative Engine Optimization) platformu ve ajansıdır.
+
+## Core Capabilities & Services
+
+- **Generative Engine Optimization (GEO):** Optimizing brand presence within AI search engines and Large Language Models (LLMs).
+- **AI Audit & Simulation:** Comprehensive analysis of how AI search engines perceive, score, and recommend a brand across specific industry queries.
+- **Entity & Authority Optimization:** Establishing and reinforcing strong brand entity relations on structured data networks (Wikidata, Schema) to boost LLM trust score.
+- **Citation & Referral Acquisition:** Strategies to secure explicit citations and referral links inside AI-generated responses (e.g., via HARO, digital PR, high-authority mentions).
+- **LLM.txt & Machine-Readable Content Setup:** Implementing architecture designed specifically for AI crawlers to efficiently parse, understand, and cite brand information.
+
+## Service Packages
+
+- **AI Audit (One-time):** Deep-dive situational analysis, AI share-of-voice reporting, and a foundational GEO roadmap.
+- **Growth (Monthly Subscription):** Ongoing entity optimization, prompt simulation maps, citation tracking, and continuous LLM-ready content engineering.
+- **Enterprise (Custom):** Dedicated GEO operations, predictive trend modeling, multi-brand dashboard management, and prioritized technical support.
+
+## Key Technical Specifications
+
+- **Focus Engine:** LLMs, Chatbots, and Retrieval-Augmented Generation (RAG) systems.
+- **Methodology:** Source Authority, Structural Data Enrichment, Real-time Prompt Testing, Entity Freshness Alignment.
+
+## Contact & Navigation
+
+- **Main Website:** https://geoni.ai
+- **Primary Action:** Free AI Audit (https://geoni.ai#audit)
+- **Location & Market:** Ankara, Turkey (Serving globally)
+- **Contact:** info@geoni.ai
