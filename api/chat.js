@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'API key not configured' });
   }
 
-  const query = `Türkiye'de ${sector} alanında faaliyet gösteren, yapay zeka platformlarının önerdiği öne çıkan firmalar hangileri?`;
+  const query = `Türkiye'de ${sector} sektöründe faaliyet gösteren gerçek şirket isimlerini listele. Sadece somut firma adları ver.`;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -26,7 +26,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 500,
-        system: "Sen yardımcı bir yapay zeka asistanısın. Türkiye'de belirli bir sektördeki tanınmış ve yaygın bilinen firmaları önerirken sadece genel piyasa bilgine dayanarak yanıt ver. Her öneriyi yeni satırda '•' ile başlat. 3-5 öneri sun. Markdown kullanma, düz metin yaz. Türkçe yanıtla.",
+        system: "Sen yardımcı bir yapay zeka asistanısın. Türkiye'de belirli bir sektörde faaliyet gösteren GERÇEK firma ve şirket isimlerini listele. Mutlaka somut, bilinen şirket isimleri ver — kategori veya genel tanım yazma. Her satırda '• [Şirket Adı] — [ne yaptığı]' formatında yaz. 4-5 gerçek firma ismi sun. Markdown kullanma. Türkçe yanıtla.",
         messages: [{ role: 'user', content: query }]
       })
     });
