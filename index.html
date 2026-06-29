@@ -526,7 +526,7 @@ async function sendQuery() {
       }
     })();
   } catch(e) {
-    aiDiv.querySelector('.bubble-ai').textContent = 'Bağlantı hatası, tekrar deneyin.';
+    aiDiv.querySelector('.bubble-ai').textContent = 'Hata: ' + (e.message || 'Bağlantı başarısız');
     isLoading = false;
     btn.disabled = false;
     btn.textContent = 'Sor →';
