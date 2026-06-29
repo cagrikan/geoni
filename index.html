@@ -147,6 +147,25 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
   .pkgs{grid-template-columns:1fr}
   section,.hero,.cta-wrap,.stat-bar{padding-left:20px;padding-right:20px}
 }
+
+/* LIVE DEMO INPUT */
+.chat-body{padding:18px;min-height:200px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;max-height:260px}
+.chat-input-area{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border)}
+.demo-input{flex:1;background:var(--surface-2);border:1px solid var(--border-mid);border-radius:8px;padding:9px 13px;color:var(--text);font-family:var(--mono);font-size:.78rem;outline:none;transition:border-color .2s}
+.demo-input:focus{border-color:rgba(129,140,248,.4)}
+.demo-input::placeholder{color:var(--text-muted)}
+.demo-btn{background:var(--accent);color:#0D0D1A;border:none;border-radius:8px;padding:9px 16px;font-size:.78rem;font-weight:700;cursor:pointer;transition:opacity .2s;font-family:var(--mono);white-space:nowrap}
+.demo-btn:hover{opacity:.85}
+.demo-btn:disabled{opacity:.35;cursor:not-allowed}
+.demo-empty{color:var(--text-muted);font-size:.8rem;font-family:var(--mono);text-align:center;margin:auto;line-height:1.7}
+.typing-dots{display:flex;gap:5px;align-items:center;padding:2px 0}
+.typing-dots span{width:6px;height:6px;border-radius:50%;background:var(--accent-2);animation:tdot .9s infinite}
+.typing-dots span:nth-child(2){animation-delay:.2s}
+.typing-dots span:nth-child(3){animation-delay:.4s}
+@keyframes tdot{0%,60%,100%{transform:translateY(0);opacity:.35}30%{transform:translateY(-5px);opacity:1}}
+.warn-box{margin-top:10px;padding:10px 12px;border-radius:8px;background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.18);font-size:.76rem;color:#FCA5A5;font-family:var(--mono);line-height:1.5}
+.warn-box a{color:var(--accent);text-decoration:none;font-weight:600}
+.warn-box a:hover{text-decoration:underline}
 </style>
 </head>
 <body>
@@ -177,24 +196,18 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
       </div>
     </div>
 
-    <!-- ANIMATED CHAT -->
+    <!-- LIVE AI DEMO -->
     <div class="chat-win">
       <div class="chat-bar">
         <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
-        <span class="chat-label">AI Yanıt Motoru — Canlı Demo</span>
+        <span class="chat-label">AI Yanıt Motoru — Canlı Test</span>
       </div>
-      <div class="chat-body">
-        <div class="msg">
-          <div class="avatar av-u">SİZ</div>
-          <div class="bubble bubble-u">Türkiye'de B2B yazılım çözümü sunan güvenilir firma önerir misin?</div>
-        </div>
-        <div class="msg">
-          <div class="avatar av-ai">AI</div>
-          <div class="bubble bubble-ai">
-            <div id="tw"></div><span class="cur" id="cur"></span>
-            <div class="not-listed" id="nl">⚠ Markanız bu yanıtta yer almıyor.</div>
-          </div>
-        </div>
+      <div class="chat-body" id="chat-body">
+        <div class="demo-empty">Sektörünüzü yazın ve AI'ın<br>ne önerdiğini gerçek zamanlı görün.</div>
+      </div>
+      <div class="chat-input-area">
+        <input type="text" id="demo-input" class="demo-input" placeholder="örn: Türkiye'de lojistik yazılımı önerir misin?">
+        <button id="demo-btn" class="demo-btn" onclick="sendQuery()">Sor →</button>
       </div>
     </div>
   </div>
@@ -360,36 +373,96 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 <footer>© 2025 GEONI — Generative Engine Optimization · Ankara, Türkiye</footer>
 
 <script>
-// Typewriter
-const segments=[
-  {t:"Tabii! Türkiye'de öne çıkan B2B yazılım firmaları:\n\n",c:null},
-  {t:"• Firma Alpha",c:"#22D3EE"},{t:" — Kurumsal ERP ve CRM çözümleri\n",c:null},
-  {t:"• Firma Beta",c:"#22D3EE"},{t:" — Bulut tabanlı muhasebe yazılımı\n",c:null},
-  {t:"• Firma Gamma",c:"#22D3EE"},{t:" — SaaS proje yönetim platformu\n\n",c:null},
-  {t:"Bu firmalar güçlü referanslara sahip ve...",c:null}
-];
-const tw=document.getElementById('tw');
-const cur=document.getElementById('cur');
-const nl=document.getElementById('nl');
-let flat=[];
-segments.forEach(s=>{for(const ch of s.t)flat.push({ch,c:s.c})});
-let pos=0,curSpan=null,curC="__init__";
-function tick(){
-  if(pos>=flat.length){cur.style.display='none';setTimeout(()=>{nl.style.display='block'},700);return}
-  const {ch,c}=flat[pos];
-  if(c!==curC||!curSpan){curC=c;curSpan=document.createElement('span');if(c)Object.assign(curSpan.style,{color:c,fontWeight:'600'});tw.appendChild(curSpan)}
-  if(ch==='\n'){curSpan.appendChild(document.createElement('br'));curC='__init__';curSpan=null}
-  else curSpan.appendChild(document.createTextNode(ch));
-  pos++;
-  setTimeout(tick,ch==='\n'?60:Math.random()*28+18);
+// Live AI Demo
+let isLoading = false;
+
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('demo-input');
+  if (input) input.addEventListener('keydown', e => { if (e.key === 'Enter') sendQuery(); });
+});
+
+async function sendQuery() {
+  if (isLoading) return;
+  const input = document.getElementById('demo-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  isLoading = true;
+  const btn = document.getElementById('demo-btn');
+  btn.disabled = true;
+  btn.textContent = '...';
+
+  const body = document.getElementById('chat-body');
+  body.innerHTML = '';
+
+  // User message
+  const userDiv = document.createElement('div');
+  userDiv.className = 'msg';
+  userDiv.innerHTML = '<div class="avatar av-u">SİZ</div><div class="bubble bubble-u"></div>';
+  userDiv.querySelector('.bubble-u').textContent = msg;
+  body.appendChild(userDiv);
+
+  // AI typing indicator
+  const aiDiv = document.createElement('div');
+  aiDiv.className = 'msg';
+  aiDiv.innerHTML = '<div class="avatar av-ai">AI</div><div class="bubble bubble-ai"><div class="typing-dots"><span></span><span></span><span></span></div></div>';
+  body.appendChild(aiDiv);
+  body.scrollTop = body.scrollHeight;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        system: "Sen yardımcı bir yapay zeka asistanısın. Kullanıcı Türkiye'deki işletmeler, ürünler veya hizmetler hakkında öneri istediğinde kısa ve net yanıt ver. Her öneriyi yeni satırda '•' ile başlat. 3-5 öneri sun. Markdown kullanma, düz metin yaz. Türkçe yanıtla.",
+        messages: [{ role: 'user', content: msg }]
+      })
+    });
+
+    const data = await res.json();
+    const text = data.content[0].text;
+
+    const aiBubble = aiDiv.querySelector('.bubble-ai');
+    aiBubble.innerHTML = '';
+    const span = document.createElement('span');
+    aiBubble.appendChild(span);
+
+    let i = 0;
+    function typeChar() {
+      if (i < text.length) {
+        if (text[i] === '\n') span.appendChild(document.createElement('br'));
+        else span.appendChild(document.createTextNode(text[i]));
+        i++;
+        body.scrollTop = body.scrollHeight;
+        setTimeout(typeChar, 16);
+      } else {
+        const warn = document.createElement('div');
+        warn.className = 'warn-box';
+        warn.innerHTML = '⚠ Markanız bu yanıtta yer almıyor. <a href="#iletisim">GEO ile değiştirin →</a>';
+        aiBubble.appendChild(warn);
+        isLoading = false;
+        btn.disabled = false;
+        btn.textContent = 'Sor →';
+      }
+    }
+    typeChar();
+
+  } catch(e) {
+    const aiBubble = aiDiv.querySelector('.bubble-ai');
+    aiBubble.textContent = 'Bağlantı hatası, lütfen tekrar deneyin.';
+    isLoading = false;
+    btn.disabled = false;
+    btn.textContent = 'Sor →';
+  }
 }
-setTimeout(tick,1200);
 
 // Scroll reveal
-const obs=new IntersectionObserver(es=>{
-  es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('shown')})
-},{threshold:.1});
-document.querySelectorAll('.reveal').forEach(el=>obs.observe(el));
+const obs = new IntersectionObserver(es => {
+  es.forEach(e => { if (e.isIntersecting) e.target.classList.add('shown'); });
+}, { threshold: .1 });
+document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
 </script>
 </body>
 </html>
