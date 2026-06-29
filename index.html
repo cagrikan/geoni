@@ -185,6 +185,23 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 #phase2{animation:slideup .45s ease}
 @keyframes slideup{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 #phase2{border-top:1px solid rgba(129,140,248,.15)}
+
+/* INSIGHTS BAR */
+.insights-bar{padding:0 48px 80px}
+.insights-inner{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:1.4fr 1fr;gap:20px}
+.insight-card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:32px 36px}
+.eyebrow-sm{font-family:var(--mono);font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);display:block;margin-bottom:10px}
+.insight-sub{color:var(--text-sub);font-size:.9rem;line-height:1.6}
+.chart-legend{display:flex;gap:20px;margin-top:16px;justify-content:center}
+.leg-item{display:flex;align-items:center;gap:7px;font-size:.78rem;font-family:var(--mono);color:var(--text-sub)}
+.leg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.calc-select{width:100%;margin-top:20px;background:var(--surface-2);border:1px solid rgba(129,140,248,.25);border-radius:8px;padding:11px 14px;color:var(--text);font-family:var(--mono);font-size:.82rem;outline:none;cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23818CF8' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center}
+.calc-select:focus{border-color:rgba(129,140,248,.5)}
+.calc-select option{background:#0E0E1C}
+.calc-big-num{font-family:var(--display);font-size:3.2rem;font-weight:700;color:var(--accent);line-height:1}
+.calc-unit{font-family:var(--mono);font-size:.75rem;letter-spacing:.08em;color:var(--text-sub);margin-top:6px;text-transform:uppercase}
+.calc-msg{color:var(--text-sub);font-size:.88rem;line-height:1.7;margin-top:14px}
+@media(max-width:900px){.insights-inner{grid-template-columns:1fr}.insights-bar{padding:0 20px 60px}}
 </style>
 
   <!-- LLM.txt -->
@@ -404,48 +421,54 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 </section>
 
 <!-- STATS -->
-<div class="stat-bar" id="sorun">
-  <div class="stat-inner">
-    <div class="stat reveal">
-      <svg viewBox="0 0 48 48" width="38" height="38" style="margin-bottom:12px">
-        <circle cx="24" cy="24" r="20" fill="rgba(129,140,248,.08)" stroke="rgba(129,140,248,.2)" stroke-width="1"/>
-        <rect x="14" y="14" width="20" height="20" rx="3" fill="none" stroke="#818CF8" stroke-width="1.5"/>
-        <rect x="18" y="18" width="12" height="12" rx="2" fill="rgba(129,140,248,.15)" stroke="#818CF8" stroke-width="1"/>
-        <line x1="14" y1="20" x2="10" y2="20" stroke="#818CF8" stroke-width="1.5" stroke-linecap="round"/>
-        <line x1="14" y1="24" x2="10" y2="24" stroke="#818CF8" stroke-width="1.5" stroke-linecap="round"/>
-        <line x1="14" y1="28" x2="10" y2="28" stroke="#818CF8" stroke-width="1.5" stroke-linecap="round"/>
-        <line x1="34" y1="20" x2="38" y2="20" stroke="#818CF8" stroke-width="1.5" stroke-linecap="round"/>
-        <line x1="34" y1="24" x2="38" y2="24" stroke="#818CF8" stroke-width="1.5" stroke-linecap="round"/>
-        <line x1="34" y1="28" x2="38" y2="28" stroke="#818CF8" stroke-width="1.5" stroke-linecap="round"/>
-        <line x1="20" y1="14" x2="20" y2="10" stroke="#818CF8" stroke-width="1.5" stroke-linecap="round"/>
-        <line x1="24" y1="14" x2="24" y2="10" stroke="#818CF8" stroke-width="1.5" stroke-linecap="round"/>
-        <line x1="28" y1="14" x2="28" y2="10" stroke="#818CF8" stroke-width="1.5" stroke-linecap="round"/>
-        <circle cx="24" cy="24" r="2.5" fill="#818CF8"/>
-      </svg>
-      <span class="stat-n">%58</span>
-      <div class="stat-l">Kullanıcıların yarısından fazlası araştırmasına AI ile başlıyor</div>
+<div class="insights-bar" id="sorun">
+  <div class="insights-inner">
+
+    <!-- TREND CHART -->
+    <div class="insight-card">
+      <span class="eyebrow-sm">// Aramanın dönüşümü</span>
+      <p class="insight-sub">Google trafiği gerilerken AI sorgu hacmi hızla yükseliyor</p>
+      <div id="chart-wrap" style="margin-top:20px"></div>
+      <div class="chart-legend">
+        <span class="leg-item"><span class="leg-dot" style="background:#F87171"></span>Google Arama Trafiği</span>
+        <span class="leg-item"><span class="leg-dot" style="background:#818CF8"></span>AI Sorgu Hacmi</span>
+      </div>
     </div>
-    <div class="stat reveal">
-      <svg viewBox="0 0 48 48" width="38" height="38" style="margin-bottom:12px">
-        <circle cx="24" cy="24" r="20" fill="rgba(129,140,248,.08)" stroke="rgba(129,140,248,.2)" stroke-width="1"/>
-        <polyline points="10,16 18,22 26,18 38,32" fill="none" stroke="#F87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <polyline points="33,32 38,32 38,27" fill="none" stroke="#F87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <line x1="10" y1="36" x2="38" y2="36" stroke="rgba(129,140,248,.25)" stroke-width="1" stroke-dasharray="2,2"/>
-      </svg>
-      <span class="stat-n">%23</span>
-      <div class="stat-l">Organik arama trafiği iki yılda keskin düşüşte</div>
+
+    <!-- LOSS CALCULATOR -->
+    <div class="insight-card">
+      <span class="eyebrow-sm">// Kayıp hesabı</span>
+      <p class="insight-sub">Sektörünüzde kaç AI sorgusu kaçırıyorsunuz?</p>
+      <select id="calc-sector" class="calc-select">
+        <option value="">Sektörünüzü seçin...</option>
+        <option value="45000">E-Ticaret &amp; Perakende</option>
+        <option value="38000">Yazılım &amp; Teknoloji</option>
+        <option value="32000">Sağlık &amp; Medikal</option>
+        <option value="28000">Finans &amp; Yatırım</option>
+        <option value="22000">Pazarlama &amp; Ajans</option>
+        <option value="26000">Eğitim &amp; Akademi</option>
+        <option value="18000">Hukuk &amp; Danışmanlık</option>
+        <option value="15000">Gayrimenkul</option>
+        <option value="12000">Üretim &amp; Sanayi</option>
+        <option value="20000">Turizm &amp; Konaklama</option>
+      </select>
+      <div class="calc-result" id="calc-result" style="display:none;margin-top:24px;text-align:center">
+        <div class="calc-big-num" id="calc-num">0</div>
+        <div class="calc-unit">AI sorgusu / gün</div>
+        <div class="calc-msg">sektörünüzde yapılıyor. Görünmüyorsanız<br>bunların <strong style="color:var(--text)">tamamını</strong> kaçırıyorsunuz.</div>
+        <a href="#iletisim" class="btn-p" style="display:inline-block;margin-top:22px;font-size:.85rem;padding:10px 24px">Ücretsiz Audit Al →</a>
+      </div>
+      <div id="calc-placeholder" style="margin-top:32px;text-align:center">
+        <svg viewBox="0 0 64 64" width="48" height="48" style="margin-bottom:12px;opacity:.3">
+          <rect x="8" y="40" width="8" height="20" rx="2" fill="#818CF8"/>
+          <rect x="20" y="28" width="8" height="32" rx="2" fill="#818CF8"/>
+          <rect x="32" y="16" width="8" height="44" rx="2" fill="#22D3EE"/>
+          <rect x="44" y="6" width="8" height="54" rx="2" fill="#22D3EE"/>
+        </svg>
+        <div style="font-size:.82rem;color:var(--text-muted);line-height:1.6">Sektörünüzü seçtikten sonra<br>kaybı göreceksiniz.</div>
+      </div>
     </div>
-    <div class="stat reveal">
-      <svg viewBox="0 0 48 48" width="38" height="38" style="margin-bottom:12px">
-        <circle cx="24" cy="24" r="20" fill="rgba(129,140,248,.08)" stroke="rgba(129,140,248,.2)" stroke-width="1"/>
-        <path d="M10 24 Q24 13 38 24 Q24 35 10 24Z" fill="none" stroke="#818CF8" stroke-width="1.5"/>
-        <circle cx="24" cy="24" r="5" fill="none" stroke="#818CF8" stroke-width="1.5"/>
-        <line x1="20" y1="20" x2="28" y2="28" stroke="#F87171" stroke-width="2" stroke-linecap="round"/>
-        <line x1="28" y1="20" x2="20" y2="28" stroke="#F87171" stroke-width="2" stroke-linecap="round"/>
-      </svg>
-      <span class="stat-n">%91</span>
-      <div class="stat-l">Şirketlerin büyük çoğunluğu hiçbir AI yanıtında yer almıyor</div>
-    </div>
+
   </div>
 </div>
 
@@ -786,5 +809,108 @@ const obs = new IntersectionObserver(es => {
 }, { threshold:.1 });
 document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
 </script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script>
+// TREND CHART
+function drawTrendChart() {
+  const wrap = document.getElementById('chart-wrap');
+  if (!wrap) return;
+  const W = wrap.clientWidth || 420;
+  const H = 220;
+  const m = {top:16, right:16, bottom:32, left:36};
+  const w = W - m.left - m.right;
+  const h = H - m.top - m.bottom;
+
+  const years = [2020,2021,2022,2023,2024,2025,2026];
+  const google = [100,97,91,82,70,58,47];
+  const ai = [3,7,15,30,55,80,95];
+
+  const svg = d3.select('#chart-wrap').append('svg')
+    .attr('viewBox',`0 0 ${W} ${H}`)
+    .attr('width','100%').attr('height',H);
+
+  const g = svg.append('g').attr('transform',`translate(${m.left},${m.top})`);
+
+  const x = d3.scaleLinear().domain([2020,2026]).range([0,w]);
+  const y = d3.scaleLinear().domain([0,110]).range([h,0]);
+
+  // Grid
+  [0,25,50,75,100].forEach(v => {
+    g.append('line')
+      .attr('x1',0).attr('x2',w).attr('y1',y(v)).attr('y2',y(v))
+      .attr('stroke','rgba(129,140,248,0.07)').attr('stroke-width',1);
+  });
+
+  // X labels
+  years.forEach(yr => {
+    g.append('text')
+      .attr('x',x(yr)).attr('y',h+24).attr('text-anchor','middle')
+      .attr('font-size','10px').attr('fill','#475569')
+      .attr('font-family','Inter,sans-serif').text(yr);
+  });
+
+  const line = d3.line().curve(d3.curveCatmullRom.alpha(0.5));
+
+  function animateLine(data, color, delay, onEnd) {
+    const path = g.append('path')
+      .datum(data.map((d,i) => [x(years[i]), y(d)]))
+      .attr('fill','none').attr('stroke',color)
+      .attr('stroke-width',2.5).attr('stroke-linecap','round')
+      .attr('d', line);
+    const len = path.node().getTotalLength();
+    path.attr('stroke-dasharray',len).attr('stroke-dashoffset',len)
+      .transition().delay(delay).duration(1600).ease(d3.easeQuadOut)
+      .attr('stroke-dashoffset',0).on('end', onEnd || (()=>{}));
+    return path;
+  }
+
+  animateLine(google,'#F87171',200,null);
+  animateLine(ai,'#818CF8',600,() => {
+    // Kesişim noktası ~2024.5, ~62
+    const cx = x(2024.5), cy = y(62);
+    g.append('circle').attr('cx',cx).attr('cy',cy).attr('r',0)
+      .attr('fill','#F59E0B').attr('stroke','#07070F').attr('stroke-width',2)
+      .transition().duration(350).attr('r',7);
+    g.append('text').attr('x',cx+12).attr('y',cy-8)
+      .attr('font-size','10px').attr('fill','#F59E0B')
+      .attr('font-family','Inter,sans-serif')
+      .attr('font-weight','600').text('Dönüşüm noktası');
+  });
+}
+
+// Grafik viewport'a girince çiz
+const chartObs = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if(e.isIntersecting) { drawTrendChart(); chartObs.disconnect(); }
+  });
+},{threshold:.3});
+const chartWrap = document.getElementById('chart-wrap');
+if(chartWrap) chartObs.observe(chartWrap);
+
+// LOSS CALCULATOR
+document.getElementById('calc-sector').addEventListener('change', function() {
+  const val = parseInt(this.value);
+  if(!val) return;
+
+  document.getElementById('calc-placeholder').style.display = 'none';
+  const result = document.getElementById('calc-result');
+  result.style.display = 'block';
+
+  const numEl = document.getElementById('calc-num');
+  let current = 0;
+  const duration = 1200;
+  const steps = 50;
+  const increment = val / steps;
+  const interval = duration / steps;
+
+  const counter = setInterval(() => {
+    current += increment;
+    if(current >= val) { current = val; clearInterval(counter); }
+    numEl.textContent = Math.floor(current).toLocaleString('tr-TR');
+  }, interval);
+});
+</script>
+
 </body>
 </html>
