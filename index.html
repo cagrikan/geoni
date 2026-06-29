@@ -373,12 +373,12 @@ const cur=document.getElementById('cur');
 const nl=document.getElementById('nl');
 let flat=[];
 segments.forEach(s=>{for(const ch of s.t)flat.push({ch,c:s.c})});
-let pos=0,curSpan=null,curC=null;
+let pos=0,curSpan=null,curC="__init__";
 function tick(){
   if(pos>=flat.length){cur.style.display='none';setTimeout(()=>{nl.style.display='block'},700);return}
   const {ch,c}=flat[pos];
-  if(c!==curC){curC=c;curSpan=document.createElement('span');if(c)Object.assign(curSpan.style,{color:c,fontWeight:'600'});tw.appendChild(curSpan)}
-  if(ch==='\n'){curSpan.appendChild(document.createElement('br'));curC=null}
+  if(c!==curC||!curSpan){curC=c;curSpan=document.createElement('span');if(c)Object.assign(curSpan.style,{color:c,fontWeight:'600'});tw.appendChild(curSpan)}
+  if(ch==='\n'){curSpan.appendChild(document.createElement('br'));curC='__init__';curSpan=null}
   else curSpan.appendChild(document.createTextNode(ch));
   pos++;
   setTimeout(tick,ch==='\n'?60:Math.random()*28+18);
