@@ -37,7 +37,7 @@ export default async function handler(req, res) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        from: 'GEONI <onboarding@resend.dev>',
+        from: 'GEONI <mail@geoni.ai>',
         to: ['mail@cagricakir.com.tr'],
         subject: `🎯 Yeni Audit Talebi — ${data.company}`,
         html
