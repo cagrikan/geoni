@@ -1,0 +1,119 @@
+{
+  "family": "geoni-scanner",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "containerDefinitions": [
+    {
+      "name": "geoni-backend",
+      "image": "<ECR_REGISTRY>/geoni-scanner:latest",
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "hostPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "essential": true,
+      "environment": [
+        {
+          "name": "APP_NAME",
+          "value": "GEONI Visibility Scanner MVP"
+        },
+        {
+          "name": "APP_VERSION",
+          "value": "0.1.0"
+        },
+        {
+          "name": "DEBUG",
+          "value": "false"
+        },
+        {
+          "name": "LOG_LEVEL",
+          "value": "INFO"
+        },
+        {
+          "name": "API_HOST",
+          "value": "0.0.0.0"
+        },
+        {
+          "name": "API_PORT",
+          "value": "8000"
+        },
+        {
+          "name": "API_WORKERS",
+          "value": "4"
+        },
+        {
+          "name": "CRAWLER_MAX_PAGES",
+          "value": "500"
+        },
+        {
+          "name": "CRAWLER_TIMEOUT_PER_PAGE",
+          "value": "10"
+        },
+        {
+          "name": "CRAWLER_TOTAL_TIMEOUT",
+          "value": "300"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "DATABASE_URL",
+          "valueFrom": "arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:geoni/database-url"
+        },
+        {
+          "name": "REDIS_URL",
+          "valueFrom": "arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:geoni/redis-url"
+        },
+        {
+          "name": "ANTHROPIC_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:geoni/anthropic-key"
+        },
+        {
+          "name": "OPENAI_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:geoni/openai-key"
+        },
+        {
+          "name": "RESEND_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:geoni/resend-key"
+        },
+        {
+          "name": "JWT_SECRET_KEY",
+          "valueFrom": "arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:geoni/jwt-secret"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/geoni-scanner",
+          "awslogs-region": "eu-central-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "curl -f http://localhost:8000/health || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    }
+  ],
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskRole",
+  "tags": [
+    {
+      "key": "Project",
+      "value": "GEONI"
+    },
+    {
+      "key": "Environment",
+      "value": "production"
+    }
+  ]
+}
