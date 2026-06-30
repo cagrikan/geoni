@@ -87,12 +87,6 @@ def _build_report_html(domain: str, result: dict) -> str:
 
           <h2 style="color:#FFFFFF;font-size:16px;margin:24px 0 12px;">Kaçırdığınız Fırsatlar</h2>
           {_render_topic_list(opportunities, "Fırsat alanı tespit edilmedi.")}
-
-          <div style="margin-top:32px;text-align:center;">
-            <a href="https://app.geoni.ai" style="display:inline-block;background:#818CF8;color:#0D0D1A;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px;">
-              Tam Raporu Görüntüle
-            </a>
-          </div>
         </div>
       </div>
     </div>
