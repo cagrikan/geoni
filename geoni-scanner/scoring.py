@@ -1,211 +1,141 @@
 """
-AI Visibility Score calculation engine.
-Computes 0-100 score based on multiple factors.
+GEONI Scanner - Scoring Engine
+Computes the AI Visibility Score (0-100) from crawl + indexing data.
+
+Formula (weights per product spec):
+  Score = (IndexCoverage * 0.30)
+        + (Authority      * 0.25)
+        + (Freshness      * 0.20)
+        + (SchemaScore    * 0.15)
+        + (Engagement     * 0.10)
+
+For MVP, Authority and Engagement use lightweight heuristics
+(domain age via WHOIS-free signal + backlink proxy via Bing results count)
+rather than paid third-party APIs (Moz/Ahrefs). These can be swapped in later
+without changing the public function signature.
 """
 
 import logging
-from typing import Dict, List
-from dataclasses import dataclass
+import re
+from datetime import datetime, timedelta
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class ScoreBreakdown:
-    """Detailed score breakdown."""
-    index_coverage: float  # 30% weight
-    authority_score: float  # 25% weight
-    freshness_score: float  # 20% weight
-    schema_score: float  # 15% weight
-    engagement_score: float  # 10% weight
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; GeoniBot/1.0; +https://geoni.ai/bot)"
+}
 
 
-class VisibilityScorer:
-    """Calculates AI Visibility Score."""
-    
-    # Weights for each component
-    WEIGHTS = {
-        "index_coverage": 0.30,
-        "authority": 0.25,
-        "freshness": 0.20,
-        "schema": 0.15,
-        "engagement": 0.10
-    }
-    
-    def __init__(self, crawl_result: Dict, indexing_status: Dict):
-        self.crawl_result = crawl_result
-        self.indexing_status = indexing_status
-    
-    def calculate(self) -> Dict:
-        """Calculate complete visibility score."""
-        
-        # Component scores
-        index_coverage = self._calculate_index_coverage()
-        authority = self._calculate_authority()
-        freshness = self._calculate_freshness()
-        schema = self._calculate_schema_markup()
-        engagement = self._calculate_engagement()
-        
-        # Weighted sum
-        overall_score = (
-            (index_coverage * self.WEIGHTS["index_coverage"]) +
-            (authority * self.WEIGHTS["authority"]) +
-            (freshness * self.WEIGHTS["freshness"]) +
-            (schema * self.WEIGHTS["schema"]) +
-            (engagement * self.WEIGHTS["engagement"])
-        )
-        
-        return {
-            "overall_score": min(100, max(0, int(overall_score))),
-            "breakdown": {
-                "index_coverage": round(index_coverage, 2),
-                "authority": round(authority, 2),
-                "freshness": round(freshness, 2),
-                "schema": round(schema, 2),
-                "engagement": round(engagement, 2)
-            },
-            "platform_scores": self._calculate_platform_scores()
-        }
-    
-    def _calculate_index_coverage(self) -> float:
-        """
-        Calculate index coverage score (0-100).
-        Based on percentage of pages indexed across all platforms.
-        """
-        total_pages = self.crawl_result.get("total_pages", 0)
-        if total_pages == 0:
-            return 0
-        
-        indexed_count = self.indexing_status.get("indexed_count", 0)
-        coverage = (indexed_count / total_pages) * 100
-        
-        # Scale to 0-100 with curve
-        # 100% coverage = 100 points
-        # 50% coverage = 75 points
-        # 0% coverage = 0 points
-        if coverage >= 80:
-            return 100
-        elif coverage >= 50:
-            return 50 + (coverage - 50) * 1.0
-        else:
-            return coverage * (50 / 50)
-    
-    def _calculate_authority(self) -> float:
-        """
-        Calculate authority score (0-100).
-        Factors:
-        - Domain age (newer = lower, older = higher)
-        - External links (more = higher)
-        - Industry relevance
-        - Backlink quality
-        """
-        # TODO: Integrate with Moz API, Ahrefs, or similar
-        # For MVP: return baseline score
-        return 65.0
-    
-    def _calculate_freshness(self) -> float:
-        """
-        Calculate content freshness score (0-100).
-        Factors:
-        - Last modified dates
-        - Regular update cadence
-        - New page additions
-        """
-        pages = self.crawl_result.get("pages", [])
-        if not pages:
-            return 0
-        
-        # Count pages with schema.org date info or recent modifications
-        # For MVP: assume medium freshness
-        return 72.0
-    
-    def _calculate_schema_markup(self) -> float:
-        """
-        Calculate schema.org markup completeness (0-100).
-        Factors:
-        - Presence of structured data
-        - Schema.org types used (Organization, Article, Product, etc.)
-        - Completeness of schema fields
-        """
-        pages = self.crawl_result.get("pages", [])
-        if not pages:
-            return 0
-        
-        pages_with_schema = sum(
-            1 for p in pages if p.get("has_schema_markup", False)
-        )
-        
-        schema_score = (pages_with_schema / len(pages)) * 100
-        return schema_score
-    
-    def _calculate_engagement(self) -> float:
-        """
-        Calculate engagement score (0-100).
-        Factors:
-        - Social mentions
-        - Citation frequency
-        - Backlink diversity
-        - Brand searches
-        """
-        # TODO: Integrate with social listening APIs
-        # For MVP: return baseline score
-        return 58.0
-    
-    def _calculate_platform_scores(self) -> Dict[str, int]:
-        """
-        Calculate platform-specific visibility scores.
-        """
-        platform_mapping = {
-            "openai": "chatgpt",
-            "perplexity": "perplexity",
-            "google": "google_ai",
-            "anthropic": "claude",
-            "bing": "bing"
-        }
-        
-        platform_scores = {}
-        total_pages = self.crawl_result.get("total_pages", 0)
-        
-        for api_name, display_name in platform_mapping.items():
-            indexed = self.indexing_status.get(api_name, 0)
-            if total_pages > 0:
-                coverage = (indexed / total_pages) * 100
-                # Scale coverage to 0-100 score
-                score = min(100, int(coverage * 1.2))  # Slight boost for visible pages
-                platform_scores[display_name] = {
-                    "score": score,
-                    "indexed_pages": indexed
-                }
-        
-        return platform_scores
+def compute_index_coverage(crawl_result: dict, indexing_status: dict) -> float:
+    total_pages = max(len(crawl_result.get("pages", [])), 1)
+    indexed = indexing_status.get("indexed_count", 0)
+    return min(100.0, (indexed / total_pages) * 100)
 
 
-def compute_visibility_score(crawl_result: Dict, indexing_status: Dict) -> Dict:
+async def estimate_authority_score(domain: str) -> float:
     """
-    Compute AI Visibility Score.
-    
-    Args:
-        crawl_result: Output from crawler
-        indexing_status: Output from indexing check
-    
-    Returns:
-        Dict with overall_score, breakdown, and platform_scores
+    Lightweight authority proxy: number of distinct referring pages found
+    via a backlink-style search query. Capped/normalized to 0-100.
+    Replace with Moz/Ahrefs API call when budget allows.
     """
     try:
-        scorer = VisibilityScorer(crawl_result, indexing_status)
-        result = scorer.calculate()
-        logger.info(f"Calculated visibility score: {result['overall_score']}")
-        return result
+        url = f"https://www.bing.com/search?q=link:{domain}&count=20"
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            resp = await client.get(url, timeout=10, headers=HEADERS)
+            if resp.status_code == 200:
+                mentions = resp.text.count(domain)
+                # normalize: 0 mentions -> 20 baseline, 50+ mentions -> 100
+                return min(100.0, 20 + mentions * 1.5)
     except Exception as e:
-        logger.error(f"Error calculating visibility score: {e}")
-        return {
-            "overall_score": 0,
-            "breakdown": {
-                "index_coverage": 0,
-                "authority": 0,
-                "freshness": 0,
-                "schema": 0,
-                "engagement": 0
-            },
-            "platform_scores": {}
-        }
+        logger.warning(f"Authority estimation failed for {domain}: {e}")
+
+    return 30.0  # conservative fallback
+
+
+def compute_freshness_score(pages: list[dict]) -> float:
+    """
+    Estimate freshness based on presence of recent dates in page metadata
+    (title/description often contain year or 'updated' markers for blogs).
+    Falls back to a neutral score if no signal is found.
+    """
+    if not pages:
+        return 50.0
+
+    current_year = datetime.now().year
+    recent_signals = 0
+
+    for page in pages:
+        text_blob = " ".join(
+            str(page.get(field, "")) for field in ("title", "meta_description")
+        )
+        if str(current_year) in text_blob or str(current_year - 1) in text_blob:
+            recent_signals += 1
+
+    ratio = recent_signals / len(pages)
+    return min(100.0, 40 + ratio * 60)  # baseline 40, up to 100 with strong signal
+
+
+def compute_schema_score(pages: list[dict]) -> float:
+    """
+    Schema.org completeness proxy: presence of canonical_url and meta_description
+    as a stand-in for structured-data hygiene (full JSON-LD parsing can be added
+    by extending the crawler to capture <script type="application/ld+json">).
+    """
+    if not pages:
+        return 0.0
+
+    scored = 0
+    for page in pages:
+        has_canonical = bool(page.get("canonical_url"))
+        has_description = bool(page.get("meta_description"))
+        has_title = bool(page.get("title"))
+        scored += sum([has_canonical, has_description, has_title]) / 3
+
+    return min(100.0, (scored / len(pages)) * 100)
+
+
+def compute_engagement_score(indexing_status: dict) -> float:
+    """
+    Engagement proxy: combination of Google + Bing visible result counts
+    as a rough signal of social/citation presence. Replace with real
+    social-mention API integration later.
+    """
+    google = indexing_status.get("google", 0)
+    bing = indexing_status.get("bing", 0)
+    combined = google + bing
+    return min(100.0, 20 + combined * 0.8)
+
+
+async def compute_ai_visibility_score(crawl_result: dict, indexing_status: dict) -> dict:
+    """
+    Compute the full AI Visibility Score (0-100) and component breakdown.
+    """
+    domain = crawl_result.get("domain", "")
+    pages = crawl_result.get("pages", [])
+
+    index_coverage = compute_index_coverage(crawl_result, indexing_status)
+    authority_score = await estimate_authority_score(domain)
+    freshness_score = compute_freshness_score(pages)
+    schema_score = compute_schema_score(pages)
+    engagement_score = compute_engagement_score(indexing_status)
+
+    score = (
+        (index_coverage * 0.30)
+        + (authority_score * 0.25)
+        + (freshness_score * 0.20)
+        + (schema_score * 0.15)
+        + (engagement_score * 0.10)
+    )
+
+    return {
+        "overall_score": int(round(score)),
+        "breakdown": {
+            "index_coverage": round(index_coverage, 1),
+            "authority": round(authority_score, 1),
+            "freshness": round(freshness_score, 1),
+            "schema": round(schema_score, 1),
+            "engagement": round(engagement_score, 1),
+        },
+    }
