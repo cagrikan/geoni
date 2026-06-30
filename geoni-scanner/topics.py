@@ -89,7 +89,7 @@ async def _call_anthropic(prompt: str) -> dict | None:
                     "content-type": "application/json",
                 },
                 json={
-                    "model": "claude-sonnet-4-6",
+                    "model": "claude-haiku-4-5",
                     "max_tokens": 1000,
                     "messages": [{"role": "user", "content": prompt}],
                 },
