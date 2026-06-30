@@ -1,7 +1,7 @@
 """
 GEONI Visibility Scanner MVP - FastAPI Backend
-Now using real Playwright crawler, indexing checks, scoring engine, and
-multi-dimensional rate limiting (IP, email, domain).
+Now using real Playwright crawler, indexing checks, scoring engine,
+multi-dimensional rate limiting, and automatic email report delivery.
 """
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
@@ -17,6 +17,7 @@ from indexing import check_indexing_status
 from scoring import compute_ai_visibility_score
 from topics import generate_topics_and_opportunities
 from ratelimit import enforce_audit_rate_limits, RateLimitExceeded
+from mailer import send_audit_report_email
 
 class AuditRequest(BaseModel):
     domain: str
@@ -29,7 +30,7 @@ class AuditResponse(BaseModel):
     status: str
     estimated_time: int
 
-app = FastAPI(title="GEONI Visibility Scanner MVP", version="0.3.0", description="AI visibility auditing tool with real crawling, indexing, scoring, and rate limiting")
+app = FastAPI(title="GEONI Visibility Scanner MVP", version="0.4.0", description="AI visibility auditing tool with real crawling, indexing, scoring, rate limiting, and email delivery")
 
 app.add_middleware(
     CORSMiddleware,
@@ -70,28 +71,35 @@ async def run_audit_job(job_id: str, request: AuditRequest):
 
         topics = await generate_topics_and_opportunities(request.domain, crawl_result["pages"])
 
+        result_payload = {
+            "domain": request.domain,
+            "score": score_result["overall_score"],
+            "score_breakdown": score_result["breakdown"],
+            "total_pages": crawl_result["total_pages"],
+            "indexed_pages": indexing_status["indexed_count"],
+            "platforms": {
+                "chatgpt": indexing_status.get("openai", False),
+                "anthropic": indexing_status.get("anthropic", False),
+                "google": indexing_status.get("google", 0),
+                "bing": indexing_status.get("bing", 0),
+            },
+            "top_topics": topics["performing_topics"],
+            "opportunities": topics["opportunity_topics"],
+            "created_at": datetime.now().isoformat()
+        }
+
         jobs_store[job_id].update({
             "status": "complete",
-            "result": {
-                "domain": request.domain,
-                "score": score_result["overall_score"],
-                "score_breakdown": score_result["breakdown"],
-                "total_pages": crawl_result["total_pages"],
-                "indexed_pages": indexing_status["indexed_count"],
-                "platforms": {
-                    "chatgpt": indexing_status.get("openai", False),
-                    "anthropic": indexing_status.get("anthropic", False),
-                    "google": indexing_status.get("google", 0),
-                    "bing": indexing_status.get("bing", 0),
-                },
-                "top_topics": topics["performing_topics"],
-                "opportunities": topics["opportunity_topics"],
-                "created_at": datetime.now().isoformat()
-            },
+            "result": result_payload,
             "completed_at": datetime.now().isoformat()
         })
 
         logger.info(f"Audit job {job_id} completed successfully")
+
+        # Fire-and-forget email delivery. send_audit_report_email never raises,
+        # so a failed/unconfigured email send cannot affect the audit's success.
+        email_sent = await send_audit_report_email(request.email, request.domain, result_payload)
+        jobs_store[job_id]["email_sent"] = email_sent
 
     except Exception as e:
         logger.error(f"Audit job {job_id} failed: {str(e)}")
@@ -101,7 +109,7 @@ async def run_audit_job(job_id: str, request: AuditRequest):
 @app.get("/")
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "version": "0.3.0", "timestamp": datetime.now().isoformat()}
+    return {"status": "healthy", "version": "0.4.0", "timestamp": datetime.now().isoformat()}
 
 @app.post("/api/audit/quick", response_model=AuditResponse)
 async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, http_request: Request):
@@ -128,7 +136,7 @@ async def get_audit_status(job_id: str):
         raise HTTPException(status_code=404, detail="Audit job not found")
     job = jobs_store[job_id]
     if job["status"] == "complete":
-        return {"job_id": job_id, "status": "complete", "result": job["result"]}
+        return {"job_id": job_id, "status": "complete", "result": job["result"], "email_sent": job.get("email_sent", False)}
     elif job["status"] == "failed":
         raise HTTPException(status_code=500, detail=f"Audit failed: {job['error']}")
     else:
