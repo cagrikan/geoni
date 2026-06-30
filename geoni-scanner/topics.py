@@ -27,7 +27,9 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 
-PROMPT_TEMPLATE = """You are an AI visibility analyst. Given a website's crawled page titles \
+PROMPT_TEMPLATE = """IMPORTANT: Respond entirely in Turkish (Türkçe). All topic names, descriptions, and text must be in Turkish.
+
+You are an AI visibility analyst. Given a website's crawled page titles \
 and descriptions below, identify:
 
 1. "performing_topics": 3-5 topics/questions this site likely already answers well \
