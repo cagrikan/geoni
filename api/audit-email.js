@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   try {
     const html = `
       <div style="font-family:Inter,sans-serif;max-width:600px;background:#07070F;color:#F1F5F9;padding:32px;border-radius:12px">
-        <h2 style="color:#818CF8;margin-bottom:24px">🎯 Yeni GEO Audit Talebi</h2>
+        <h2 style="color:#818CF8;margin-bottom:24px">Yeni GEO Audit Talebi</h2>
         <table style="width:100%;border-collapse:collapse">
           <tr><td style="padding:8px 0;color:#94A3B8;width:140px">Ad Soyad</td><td style="padding:8px 0;color:#F1F5F9"><b>${data.name}</b></td></tr>
           <tr><td style="padding:8px 0;color:#94A3B8">Şirket</td><td style="padding:8px 0;color:#F1F5F9"><b>${data.company}</b></td></tr>
@@ -39,7 +39,8 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         from: 'GEONI <mail@geoni.ai>',
         to: ['mail@cagricakir.com.tr'],
-        subject: `🎯 Yeni Audit Talebi — ${data.company}`,
+        reply_to: data.email,
+        subject: `Yeni Audit Talebi: ${data.company}`,
         html
       })
     });
