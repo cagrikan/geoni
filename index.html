@@ -1252,10 +1252,10 @@ async function nextAfterGoals() {
   auditStep = 6;
   await botMsg('Şu an aktif bir <strong>SEO veya dijital pazarlama</strong> çalışması yapıyor musunuz?');
   showButtons([
-    {label:'Evet, ajansla çalışıyoruz', action: v => { auditData.marketing = v; auditStep = 7; askEmail(); }},
-    {label:'Evet, internal ekibimiz var', action: v => { auditData.marketing = v; auditStep = 7; askEmail(); }},
-    {label:'Hayır, henüz yok', action: v => { auditData.marketing = v; auditStep = 7; askEmail(); }},
-    {label:'Sadece sosyal medya', action: v => { auditData.marketing = v; auditStep = 7; askEmail(); }},
+    {label:'Evet, ajansla çalışıyoruz', value:'Evet, ajansla çalışıyoruz', action: v => { auditData.marketing = v; auditStep = 7; askEmail(); }},
+    {label:'Evet, internal ekibimiz var', value:'Evet, internal ekibimiz var', action: v => { auditData.marketing = v; auditStep = 7; askEmail(); }},
+    {label:'Hayır, henüz yok', value:'Hayır, henüz yok', action: v => { auditData.marketing = v; auditStep = 7; askEmail(); }},
+    {label:'Sadece sosyal medya', value:'Sadece sosyal medya', action: v => { auditData.marketing = v; auditStep = 7; askEmail(); }},
   ]);
 }
 
