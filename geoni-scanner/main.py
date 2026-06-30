@@ -1,9 +1,10 @@
 """
 GEONI Visibility Scanner MVP - FastAPI Backend
-Now using real Playwright crawler, indexing checks, and scoring engine.
+Now using real Playwright crawler, indexing checks, scoring engine, and
+multi-dimensional rate limiting (IP, email, domain).
 """
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
@@ -15,6 +16,7 @@ from crawler import crawl_domain
 from indexing import check_indexing_status
 from scoring import compute_ai_visibility_score
 from topics import generate_topics_and_opportunities
+from ratelimit import enforce_audit_rate_limits, RateLimitExceeded
 
 class AuditRequest(BaseModel):
     domain: str
@@ -27,7 +29,7 @@ class AuditResponse(BaseModel):
     status: str
     estimated_time: int
 
-app = FastAPI(title="GEONI Visibility Scanner MVP", version="0.2.0", description="AI visibility auditing tool with real crawling, indexing, and scoring")
+app = FastAPI(title="GEONI Visibility Scanner MVP", version="0.3.0", description="AI visibility auditing tool with real crawling, indexing, scoring, and rate limiting")
 
 app.add_middleware(
     CORSMiddleware,
@@ -41,6 +43,18 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 jobs_store = {}
+
+
+def get_client_ip(request: Request) -> str:
+    """
+    Resolve the real client IP, accounting for the ALB which sits in front
+    of this service. ALB appends the original client IP as the first entry
+    in X-Forwarded-For; fall back to request.client.host for local/dev runs.
+    """
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
 async def run_audit_job(job_id: str, request: AuditRequest):
@@ -87,14 +101,25 @@ async def run_audit_job(job_id: str, request: AuditRequest):
 @app.get("/")
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "version": "0.2.0", "timestamp": datetime.now().isoformat()}
+    return {"status": "healthy", "version": "0.3.0", "timestamp": datetime.now().isoformat()}
 
 @app.post("/api/audit/quick", response_model=AuditResponse)
-async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks):
+async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, http_request: Request):
+    client_ip = get_client_ip(http_request)
+
+    try:
+        enforce_audit_rate_limits(client_ip, request.email, request.domain)
+    except RateLimitExceeded as e:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Çok fazla istek gönderdiniz. Lütfen {e.retry_after_seconds} saniye sonra tekrar deneyin.",
+            headers={"Retry-After": str(e.retry_after_seconds)},
+        )
+
     job_id = str(uuid.uuid4())
     jobs_store[job_id] = {"job_id": job_id, "status": "queued", "domain": request.domain, "email": request.email, "created_at": datetime.now().isoformat(), "result": None, "error": None}
     background_tasks.add_task(run_audit_job, job_id, request)
-    logger.info(f"Audit job {job_id} created for {request.domain}")
+    logger.info(f"Audit job {job_id} created for {request.domain} (ip={client_ip})")
     return AuditResponse(job_id=job_id, status="queued", estimated_time=300)
 
 @app.get("/api/audit/{job_id}")
@@ -125,3 +150,4 @@ async def global_exception_handler(request, exc):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
