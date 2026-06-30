@@ -14,6 +14,7 @@ import logging
 from crawler import crawl_domain
 from indexing import check_indexing_status
 from scoring import compute_ai_visibility_score
+from topics import generate_topics_and_opportunities
 
 class AuditRequest(BaseModel):
     domain: str
@@ -41,9 +42,6 @@ logger = logging.getLogger(__name__)
 
 jobs_store = {}
 
-async def generate_topics_and_opportunities(domain: str, score: int) -> dict:
-    logger.info(f"Generating topic insights for {domain}")
-    return {"performing_topics": [], "opportunity_topics": []}
 
 async def run_audit_job(job_id: str, request: AuditRequest):
     try:
@@ -56,7 +54,7 @@ async def run_audit_job(job_id: str, request: AuditRequest):
         jobs_store[job_id]["status"] = "scoring"
         score_result = await compute_ai_visibility_score(crawl_result, indexing_status)
 
-        topics = await generate_topics_and_opportunities(request.domain, score_result["overall_score"])
+        topics = await generate_topics_and_opportunities(request.domain, crawl_result["pages"])
 
         jobs_store[job_id].update({
             "status": "complete",
