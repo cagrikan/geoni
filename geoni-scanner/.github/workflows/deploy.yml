@@ -1,0 +1,30 @@
+name: Deploy to AWS ECS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+      
+      - name: Login to ECR
+        run: aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 016031489497.dkr.ecr.eu-central-1.amazonaws.com
+      
+      - name: Build Docker image
+        run: docker build --platform linux/amd64 -t 016031489497.dkr.ecr.eu-central-1.amazonaws.com/geoni-scanner:latest .
+      
+      - name: Push to ECR
+        run: docker push 016031489497.dkr.ecr.eu-central-1.amazonaws.com/geoni-scanner:latest
+      
+      - name: Update ECS service
+        run: aws ecs update-service --cluster geoni-cluster --service geoni-scanner-service --force-new-deployment --region eu-central-1
