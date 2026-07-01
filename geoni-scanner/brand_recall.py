@@ -226,7 +226,7 @@ async def _ask_gemini(prompt: str) -> str | None:
             r = await c.post(
                 f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GOOGLE_API_KEY}",
                 json={"contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                      "generationConfig": {"maxOutputTokens": 400, "temperature": 0.3}},
+                      "generationConfig": {"maxOutputTokens": 600, "temperature": 0.3}},
                 timeout=30,
             )
             if r.status_code == 200:
