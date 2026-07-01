@@ -108,51 +108,53 @@ def _topic_relevance_score(google_results: list, name: str, topic: str) -> float
 
 # ── Google search via Playwright ────────────────────────────────────────────
 
-GOOGLE_CSE_KEY = os.environ.get("GOOGLE_CSE_KEY", "")
-GOOGLE_CSE_ID  = os.environ.get("GOOGLE_CSE_ID", "")
+TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
 
 async def _google_search(name: str, topic: str, max_results: int = 8) -> list:
     """
-    Search via Google Custom Search JSON API.
+    Search via Tavily API — optimized for AI/RAG workflows.
     Returns list of {title, snippet, url} dicts.
     """
-    if not GOOGLE_CSE_KEY or not GOOGLE_CSE_ID:
-        logger.warning("Google CSE credentials not configured, skipping search")
+    if not TAVILY_API_KEY:
+        logger.warning("TAVILY_API_KEY not configured, skipping search")
         return []
 
     query = f"{name} {topic}".strip() if topic and topic != name else name
 
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                "https://www.googleapis.com/customsearch/v1",
-                params={
-                    "key": GOOGLE_CSE_KEY,
-                    "cx": GOOGLE_CSE_ID,
-                    "q": query,
-                    "num": min(max_results, 10),
-                    "lr": "lang_tr",
+            resp = await client.post(
+                "https://api.tavily.com/search",
+                json={
+                    "query": query,
+                    "max_results": max_results,
+                    "search_depth": "basic",
+                    "include_answer": False,
+                    "include_raw_content": False,
+                },
+                headers={
+                    "Authorization": f"Bearer {TAVILY_API_KEY}",
+                    "Content-Type": "application/json",
                 },
                 timeout=15,
             )
             if resp.status_code != 200:
-                logger.warning(f"Google CSE {resp.status_code}: {resp.text[:200]}")
+                logger.warning(f"Tavily {resp.status_code}: {resp.text[:200]}")
                 return []
 
-            data = resp.json()
-            items = data.get("items", [])
+            items = resp.json().get("results", [])
             results = []
             for item in items:
                 results.append({
                     "title": item.get("title", "").strip(),
-                    "snippet": item.get("snippet", "").strip()[:300],
-                    "url": item.get("link", ""),
+                    "snippet": item.get("content", "").strip()[:300],
+                    "url": item.get("url", ""),
                 })
-            logger.info(f"Google CSE for '{query}' returned {len(results)} results")
+            logger.info(f"Tavily search for '{query}' returned {len(results)} results")
             return results
 
     except Exception as e:
-        logger.warning(f"Google CSE search failed: {e}")
+        logger.warning(f"Tavily search failed: {e}")
         return []
 
 
