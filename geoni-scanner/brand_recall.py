@@ -21,7 +21,6 @@ import logging
 import unicodedata
 
 import httpx
-from playwright.async_api import async_playwright
 
 logger = logging.getLogger(__name__)
 
@@ -111,48 +110,45 @@ def _topic_relevance_score(google_results: list, name: str, topic: str) -> float
 
 async def _google_search(name: str, topic: str, max_results: int = 8) -> list:
     """
-    Search Google for '[name] [topic]' and return list of
-    {title, snippet, url} dicts. Returns [] on any error.
+    Search Bing for '[name] [topic]' and return list of
+    {title, snippet, url} dicts. Uses httpx (no Playwright needed).
+    Returns [] on any error.
     """
     query = f"{name} {topic}".strip() if topic and topic != name else name
-    search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}&hl=tr&num={max_results}"
+    url = f"https://www.bing.com/search?q={query.replace(' ', '+')}&count={max_results}&setlang=tr"
 
     try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
-            await page.set_extra_http_headers(HEADERS)
-            await page.goto(search_url, timeout=15000, wait_until="domcontentloaded")
-            await page.wait_for_timeout(1500)
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            resp = await client.get(url, timeout=12, headers=HEADERS)
+            if resp.status_code != 200:
+                logger.warning(f"Bing search returned {resp.status_code}")
+                return []
 
+            html = resp.text
             results = []
-            # Extract search result cards
-            cards = await page.query_selector_all("div.g, div[data-sokoban-container]")
-            for card in cards[:max_results]:
-                try:
-                    title_el = await card.query_selector("h3")
-                    snippet_el = await card.query_selector("div[data-sncf], div.VwiC3b, span.aCOpRe")
-                    url_el = await card.query_selector("a[href]")
 
-                    title = await title_el.inner_text() if title_el else ""
-                    snippet = await snippet_el.inner_text() if snippet_el else ""
-                    url = await url_el.get_attribute("href") if url_el else ""
+            # Extract result blocks — Bing uses <li class="b_algo">
+            import re as _re
+            blocks = _re.findall(r'<li class="b_algo">(.*?)</li>', html, _re.DOTALL)
+            for block in blocks[:max_results]:
+                # Title
+                title_m = _re.search(r'<h2[^>]*><a[^>]*>(.*?)</a></h2>', block, _re.DOTALL)
+                title = _re.sub(r'<[^>]+>', '', title_m.group(1)).strip() if title_m else ""
+                # Snippet
+                snippet_m = _re.search(r'<p[^>]*>(.*?)</p>', block, _re.DOTALL)
+                snippet = _re.sub(r'<[^>]+>', '', snippet_m.group(1)).strip()[:300] if snippet_m else ""
+                # URL
+                url_m = _re.search(r'<a href="(https?://[^"]+)"', block)
+                url = url_m.group(1) if url_m else ""
 
-                    if title and len(title) > 3:
-                        results.append({
-                            "title": title.strip(),
-                            "snippet": snippet.strip()[:300],
-                            "url": url or "",
-                        })
-                except Exception:
-                    continue
+                if title and len(title) > 3:
+                    results.append({"title": title, "snippet": snippet, "url": url})
 
-            await browser.close()
-            logger.info(f"Google search for '{query}' returned {len(results)} results")
+            logger.info(f"Bing search for '{query}' returned {len(results)} results")
             return results
 
     except Exception as e:
-        logger.warning(f"Google search failed for '{query}': {e}")
+        logger.warning(f"Bing search failed for '{query}': {e}")
         return []
 
 
