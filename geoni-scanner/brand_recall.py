@@ -108,47 +108,51 @@ def _topic_relevance_score(google_results: list, name: str, topic: str) -> float
 
 # ── Google search via Playwright ────────────────────────────────────────────
 
+GOOGLE_CSE_KEY = os.environ.get("GOOGLE_CSE_KEY", "")
+GOOGLE_CSE_ID  = os.environ.get("GOOGLE_CSE_ID", "")
+
 async def _google_search(name: str, topic: str, max_results: int = 8) -> list:
     """
-    Search Bing for '[name] [topic]' and return list of
-    {title, snippet, url} dicts. Uses httpx (no Playwright needed).
-    Returns [] on any error.
+    Search via Google Custom Search JSON API.
+    Returns list of {title, snippet, url} dicts.
     """
+    if not GOOGLE_CSE_KEY or not GOOGLE_CSE_ID:
+        logger.warning("Google CSE credentials not configured, skipping search")
+        return []
+
     query = f"{name} {topic}".strip() if topic and topic != name else name
-    url = f"https://www.bing.com/search?q={query.replace(' ', '+')}&count={max_results}&setlang=tr"
 
     try:
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            resp = await client.get(url, timeout=12, headers=HEADERS)
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://www.googleapis.com/customsearch/v1",
+                params={
+                    "key": GOOGLE_CSE_KEY,
+                    "cx": GOOGLE_CSE_ID,
+                    "q": query,
+                    "num": min(max_results, 10),
+                    "lr": "lang_tr",
+                },
+                timeout=15,
+            )
             if resp.status_code != 200:
-                logger.warning(f"Bing search returned {resp.status_code}")
+                logger.warning(f"Google CSE {resp.status_code}: {resp.text[:200]}")
                 return []
 
-            html = resp.text
+            data = resp.json()
+            items = data.get("items", [])
             results = []
-
-            # Extract result blocks — Bing uses <li class="b_algo">
-            import re as _re
-            blocks = _re.findall(r'<li class="b_algo">(.*?)</li>', html, _re.DOTALL)
-            for block in blocks[:max_results]:
-                # Title
-                title_m = _re.search(r'<h2[^>]*><a[^>]*>(.*?)</a></h2>', block, _re.DOTALL)
-                title = _re.sub(r'<[^>]+>', '', title_m.group(1)).strip() if title_m else ""
-                # Snippet
-                snippet_m = _re.search(r'<p[^>]*>(.*?)</p>', block, _re.DOTALL)
-                snippet = _re.sub(r'<[^>]+>', '', snippet_m.group(1)).strip()[:300] if snippet_m else ""
-                # URL
-                url_m = _re.search(r'<a href="(https?://[^"]+)"', block)
-                url = url_m.group(1) if url_m else ""
-
-                if title and len(title) > 3:
-                    results.append({"title": title, "snippet": snippet, "url": url})
-
-            logger.info(f"Bing search for '{query}' returned {len(results)} results")
+            for item in items:
+                results.append({
+                    "title": item.get("title", "").strip(),
+                    "snippet": item.get("snippet", "").strip()[:300],
+                    "url": item.get("link", ""),
+                })
+            logger.info(f"Google CSE for '{query}' returned {len(results)} results")
             return results
 
     except Exception as e:
-        logger.warning(f"Bing search failed for '{query}': {e}")
+        logger.warning(f"Google CSE search failed: {e}")
         return []
 
 
