@@ -187,7 +187,7 @@ async def infer_brand_identity(domain: str, page_titles: list[str]) -> dict:
                     "content-type": "application/json",
                 },
                 json={
-                    "model": "claude-haiku-4-5",
+                    "model": "claude-sonnet-4-6",
                     "max_tokens": 100,
                     "messages": [{"role": "user", "content": prompt}],
                 },
