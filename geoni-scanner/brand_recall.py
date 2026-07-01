@@ -1,16 +1,18 @@
 """
 GEONI Scanner - Brand Recall Check
-Tests whether the LLM already recognizes a person/company by name within a
-given topic, based on its trained (parametric) knowledge — independent of
-whether it can crawl/retrieve their website. This is a different signal from
-the site-crawl-based score: it measures "does AI know who you are" rather
-than "can AI find fresh info about you."
+Queries OpenAI, Gemini, and Claude in parallel to check whether a
+person/brand is recognized across AI models. The consensus result
+(how many models recognize them) produces a more reliable signal
+than any single model alone.
 
-Uses the same prompt pattern as the geoni.ai landing page widget, so results
-are consistent whether a person queries themselves directly (no website) or
-this runs automatically as part of a full domain audit.
+Score mapping:
+  3/3 models recognize → 100 (High visibility)
+  2/3 models recognize →  65 (Medium visibility)
+  1/3 models recognize →  33 (Low visibility)
+  0/3 models recognize →   0 (Not recognized)
 """
 
+import asyncio
 import os
 import re
 import logging
@@ -21,6 +23,10 @@ import httpx
 logger = logging.getLogger(__name__)
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+OPENAI_API_KEY    = os.environ.get("OPENAI_API_KEY", "")
+GOOGLE_API_KEY    = os.environ.get("GOOGLE_API_KEY", "")
+
+SCORE_MAP = {3: 100, 2: 65, 1: 33, 0: 0}
 
 SYSTEM_PROMPT = (
     "Sen yardımcı bir yapay zeka asistanısın. Kullanıcı sana bir alan veya konu "
@@ -33,181 +39,228 @@ SYSTEM_PROMPT = (
 
 
 def _normalize(text: str) -> str:
-    """Lowercase + strip accents/diacritics for forgiving name matching."""
     text = text.strip().lower()
     text = unicodedata.normalize("NFKD", text)
     text = "".join(c for c in text if not unicodedata.combining(c))
     return re.sub(r"\s+", " ", text)
 
 
-def _name_appears_in_list(name: str, list_text: str) -> bool:
-    """
-    Fuzzy check: does the target name appear in the generated list?
-    Matches on normalized substring, and also checks individual name tokens
-    (e.g. "Sabri Çağrı Çakır" matches if "Çağrı Çakır" or "Sabri Çakır" appears)
-    so minor formatting differences don't cause false negatives.
-    """
-    normalized_name = _normalize(name)
-    normalized_list = _normalize(list_text)
-
-    if normalized_name in normalized_list:
+def _name_in_text(name: str, text: str) -> bool:
+    norm_name = _normalize(name)
+    norm_text = _normalize(text)
+    if norm_name in norm_text:
         return True
-
-    tokens = [t for t in normalized_name.split(" ") if len(t) > 2]
+    tokens = [t for t in norm_name.split() if len(t) > 2]
     if len(tokens) >= 2:
-        # Require at least 2 distinct name tokens to appear for a match,
-        # to avoid false positives on very common single words.
-        matches = sum(1 for t in tokens if t in normalized_list)
-        if matches >= 2:
-            return True
-
+        return sum(1 for t in tokens if t in norm_text) >= 2
     return False
 
 
+def _direct_recognized(response: str) -> bool:
+    n = _normalize(response)
+    return "taniniyor: evet" in n or "tanınıyor: evet" in n
+
+
+# ── Model-specific query functions ──────────────────────────────────────────
+
+async def _ask_claude(prompt: str, system: str = "", max_tokens: int = 400) -> str | None:
+    if not ANTHROPIC_API_KEY:
+        return None
+    try:
+        payload = {
+            "model": "claude-sonnet-4-6",
+            "max_tokens": max_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if system:
+            payload["system"] = system
+        async with httpx.AsyncClient() as c:
+            r = await c.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                json=payload, timeout=25,
+            )
+            if r.status_code == 200:
+                blocks = r.json().get("content", [])
+                return "\n".join(b.get("text", "") for b in blocks if b.get("type") == "text").strip()
+            logger.warning(f"Claude {r.status_code}: {r.text[:200]}")
+    except Exception as e:
+        logger.warning(f"Claude query failed: {e}")
+    return None
+
+
+async def _ask_openai(prompt: str, system: str = "", max_tokens: int = 400) -> str | None:
+    if not OPENAI_API_KEY:
+        return None
+    try:
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        async with httpx.AsyncClient() as c:
+            r = await c.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                json={"model": "gpt-4o-mini", "messages": messages, "max_tokens": max_tokens, "temperature": 0.3},
+                timeout=25,
+            )
+            if r.status_code == 200:
+                return r.json()["choices"][0]["message"]["content"].strip()
+            logger.warning(f"OpenAI {r.status_code}: {r.text[:200]}")
+    except Exception as e:
+        logger.warning(f"OpenAI query failed: {e}")
+    return None
+
+
+async def _ask_gemini(prompt: str, system: str = "", max_tokens: int = 400) -> str | None:
+    if not GOOGLE_API_KEY:
+        return None
+    try:
+        contents = []
+        if system:
+            contents += [
+                {"role": "user", "parts": [{"text": system}]},
+                {"role": "model", "parts": [{"text": "Anlaşıldı."}]},
+            ]
+        contents.append({"role": "user", "parts": [{"text": prompt}]})
+        async with httpx.AsyncClient() as c:
+            r = await c.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GOOGLE_API_KEY}",
+                json={"contents": contents, "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.3}},
+                timeout=25,
+            )
+            if r.status_code == 200:
+                parts = r.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                return " ".join(p.get("text", "") for p in parts).strip()
+            logger.warning(f"Gemini {r.status_code}: {r.text[:200]}")
+    except Exception as e:
+        logger.warning(f"Gemini query failed: {e}")
+    return None
+
+
+# ── Per-model recognition check ─────────────────────────────────────────────
+
+async def _check_single_model(name: str, topic: str, ask_fn) -> dict:
+    """
+    Run list-based + direct query for one model. Returns:
+      {"recognized": bool, "raw": str | None}
+    """
+    use_direct = not topic.strip() or topic.strip().lower() == name.strip().lower()
+    raw = None
+    recognized = False
+
+    if not use_direct:
+        list_q = f"{topic} alanında Türkiye'de öne çıkan kişiler ve firmalar kimlerdir? Gerçek isimler ver."
+        raw = await ask_fn(list_q, system=SYSTEM_PROMPT, max_tokens=400)
+        if raw:
+            recognized = _name_in_text(name, raw)
+
+    if not recognized:
+        ctx = f" ({topic} alanında)" if topic and not use_direct else ""
+        direct_q = (
+            f"Türkiye'de '{name}' adlı kişi veya kurum{ctx} hakkında ne biliyorsun? "
+            f"Bu kişi/kurum Türkiye'de tanınan, bilinen biri mi?\n"
+            f"Cevabını şu formatta ver:\n"
+            f"TANINIYOR: evet veya hayır\n"
+            f"AÇIKLAMA: [kısa açıklama, 1-2 cümle, Türkçe]"
+        )
+        direct_raw = await ask_fn(direct_q, max_tokens=200)
+        if direct_raw:
+            if _direct_recognized(direct_raw):
+                recognized = True
+                raw = (raw + "\n\n" + direct_raw) if raw else direct_raw
+
+    return {"recognized": recognized, "raw": raw}
+
+
+# ── Public API ───────────────────────────────────────────────────────────────
+
 async def check_brand_recall(name: str, topic: str) -> dict:
     """
-    Two-step brand recognition check:
-    1. Query a list of known people/companies in the topic, check if name appears
-    2. If not found in list, do a direct "do you know this person" query
-    Uses Sonnet for better accuracy on person/brand recognition.
+    Query all three models in parallel, return consensus result.
     """
-    if not ANTHROPIC_API_KEY:
-        logger.warning("ANTHROPIC_API_KEY not configured, skipping brand recall check")
-        return {"recognized": False, "score": None, "topic": topic, "raw_list": None, "checked": False}
+    if not any([ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY]):
+        return {"recognized": False, "score": None, "topic": topic, "raw_list": None,
+                "checked": False, "model_results": {}}
 
-    use_direct_query = not topic.strip() or topic.strip().lower() == name.strip().lower()
+    claude_task  = asyncio.create_task(_check_single_model(name, topic, _ask_claude))
+    openai_task  = asyncio.create_task(_check_single_model(name, topic, _ask_openai))
+    gemini_task  = asyncio.create_task(_check_single_model(name, topic, _ask_gemini))
 
-    try:
-        async with httpx.AsyncClient() as client:
-            # Step 1: List-based query (unless no topic provided)
-            raw_list = None
-            recognized = False
+    claude_res, openai_res, gemini_res = await asyncio.gather(
+        claude_task, openai_task, gemini_task, return_exceptions=True
+    )
 
-            if not use_direct_query:
-                query = f"{topic} alanında Türkiye'de öne çıkan kişiler ve firmalar kimlerdir? Gerçek isimler ver."
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": ANTHROPIC_API_KEY,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": "claude-sonnet-4-6",
-                        "max_tokens": 400,
-                        "system": SYSTEM_PROMPT,
-                        "messages": [{"role": "user", "content": query}],
-                    },
-                    timeout=20,
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    text_blocks = [b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"]
-                    raw_list = "\n".join(text_blocks).strip()
-                    recognized = _name_appears_in_list(name, raw_list)
+    def safe(res):
+        if isinstance(res, Exception):
+            return {"recognized": False, "raw": None}
+        return res
 
-            # Step 2: Direct recognition query (always run if not found in list)
-            if not recognized:
-                topic_context = f" ({topic} alanında)" if topic and not use_direct_query else ""
-                direct_query = (
-                    f"Türkiye'de '{name}' adlı kişi veya kurum{topic_context} hakkında ne biliyorsun? "
-                    f"Bu kişi/kurum Türkiye'de tanınan, bilinen biri mi?\n"
-                    f"Cevabını şu formatta ver:\n"
-                    f"TANINIYOR: evet veya hayır\n"
-                    f"AÇIKLAMA: [kısa açıklama, 1-2 cümle, Türkçe]"
-                )
-                resp2 = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": ANTHROPIC_API_KEY,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": "claude-sonnet-4-6",
-                        "max_tokens": 200,
-                        "messages": [{"role": "user", "content": direct_query}],
-                    },
-                    timeout=20,
-                )
-                if resp2.status_code == 200:
-                    data2 = resp2.json()
-                    text_blocks2 = [b.get("text", "") for b in data2.get("content", []) if b.get("type") == "text"]
-                    direct_response = "\n".join(text_blocks2).strip()
-                    direct_recognized = "taniniyor: evet" in _normalize(direct_response) or "tanınıyor: evet" in _normalize(direct_response)
-                    if direct_recognized:
-                        recognized = True
-                        # Append direct response to raw_list for display
-                        raw_list = (raw_list + "\n\n" + direct_response) if raw_list else direct_response
+    claude_res  = safe(claude_res)
+    openai_res  = safe(openai_res)
+    gemini_res  = safe(gemini_res)
 
-            return {
-                "recognized": recognized,
-                "score": 100 if recognized else 0,
-                "topic": topic,
-                "raw_list": raw_list,
-                "checked": True,
-            }
+    model_results = {
+        "claude":  {"recognized": claude_res["recognized"],  "model": "Claude"},
+        "openai":  {"recognized": openai_res["recognized"],  "model": "ChatGPT"},
+        "gemini":  {"recognized": gemini_res["recognized"],  "model": "Gemini"},
+    }
 
-    except Exception as e:
-        logger.warning(f"Brand recall check failed: {e}")
-        return {"recognized": False, "score": None, "topic": topic, "raw_list": None, "checked": False}
+    recognition_count = sum(1 for v in model_results.values() if v["recognized"])
+    recognized = recognition_count > 0
+    score = SCORE_MAP.get(recognition_count, 0)
+
+    # Combine raw outputs for display
+    raw_parts = []
+    for key, res in [("claude", claude_res), ("openai", openai_res), ("gemini", gemini_res)]:
+        if res.get("raw"):
+            label = model_results[key]["model"]
+            raw_parts.append(f"[{label}]\n{res['raw']}")
+    raw_list = "\n\n".join(raw_parts) if raw_parts else None
+
+    logger.info(f"Brand recall for '{name}': {recognition_count}/3 models recognized ({score} pts)")
+
+    return {
+        "recognized": recognized,
+        "recognition_count": recognition_count,
+        "score": score,
+        "topic": topic,
+        "raw_list": raw_list,
+        "model_results": model_results,
+        "checked": True,
+    }
 
 
 async def infer_brand_identity(domain: str, page_titles: list[str]) -> dict:
-    """
-    For a full domain audit (no explicit name/topic given by the user), infer
-    a likely company/brand name and industry topic from the crawled page
-    titles, so the brand recall check can run automatically.
-
-    Falls back to a simple heuristic (domain name as brand, generic topic)
-    if the LLM call fails or no key is configured.
-    """
+    """Infer brand name + topic from crawled page titles."""
     fallback_name = domain.split(".")[0].replace("-", " ").title()
 
-    if not ANTHROPIC_API_KEY or not page_titles:
+    if not page_titles or not any([ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY]):
         return {"name": fallback_name, "topic": fallback_name}
 
     titles_text = "\n".join(page_titles[:10])
     prompt = (
-        f"Aşağıda bir web sitesinden alınan sayfa başlıkları var. Bu bilgilere dayanarak "
-        f"şirketin/markanın adını ve hangi sektörde/alanda faaliyet gösterdiğini tahmin et.\n\n"
+        f"Aşağıda bir web sitesinden alınan sayfa başlıkları var. "
+        f"Şirketin/markanın adını ve faaliyet alanını tahmin et.\n\n"
         f"Sayfa başlıkları:\n{titles_text}\n\n"
-        f"Sadece şu formatta yanıt ver, başka hiçbir şey yazma:\n"
+        f"Sadece şu formatta yanıt ver:\n"
         f"MARKA: [marka/şirket adı]\n"
         f"ALAN: [faaliyet alanı, 2-4 kelime]"
     )
 
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": "claude-sonnet-4-6",
-                    "max_tokens": 100,
-                    "messages": [{"role": "user", "content": prompt}],
-                },
-                timeout=15,
-            )
-            if resp.status_code != 200:
-                return {"name": fallback_name, "topic": fallback_name}
+        raw = await _ask_claude(prompt, max_tokens=100) or \
+              await _ask_openai(prompt, max_tokens=100) or \
+              await _ask_gemini(prompt, max_tokens=100)
+        if not raw:
+            return {"name": fallback_name, "topic": fallback_name}
 
-            data = resp.json()
-            text_blocks = [b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"]
-            raw = "\n".join(text_blocks)
-
-            name_match = re.search(r"MARKA:\s*(.+)", raw)
-            topic_match = re.search(r"ALAN:\s*(.+)", raw)
-
-            name = name_match.group(1).strip() if name_match else fallback_name
-            topic = topic_match.group(1).strip() if topic_match else fallback_name
-
-            return {"name": name, "topic": topic}
-
+        name_m  = re.search(r"MARKA:\s*(.+)", raw)
+        topic_m = re.search(r"ALAN:\s*(.+)", raw)
+        return {
+            "name":  name_m.group(1).strip()  if name_m  else fallback_name,
+            "topic": topic_m.group(1).strip() if topic_m else fallback_name,
+        }
     except Exception as e:
         logger.warning(f"Brand identity inference failed: {e}")
         return {"name": fallback_name, "topic": fallback_name}
