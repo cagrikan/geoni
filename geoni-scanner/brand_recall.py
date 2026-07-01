@@ -1,15 +1,15 @@
 """
 GEONI Scanner - Brand Recall Check
-Queries OpenAI, Gemini, and Claude in parallel to check whether a
-person/brand is recognized across AI models. The consensus result
-(how many models recognize them) produces a more reliable signal
-than any single model alone.
+Queries Claude, ChatGPT, and Gemini in parallel with a direct
+"who is X?" question. If the model returns a meaningful, specific
+answer about the person/brand, they are recognized. Vague or
+"I don't know" responses count as not recognized.
 
 Score mapping:
-  3/3 models recognize → 100 (High visibility)
-  2/3 models recognize →  65 (Medium visibility)
-  1/3 models recognize →  33 (Low visibility)
-  0/3 models recognize →   0 (Not recognized)
+  3/3 models recognize → 100
+  2/3 models recognize →  65
+  1/3 models recognize →  33
+  0/3 models recognize →   0
 """
 
 import asyncio
@@ -28,14 +28,14 @@ GOOGLE_API_KEY    = os.environ.get("GOOGLE_API_KEY", "")
 
 SCORE_MAP = {3: 100, 2: 65, 1: 33, 0: 0}
 
-SYSTEM_PROMPT = (
-    "Sen yardımcı bir yapay zeka asistanısın. Kullanıcı sana bir alan veya konu "
-    "hakkında sorduğunda, o alanda Türkiye'de bilinen veya öne çıkan gerçek "
-    "kişileri, şirketleri ya da kurumları listele. Mutlaka somut isimler ver — "
-    "\"bilmiyorum\" veya \"bu alanda kimse yok\" deme, o alanda kim varsa onu yaz. "
-    "Her satırda \"• [İsim/Kurum] — [ne yaptığı veya bu alandaki rolü]\" formatında "
-    "yaz. 4-6 isim sun. Markdown kullanma. Türkçe yanıtla."
-)
+# Phrases that indicate the model does NOT recognize the person
+NOT_RECOGNIZED_PHRASES = [
+    "bilmiyorum", "bilgi sahibi değilim", "hakkında bilgim yok",
+    "bulamıyorum", "tanımıyorum", "emin değilim",
+    "i don't know", "i'm not sure", "no information",
+    "cannot find", "not familiar", "no knowledge",
+    "üzgünüm", "maalesef", "yeterli bilgim",
+]
 
 
 def _normalize(text: str) -> str:
@@ -45,40 +45,70 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text)
 
 
-def _name_in_text(name: str, text: str) -> bool:
-    norm_name = _normalize(name)
-    norm_text = _normalize(text)
-    if norm_name in norm_text:
-        return True
-    tokens = [t for t in norm_name.split() if len(t) > 2]
-    if len(tokens) >= 2:
-        return sum(1 for t in tokens if t in norm_text) >= 2
-    return False
+def _is_recognized(response: str, name: str) -> bool:
+    """
+    A response counts as 'recognized' if:
+    1. It's long enough to be substantive (>80 chars)
+    2. It doesn't contain "I don't know" type phrases
+    3. Part of the name appears in the response (confirms it's about the right person)
+    """
+    if not response or len(response.strip()) < 80:
+        return False
+
+    norm_resp = _normalize(response)
+
+    # Check for not-recognized phrases
+    for phrase in NOT_RECOGNIZED_PHRASES:
+        if phrase in norm_resp:
+            return False
+
+    # Check that at least one name token appears in the response
+    name_tokens = [t for t in _normalize(name).split() if len(t) > 2]
+    if name_tokens and not any(t in norm_resp for t in name_tokens):
+        return False
+
+    return True
 
 
-def _direct_recognized(response: str) -> bool:
-    n = _normalize(response)
-    return "taniniyor: evet" in n or "tanınıyor: evet" in n
+GENERIC_EMAIL_PROVIDERS = {
+    "gmail.com", "hotmail.com", "outlook.com", "yahoo.com", "yandex.com",
+    "yandex.ru", "icloud.com", "me.com", "live.com", "msn.com",
+    "hotmail.com.tr", "yahoo.com.tr"
+}
 
 
-# ── Model-specific query functions ──────────────────────────────────────────
+def _extract_corporate_domain(email: str) -> str | None:
+    """Return domain from email if it's a corporate (non-generic) address."""
+    if not email or "@" not in email:
+        return None
+    domain = email.split("@")[-1].strip().lower()
+    if domain in GENERIC_EMAIL_PROVIDERS:
+        return None
+    return domain
 
-async def _ask_claude(prompt: str, system: str = "", max_tokens: int = 400) -> str | None:
+
+def _build_query(name: str, topic: str, email: str = "") -> str:
+    parts = [f"{name} kimdir?"]
+    if topic and topic.strip().lower() != name.strip().lower():
+        parts.append(f"{topic} alanında çalışmaktadır.")
+    corporate_domain = _extract_corporate_domain(email)
+    if corporate_domain:
+        parts.append(f"Web sitesi: {corporate_domain}.")
+    parts.append("Bu kişi veya kurum hakkında bildiklerini Türkçe olarak anlat.")
+    parts.append("Eğer hakkında hiçbir bilgin yoksa bunu açıkça belirt.")
+    return " ".join(parts)
+
+
+async def _ask_claude(prompt: str) -> str | None:
     if not ANTHROPIC_API_KEY:
         return None
     try:
-        payload = {
-            "model": "claude-sonnet-4-6",
-            "max_tokens": max_tokens,
-            "messages": [{"role": "user", "content": prompt}],
-        }
-        if system:
-            payload["system"] = system
         async with httpx.AsyncClient() as c:
             r = await c.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-                json=payload, timeout=25,
+                json={"model": "claude-sonnet-4-6", "max_tokens": 300, "messages": [{"role": "user", "content": prompt}]},
+                timeout=25,
             )
             if r.status_code == 200:
                 blocks = r.json().get("content", [])
@@ -89,19 +119,15 @@ async def _ask_claude(prompt: str, system: str = "", max_tokens: int = 400) -> s
     return None
 
 
-async def _ask_openai(prompt: str, system: str = "", max_tokens: int = 400) -> str | None:
+async def _ask_openai(prompt: str) -> str | None:
     if not OPENAI_API_KEY:
         return None
     try:
-        messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
         async with httpx.AsyncClient() as c:
             r = await c.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-                json={"model": "gpt-4o-mini", "messages": messages, "max_tokens": max_tokens, "temperature": 0.3},
+                json={"model": "gpt-4o-mini", "messages": [{"role": "user", "content": prompt}], "max_tokens": 300, "temperature": 0.3},
                 timeout=25,
             )
             if r.status_code == 200:
@@ -112,21 +138,15 @@ async def _ask_openai(prompt: str, system: str = "", max_tokens: int = 400) -> s
     return None
 
 
-async def _ask_gemini(prompt: str, system: str = "", max_tokens: int = 400) -> str | None:
+async def _ask_gemini(prompt: str) -> str | None:
     if not GOOGLE_API_KEY:
         return None
     try:
-        contents = []
-        if system:
-            contents += [
-                {"role": "user", "parts": [{"text": system}]},
-                {"role": "model", "parts": [{"text": "Anlaşıldı."}]},
-            ]
-        contents.append({"role": "user", "parts": [{"text": prompt}]})
         async with httpx.AsyncClient() as c:
             r = await c.post(
                 f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GOOGLE_API_KEY}",
-                json={"contents": contents, "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.3}},
+                json={"contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                      "generationConfig": {"maxOutputTokens": 300, "temperature": 0.3}},
                 timeout=25,
             )
             if r.status_code == 200:
@@ -138,90 +158,47 @@ async def _ask_gemini(prompt: str, system: str = "", max_tokens: int = 400) -> s
     return None
 
 
-# ── Per-model recognition check ─────────────────────────────────────────────
-
-async def _check_single_model(name: str, topic: str, ask_fn) -> dict:
-    """
-    Run list-based + direct query for one model. Returns:
-      {"recognized": bool, "raw": str | None}
-    """
-    use_direct = not topic.strip() or topic.strip().lower() == name.strip().lower()
-    raw = None
-    recognized = False
-
-    if not use_direct:
-        list_q = f"{topic} alanında Türkiye'de öne çıkan kişiler ve firmalar kimlerdir? Gerçek isimler ver."
-        raw = await ask_fn(list_q, system=SYSTEM_PROMPT, max_tokens=400)
-        if raw:
-            recognized = _name_in_text(name, raw)
-
-    if not recognized:
-        ctx = f" ({topic} alanında)" if topic and not use_direct else ""
-        direct_q = (
-            f"Türkiye'de '{name}' adlı kişi veya kurum{ctx} hakkında ne biliyorsun? "
-            f"Bu kişi/kurum Türkiye'de tanınan, bilinen biri mi?\n"
-            f"Cevabını şu formatta ver:\n"
-            f"TANINIYOR: evet veya hayır\n"
-            f"AÇIKLAMA: [kısa açıklama, 1-2 cümle, Türkçe]"
-        )
-        direct_raw = await ask_fn(direct_q, max_tokens=200)
-        if direct_raw:
-            if _direct_recognized(direct_raw):
-                recognized = True
-                raw = (raw + "\n\n" + direct_raw) if raw else direct_raw
-
-    return {"recognized": recognized, "raw": raw}
-
-
-# ── Public API ───────────────────────────────────────────────────────────────
-
-async def check_brand_recall(name: str, topic: str) -> dict:
-    """
-    Query all three models in parallel, return consensus result.
-    """
+async def check_brand_recall(name: str, topic: str, email: str = "") -> dict:
+    """Query all three models in parallel with a direct 'who is X?' question."""
     if not any([ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY]):
         return {"recognized": False, "score": None, "topic": topic, "raw_list": None,
                 "checked": False, "model_results": {}}
 
-    claude_task  = asyncio.create_task(_check_single_model(name, topic, _ask_claude))
-    openai_task  = asyncio.create_task(_check_single_model(name, topic, _ask_openai))
-    gemini_task  = asyncio.create_task(_check_single_model(name, topic, _ask_gemini))
+    query = _build_query(name, topic, email)
 
-    claude_res, openai_res, gemini_res = await asyncio.gather(
-        claude_task, openai_task, gemini_task, return_exceptions=True
+    claude_resp, openai_resp, gemini_resp = await asyncio.gather(
+        _ask_claude(query),
+        _ask_openai(query),
+        _ask_gemini(query),
+        return_exceptions=True,
     )
 
-    def safe(res):
-        if isinstance(res, Exception):
-            return {"recognized": False, "raw": None}
-        return res
+    def safe(r):
+        return r if isinstance(r, str) else None
 
-    claude_res  = safe(claude_res)
-    openai_res  = safe(openai_res)
-    gemini_res  = safe(gemini_res)
+    claude_resp  = safe(claude_resp)
+    openai_resp  = safe(openai_resp)
+    gemini_resp  = safe(gemini_resp)
 
     model_results = {
-        "claude":  {"recognized": claude_res["recognized"],  "model": "Claude"},
-        "openai":  {"recognized": openai_res["recognized"],  "model": "ChatGPT"},
-        "gemini":  {"recognized": gemini_res["recognized"],  "model": "Gemini"},
+        "claude": {"recognized": _is_recognized(claude_resp, name),  "model": "Claude"},
+        "openai": {"recognized": _is_recognized(openai_resp, name),  "model": "ChatGPT"},
+        "gemini": {"recognized": _is_recognized(gemini_resp, name),  "model": "Gemini"},
     }
 
     recognition_count = sum(1 for v in model_results.values() if v["recognized"])
-    recognized = recognition_count > 0
     score = SCORE_MAP.get(recognition_count, 0)
 
-    # Combine raw outputs for display
     raw_parts = []
-    for key, res in [("claude", claude_res), ("openai", openai_res), ("gemini", gemini_res)]:
-        if res.get("raw"):
-            label = model_results[key]["model"]
-            raw_parts.append(f"[{label}]\n{res['raw']}")
+    for key, resp in [("claude", claude_resp), ("openai", openai_resp), ("gemini", gemini_resp)]:
+        if resp:
+            raw_parts.append(f"[{model_results[key]['model']}]\n{resp}")
     raw_list = "\n\n".join(raw_parts) if raw_parts else None
 
     logger.info(f"Brand recall for '{name}': {recognition_count}/3 models recognized ({score} pts)")
 
     return {
-        "recognized": recognized,
+        "recognized": recognition_count > 0,
         "recognition_count": recognition_count,
         "score": score,
         "topic": topic,
@@ -249,9 +226,7 @@ async def infer_brand_identity(domain: str, page_titles: list[str]) -> dict:
     )
 
     try:
-        raw = await _ask_claude(prompt, max_tokens=100) or \
-              await _ask_openai(prompt, max_tokens=100) or \
-              await _ask_gemini(prompt, max_tokens=100)
+        raw = (await _ask_claude(prompt)) or (await _ask_openai(prompt)) or (await _ask_gemini(prompt))
         if not raw:
             return {"name": fallback_name, "topic": fallback_name}
 

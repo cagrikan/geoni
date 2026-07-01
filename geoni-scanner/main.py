@@ -142,15 +142,13 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest):
     consistent so results match whether run there or here.
     """
     try:
-        result = await check_brand_recall(request.name, request.topic)
+        result = await check_brand_recall(request.name, request.topic, request.email or "")
         brand_checks_store[job_id].update({
             "status": "complete",
             "result": {
                 "name": request.name,
                 "topic": request.topic,
                 "recognized": result.get("recognized", False),
-                "recognition_count": result.get("recognition_count", 0),
-                "model_results": result.get("model_results", {}),
                 "checked": result.get("checked", False),
                 "raw_list": result.get("raw_list"),
                 "created_at": datetime.now().isoformat(),
