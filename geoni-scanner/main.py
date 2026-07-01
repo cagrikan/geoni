@@ -42,7 +42,7 @@ class BrandCheckResponse(BaseModel):
     job_id: str
     status: str
 
-app = FastAPI(title="GEONI Visibility Scanner MVP", version="0.5.0", description="AI visibility auditing with real crawling, indexing, 6-dimension scoring (incl. brand recall), rate limiting, and email delivery")
+app = FastAPI(title="GEONI Visibility Scanner MVP", version="0.6.0", description="AI visibility auditing with real crawling, indexing, 6-dimension scoring (incl. brand recall), rate limiting, and email delivery")
 
 app.add_middleware(
     CORSMiddleware,
@@ -149,6 +149,8 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest):
                 "name": request.name,
                 "topic": request.topic,
                 "recognized": result.get("recognized", False),
+                "recognition_count": result.get("recognition_count", 0),
+                "model_results": result.get("model_results", {}),
                 "checked": result.get("checked", False),
                 "raw_list": result.get("raw_list"),
                 "created_at": datetime.now().isoformat(),
@@ -165,7 +167,7 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest):
 @app.get("/")
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "version": "0.5.0", "timestamp": datetime.now().isoformat()}
+    return {"status": "healthy", "version": "0.6.0", "timestamp": datetime.now().isoformat()}
 
 @app.post("/api/audit/quick", response_model=AuditResponse)
 async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, http_request: Request):
