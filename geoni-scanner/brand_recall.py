@@ -110,16 +110,17 @@ def _topic_relevance_score(google_results: list, name: str, topic: str) -> float
 
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
 
-async def _google_search(name: str, topic: str, max_results: int = 8) -> list:
+async def _google_search(name: str, topic: str, max_results: int = 8, tavily_query: str = "") -> list:
     """
     Search via Tavily API — optimized for AI/RAG workflows.
+    Uses enriched query if provided, otherwise builds simple name+topic query.
     Returns list of {title, snippet, url} dicts.
     """
     if not TAVILY_API_KEY:
         logger.warning("TAVILY_API_KEY not configured, skipping search")
         return []
 
-    query = f"{name} {topic}".strip() if topic and topic != name else name
+    query = tavily_query or (f"{name} {topic}".strip() if topic and topic != name else name)
 
     try:
         async with httpx.AsyncClient() as client:
@@ -226,7 +227,7 @@ async def _ask_gemini(prompt: str) -> str | None:
             r = await c.post(
                 f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GOOGLE_API_KEY}",
                 json={"contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                      "generationConfig": {"maxOutputTokens": 600, "temperature": 0.3}},
+                      "generationConfig": {"maxOutputTokens": 400, "temperature": 0.3}},
                 timeout=30,
             )
             if r.status_code == 200:
@@ -296,83 +297,262 @@ async def _generate_brand_topics(name: str, topic: str, google_results: list, re
     return {"performing_topics": [], "opportunity_topics": []}
 
 
+def _granular_model_score(response: str, name: str, via_web: bool = False) -> float:
+    """
+    Returns a granular score for a single model's response:
+    - Not recognized: 0
+    - Recognized via web data only (failover): 10-20
+    - Recognized parametrically: 30-90 based on response quality
+    """
+    if not _is_recognized(response, name):
+        return 0.0
+
+    if via_web:
+        # Recognized only after web data injection → low score
+        length = len(response.strip())
+        return min(20, 10 + (length / 500) * 10)
+
+    # Parametric recognition → granular 30-90 based on response quality
+    length = len(response.strip())
+    if length < 150:
+        return 30.0
+    elif length < 300:
+        return 30 + (length - 150) / 150 * 20  # 30-50
+    elif length < 500:
+        return 50 + (length - 300) / 200 * 20  # 50-70
+    else:
+        return min(90, 70 + (length - 500) / 500 * 20)  # 70-90
+
+
+async def _check_model_two_phase(name: str, topic: str, web_results: list, ask_fn) -> dict:
+    """
+    Two-phase recognition for a single model:
+    Phase 1: Ask without web data (parametric test)
+    Phase 2: If not recognized, ask with web data (failover)
+    Returns: {recognized, score, response, via_web}
+    """
+    topic_part = f" ({topic} alanında)" if topic and topic.strip().lower() != name.strip().lower() else ""
+
+    # Phase 1: Parametric query (no web data)
+    prompt_p1 = (
+        f"{name}{topic_part} kimdir? "
+        f"Kendi bilgine dayanarak Türkçe olarak anlat. "
+        f"Eğer hakkında hiçbir bilgin yoksa bunu açıkça belirt."
+    )
+    resp_p1 = await ask_fn(prompt_p1)
+
+    if resp_p1 and _is_recognized(resp_p1, name):
+        score = _granular_model_score(resp_p1, name, via_web=False)
+        return {"recognized": True, "score": score, "response": resp_p1, "via_web": False}
+
+    # Phase 2: Failover with web data (only if Tavily found results)
+    if web_results:
+        snippets = "\n".join(
+            f"- {r['title']}: {r['snippet']}" for r in web_results[:5] if r.get("title")
+        )
+        prompt_p2 = (
+            f"{name}{topic_part} kimdir?\n\n"
+            f"Web'den bulunan bilgiler:\n{snippets}\n\n"
+            f"Bu bilgilere dayanarak {name} hakkında Türkçe olarak değerlendir. "
+            f"Eğer hakkında hâlâ bilgi yoksa bunu açıkça belirt."
+        )
+        resp_p2 = await ask_fn(prompt_p2)
+
+        if resp_p2 and _is_recognized(resp_p2, name):
+            score = _granular_model_score(resp_p2, name, via_web=True)
+            return {"recognized": True, "score": score, "response": resp_p2, "via_web": True}
+
+    return {"recognized": False, "score": 0.0, "response": resp_p1, "via_web": False}
+
+
 # ── Public API ───────────────────────────────────────────────────────────────
 
-async def check_brand_recall(name: str, topic: str, email: str = "") -> dict:
+def _build_tavily_query(name: str, topic: str = "", role: str = "", company: str = "",
+                         sector: str = "", location: str = "", linkedin_url: str = "",
+                         website: str = "", entity_type: str = "person") -> str:
+    """
+    Build an enriched Tavily search query to minimize adaş (namesake) confusion.
+    Format: "Name" AND ("Role" OR "Company" OR "Location")
+    If LinkedIn URL provided, use it directly as the query.
+    """
+    if linkedin_url:
+        return linkedin_url
+
+    # Base: exact name in quotes
+    base = f'"{name}"'
+
+    # Collect context signals
+    signals = []
+    if role:     signals.append(role)
+    if company:  signals.append(company)
+    if sector:   signals.append(sector)
+    if location: signals.append(location)
+    if topic:    signals.append(topic)
+    if website:  signals.append(website)
+
+    if signals:
+        or_part = " OR ".join(f'"{s}"' if " " in s else s for s in signals[:4])
+        return f'{base} AND ({or_part})'
+    return base
+
+
+async def check_brand_recall(
+    name: str,
+    topic: str = "",
+    email: str = "",
+    role: str = "",
+    company: str = "",
+    sector: str = "",
+    location: str = "",
+    linkedin_url: str = "",
+    website: str = "",
+    entity_type: str = "person",
+) -> dict:
     """
     Full brand recall pipeline:
-    1. Google search via Playwright
-    2. Parallel model queries with enriched prompt
-    3. 5-dimension scoring
+    1. Tavily web search
+    2. Two-phase parallel model queries (parametric → web failover)
+    3. Granular scoring (30-90 parametric, 10-20 via web, 0 not recognized)
     4. Topic generation
     """
     if not any([ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY]):
         return {"recognized": False, "score": None, "topic": topic, "raw_list": None,
                 "checked": False, "model_results": {}, "performing_topics": [], "opportunity_topics": []}
 
-    # Step 1: Google search
-    google_results = await _google_search(name, topic)
+    # Step 1: Tavily web search with enriched query
+    tavily_query = _build_tavily_query(name, topic, role, company, sector, location, linkedin_url, website, entity_type)
+    web_results = await _google_search(name, topic, tavily_query=tavily_query)
 
-    # Step 2: Build enriched prompt + parallel model queries
-    prompt = _build_prompt(name, topic, google_results)
-    claude_resp, openai_resp, gemini_resp = await asyncio.gather(
-        _ask_claude(prompt),
-        _ask_openai(prompt),
-        _ask_gemini(prompt),
+    # Step 1b: Identity verification (only if web results found and context given)
+    has_context = any([role, company, location, sector])
+    if web_results and has_context and OPENAI_API_KEY:
+        context_parts = []
+        if role:     context_parts.append(f"Unvan: {role}")
+        if company:  context_parts.append(f"Şirket: {company}")
+        if location: context_parts.append(f"Şehir: {location}")
+        if sector:   context_parts.append(f"Sektör: {sector}")
+        if topic:    context_parts.append(f"Alan: {topic}")
+        user_context = ", ".join(context_parts)
+        snippets = "\n".join(f"- {r['title']}: {r['snippet']}" for r in web_results[:5] if r.get("title"))
+        verify_prompt = (
+            f"Kullanıcı şu kişiyi arıyor: {name} ({user_context}).\n\n"
+            f"İnternetten toplanan sonuçlar:\n{snippets}\n\n"
+            f"Bu sonuçların aradığımız kişiyle eşleşme olasılığı 0-100 arasında kaç?\n"
+            f"Sadece JSON döndür: {{\"match\": <0-100>}}"
+        )
+        try:
+            import json as _json
+            async with httpx.AsyncClient() as c:
+                vr = await c.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                    json={"model": "gpt-4o-mini", "messages": [{"role": "user", "content": verify_prompt}],
+                          "max_tokens": 50, "temperature": 0, "response_format": {"type": "json_object"}},
+                    timeout=15,
+                )
+                if vr.status_code == 200:
+                    vdata = _json.loads(vr.json()["choices"][0]["message"]["content"])
+                    match_score = int(vdata.get("match", 100))
+                    if match_score < 70:
+                        logger.info(f"Identity mismatch for '{name}': match_score={match_score}")
+                        return {
+                            "identity_mismatch": True,
+                            "match_score": match_score,
+                            "recognized": False,
+                            "score": 0,
+                            "checked": True,
+                            "model_results": {},
+                            "performing_topics": [],
+                            "opportunity_topics": [],
+                        }
+        except Exception as e:
+            logger.warning(f"Identity verification failed: {e}")
+
+    # Step 2: Two-phase parallel queries
+    claude_res, openai_res, gemini_res = await asyncio.gather(
+        _check_model_two_phase(name, topic, web_results, _ask_claude),
+        _check_model_two_phase(name, topic, web_results, _ask_openai),
+        _check_model_two_phase(name, topic, web_results, _ask_gemini),
         return_exceptions=True,
     )
 
     def safe(r):
-        return r if isinstance(r, str) else None
+        if isinstance(r, Exception):
+            return {"recognized": False, "score": 0.0, "response": None, "via_web": False}
+        return r
 
-    responses = {
-        "claude": safe(claude_resp),
-        "openai": safe(openai_resp),
-        "gemini": safe(gemini_resp),
+    results = {
+        "claude": safe(claude_res),
+        "openai": safe(openai_res),
+        "gemini": safe(gemini_res),
     }
 
     model_results = {
-        "claude": {"recognized": _is_recognized(responses["claude"], name), "model": "Claude"},
-        "openai": {"recognized": _is_recognized(responses["openai"], name), "model": "ChatGPT"},
-        "gemini": {"recognized": _is_recognized(responses["gemini"], name), "model": "Gemini"},
+        "claude": {
+            "recognized": results["claude"]["recognized"],
+            "score": results["claude"]["score"],
+            "via_web": results["claude"]["via_web"],
+            "model": "Claude",
+        },
+        "openai": {
+            "recognized": results["openai"]["recognized"],
+            "score": results["openai"]["score"],
+            "via_web": results["openai"]["via_web"],
+            "model": "ChatGPT",
+        },
+        "gemini": {
+            "recognized": results["gemini"]["recognized"],
+            "score": results["gemini"]["score"],
+            "via_web": results["gemini"]["via_web"],
+            "model": "Gemini",
+        },
     }
 
-    # Step 3: 5-dimension scoring
-    claude_score  = 100 if model_results["claude"]["recognized"] else 0
-    openai_score  = 100 if model_results["openai"]["recognized"] else 0
-    gemini_score  = 100 if model_results["gemini"]["recognized"] else 0
-    quality_score = _response_quality_score(responses)
-    relevance_score = _topic_relevance_score(google_results, name, topic)
+    # Step 3: Scoring
+    claude_score  = results["claude"]["score"]
+    openai_score  = results["openai"]["score"]
+    gemini_score  = results["gemini"]["score"]
+
+    responses = {
+        "claude": results["claude"]["response"],
+        "openai": results["openai"]["response"],
+        "gemini": results["gemini"]["response"],
+    }
+
+    quality_score   = _response_quality_score(responses)
+    relevance_score = _topic_relevance_score(web_results, name, topic)
 
     overall_score = int(round(
-        claude_score  * WEIGHTS["claude"] +
-        openai_score  * WEIGHTS["openai"] +
-        gemini_score  * WEIGHTS["gemini"] +
-        quality_score * WEIGHTS["response_quality"] +
+        claude_score    * WEIGHTS["claude"] +
+        openai_score    * WEIGHTS["openai"] +
+        gemini_score    * WEIGHTS["gemini"] +
+        quality_score   * WEIGHTS["response_quality"] +
         relevance_score * WEIGHTS["topic_relevance"]
     ))
 
     score_breakdown = {
-        "claude":           round(claude_score, 1),
-        "chatgpt":          round(openai_score, 1),
-        "gemini":           round(gemini_score, 1),
-        "yanit_kalitesi":   round(quality_score, 1),
-        "konu_uyumu":       round(relevance_score, 1),
+        "claude":         round(claude_score, 1),
+        "chatgpt":        round(openai_score, 1),
+        "gemini":         round(gemini_score, 1),
+        "yanit_kalitesi": round(quality_score, 1),
+        "konu_uyumu":     round(relevance_score, 1),
     }
 
     recognition_count = sum(1 for v in model_results.values() if v["recognized"])
 
-    # Step 4: Topic generation (parallel with responses already available)
-    topics = await _generate_brand_topics(name, topic, google_results, responses)
+    # Step 4: Topic generation
+    topics = await _generate_brand_topics(name, topic, web_results, responses)
 
     # Build raw_list for display
     raw_parts = []
-    for key, resp in [("claude", responses["claude"]), ("openai", responses["openai"]), ("gemini", responses["gemini"])]:
+    for key in ["claude", "openai", "gemini"]:
+        resp = results[key]["response"]
         if resp:
-            raw_parts.append(f"[{model_results[key]['model']}]\n{resp}")
+            via = " (web verisiyle)" if results[key]["via_web"] else ""
+            raw_parts.append(f"[{model_results[key]['model']}{via}]\n{resp}")
     raw_list = "\n\n".join(raw_parts) if raw_parts else None
 
-    logger.info(f"Brand recall for '{name}': score={overall_score}, {recognition_count}/3 models, {len(google_results)} Google results")
+    logger.info(f"Brand recall for '{name}': score={overall_score}, {recognition_count}/3 models, {len(web_results)} web results")
 
     return {
         "recognized": recognition_count > 0,
@@ -382,7 +562,7 @@ async def check_brand_recall(name: str, topic: str, email: str = "") -> dict:
         "topic": topic,
         "raw_list": raw_list,
         "model_results": model_results,
-        "google_result_count": len(google_results),
+        "google_result_count": len(web_results),
         "performing_topics": topics["performing_topics"],
         "opportunity_topics": topics["opportunity_topics"],
         "checked": True,

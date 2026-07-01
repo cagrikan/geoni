@@ -34,15 +34,22 @@ class AuditResponse(BaseModel):
     estimated_time: int
 
 class BrandCheckRequest(BaseModel):
+    type: Optional[str] = "person"   # "person" | "brand"
     name: str
     topic: Optional[str] = ""
+    role: Optional[str] = ""
+    company: Optional[str] = ""
+    sector: Optional[str] = ""
+    location: Optional[str] = ""
+    linkedin_url: Optional[str] = ""
+    website: Optional[str] = ""
     email: Optional[str] = "anonymous@geoni.ai"
 
 class BrandCheckResponse(BaseModel):
     job_id: str
     status: str
 
-app = FastAPI(title="GEONI Visibility Scanner MVP", version="0.7.0", description="AI visibility auditing with Playwright crawling, 6-dimension domain scoring, Playwright Google search for brand recall, and email delivery")
+app = FastAPI(title="GEONI Visibility Scanner MVP", version="0.8.0", description="AI visibility auditing with Playwright crawling, 6-dimension domain scoring, brand recall with rich context, identity verification, and email delivery")
 
 app.add_middleware(
     CORSMiddleware,
@@ -142,7 +149,18 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest):
     consistent so results match whether run there or here.
     """
     try:
-        result = await check_brand_recall(request.name, request.topic, request.email or "")
+        result = await check_brand_recall(
+            name=request.name,
+            topic=request.topic or "",
+            email=request.email or "",
+            role=request.role or "",
+            company=request.company or "",
+            sector=request.sector or "",
+            location=request.location or "",
+            linkedin_url=request.linkedin_url or "",
+            website=request.website or "",
+            entity_type=request.type or "person",
+        )
         brand_checks_store[job_id].update({
             "status": "complete",
             "result": {
@@ -172,7 +190,7 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest):
 @app.get("/")
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "version": "0.7.0", "timestamp": datetime.now().isoformat()}
+    return {"status": "healthy", "version": "0.8.0", "timestamp": datetime.now().isoformat()}
 
 @app.post("/api/audit/quick", response_model=AuditResponse)
 async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, http_request: Request):
