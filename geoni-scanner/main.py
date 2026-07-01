@@ -149,6 +149,8 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest):
                 "name": request.name,
                 "topic": request.topic,
                 "recognized": result.get("recognized", False),
+                "recognition_count": result.get("recognition_count", 0),
+                "model_results": result.get("model_results", {}),
                 "checked": result.get("checked", False),
                 "raw_list": result.get("raw_list"),
                 "created_at": datetime.now().isoformat(),

@@ -125,7 +125,7 @@ async def _ask_gemini(prompt: str, system: str = "", max_tokens: int = 400) -> s
         contents.append({"role": "user", "parts": [{"text": prompt}]})
         async with httpx.AsyncClient() as c:
             r = await c.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GOOGLE_API_KEY}",
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GOOGLE_API_KEY}",
                 json={"contents": contents, "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.3}},
                 timeout=25,
             )
