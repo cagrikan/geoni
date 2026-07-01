@@ -250,8 +250,8 @@ async def _generate_brand_topics(name: str, topic: str, google_results: list, re
 
     context_parts = []
     if google_results:
-        context_parts.append("Google arama sonuçları:\n" + "\n".join(
-            f"- {r['title']}: {r['snippet']}" for r in google_results[:5] if r.get("title")
+        context_parts.append("Arama sonuçları:\n" + "\n".join(
+            f"- {r['title']}: {r['snippet']} ({r['url']})" for r in google_results[:5] if r.get("title")
         ))
     for model, resp in responses.items():
         if resp:
@@ -265,9 +265,10 @@ async def _generate_brand_topics(name: str, topic: str, google_results: list, re
         f"{name}{topic_context} için AI görünürlük analizi yapıyoruz.\n\n"
         f"Mevcut bilgiler:\n{context}\n\n"
         f"Lütfen şu formatta JSON döndür (başka hiçbir şey yazma):\n"
-        f'{{"performing_topics": [{{"topic": "...", "mentions": 0, "platforms": ["chatgpt", "claude"]}}], '
+        f'{{"performing_topics": [{{"topic": "...", "mentions": 0, "platforms": ["chatgpt", "claude"], "source_url": "https://..."}}], '
         f'"opportunity_topics": [{{"topic": "...", "mentions": 0, "platforms": [], "competitors": ["rakip1.com", "rakip2.com"]}}]}}\n\n'
-        f"performing_topics: Bu kişinin güçlü olduğu, AI motorlarında görünür olduğu 3-4 konu.\n"
+        f"performing_topics: Bu kişinin güçlü olduğu, AI motorlarında görünür olduğu 3-4 konu. "
+        f"source_url alanına arama sonuçlarından en alakalı URL'yi koy (varsa). Yoksa boş string koy.\n"
         f"opportunity_topics: Bu kişinin eksik olduğu, rakiplerin görünür olduğu 4-5 fırsat konusu. "
         f"Konular {topic if topic else 'genel'} alanıyla ilgili olsun. competitors alanına gerçek Türkiye'deki rakip site/kurum domainleri yaz."
     )
