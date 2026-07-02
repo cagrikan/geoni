@@ -21,6 +21,7 @@ from topics import generate_topics_and_opportunities
 from ratelimit import enforce_audit_rate_limits, RateLimitExceeded
 from mailer import send_audit_report_email
 from brand_recall import check_brand_recall, infer_brand_identity
+from db import save_audit, save_brand_check, get_user_id_from_token
 
 class AuditRequest(BaseModel):
     domain: str
@@ -49,7 +50,7 @@ class BrandCheckResponse(BaseModel):
     job_id: str
     status: str
 
-app = FastAPI(title="GEONI Visibility Scanner MVP", version="0.8.0", description="AI visibility auditing with Playwright crawling, 6-dimension domain scoring, brand recall with rich context, identity verification, and email delivery")
+app = FastAPI(title="GEONI Visibility Scanner MVP", version="0.9.0", description="AI visibility auditing with Playwright crawling, 6-dimension domain scoring, brand recall with rich context, identity verification, and email delivery")
 
 app.add_middleware(
     CORSMiddleware,
@@ -78,7 +79,7 @@ def get_client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-async def run_audit_job(job_id: str, request: AuditRequest):
+async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
     try:
         jobs_store[job_id]["status"] = "crawling"
         crawl_result = await crawl_domain(request.domain, request.page_limit)
@@ -128,6 +129,9 @@ async def run_audit_job(job_id: str, request: AuditRequest):
             "completed_at": datetime.now().isoformat()
         })
 
+        # Save to Supabase
+        user_id = await get_user_id_from_token(token) if token else None
+        await save_audit(job_id, {"domain": request.domain, "email": request.email}, jobs_store[job_id]["result"], user_id)
         logger.info(f"Audit job {job_id} completed successfully")
 
         # Fire-and-forget email delivery. send_audit_report_email never raises,
@@ -141,7 +145,7 @@ async def run_audit_job(job_id: str, request: AuditRequest):
         jobs_store[job_id]["error"] = str(e)
 
 
-async def run_brand_check_job(job_id: str, request: BrandCheckRequest):
+async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: str = ''):
     """
     Standalone brand-recall-only check for people/brands without a website
     (e.g. political candidates, executives, personal brands). No crawling —
@@ -180,7 +184,10 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest):
             },
             "completed_at": datetime.now().isoformat(),
         })
-        logger.info(f"Brand check job {job_id} completed for '{request.name}'")
+        # Save to Supabase
+        user_id = await get_user_id_from_token(token) if token else None
+        await save_brand_check(job_id, request.__dict__, brand_checks_store[job_id]["result"], user_id)
+        logger.info(f"Brand check job {job_id} completed for '{request.name}'"  )
     except Exception as e:
         logger.error(f"Brand check job {job_id} failed: {str(e)}")
         brand_checks_store[job_id]["status"] = "failed"
@@ -190,7 +197,7 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest):
 @app.get("/")
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "version": "0.8.0", "timestamp": datetime.now().isoformat()}
+    return {"status": "healthy", "version": "0.9.0", "timestamp": datetime.now().isoformat()}
 
 @app.post("/api/audit/quick", response_model=AuditResponse)
 async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, http_request: Request):
@@ -207,7 +214,10 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
 
     job_id = str(uuid.uuid4())
     jobs_store[job_id] = {"job_id": job_id, "status": "queued", "domain": request.domain, "email": request.email, "created_at": datetime.now().isoformat(), "result": None, "error": None}
-    background_tasks.add_task(run_audit_job, job_id, request)
+    # Extract user_id from Authorization header if present
+    auth_header = req.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
+    background_tasks.add_task(run_audit_job, job_id, request, token)
     logger.info(f"Audit job {job_id} created for {request.domain} (ip={client_ip})")
     return AuditResponse(job_id=job_id, status="queued", estimated_time=300)
 
@@ -247,7 +257,9 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
 
     job_id = str(uuid.uuid4())
     brand_checks_store[job_id] = {"job_id": job_id, "status": "queued", "name": request.name, "topic": request.topic, "created_at": datetime.now().isoformat(), "result": None, "error": None}
-    background_tasks.add_task(run_brand_check_job, job_id, request)
+    auth_header = req.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
+    background_tasks.add_task(run_brand_check_job, job_id, request, token)
     logger.info(f"Brand check job {job_id} created for '{request.name}' (ip={client_ip})")
     return BrandCheckResponse(job_id=job_id, status="queued")
 
