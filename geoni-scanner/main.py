@@ -21,7 +21,7 @@ from topics import generate_topics_and_opportunities
 from ratelimit import enforce_audit_rate_limits, RateLimitExceeded
 from mailer import send_audit_report_email
 from brand_recall import check_brand_recall, infer_brand_identity
-from db import save_audit, save_brand_check, get_user_id_from_token
+from db import save_audit, save_brand_check, get_user_id_from_token, check_is_premium
 
 class AuditRequest(BaseModel):
     domain: str
@@ -204,7 +204,13 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
     client_ip = get_client_ip(http_request)
 
     try:
-        enforce_audit_rate_limits(client_ip, request.email, request.domain)
+        # Skip rate limit for premium/admin users
+        auth_header_rl = http_request.headers.get("Authorization", "")
+        token_rl = auth_header_rl.replace("Bearer ", "") if auth_header_rl.startswith("Bearer ") else ""
+        user_id_rl = await get_user_id_from_token(token_rl) if token_rl else None
+        is_premium = await check_is_premium(user_id_rl) if user_id_rl else False
+        if not is_premium:
+            enforce_audit_rate_limits(client_ip, request.email, request.domain)
     except RateLimitExceeded as e:
         raise HTTPException(
             status_code=429,
@@ -215,7 +221,7 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
     job_id = str(uuid.uuid4())
     jobs_store[job_id] = {"job_id": job_id, "status": "queued", "domain": request.domain, "email": request.email, "created_at": datetime.now().isoformat(), "result": None, "error": None}
     # Extract user_id from Authorization header if present
-    auth_header = http_request.headers.get("Authorization", "")
+    auth_header = req.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
     background_tasks.add_task(run_audit_job, job_id, request, token)
     logger.info(f"Audit job {job_id} created for {request.domain} (ip={client_ip})")
@@ -247,7 +253,13 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
     client_ip = get_client_ip(http_request)
 
     try:
-        enforce_audit_rate_limits(client_ip, request.email, request.name)
+        # Skip rate limit for premium/admin users
+        auth_header_rl2 = http_request.headers.get("Authorization", "")
+        token_rl2 = auth_header_rl2.replace("Bearer ", "") if auth_header_rl2.startswith("Bearer ") else ""
+        user_id_rl2 = await get_user_id_from_token(token_rl2) if token_rl2 else None
+        is_premium2 = await check_is_premium(user_id_rl2) if user_id_rl2 else False
+        if not is_premium2:
+            enforce_audit_rate_limits(client_ip, request.email, request.name)
     except RateLimitExceeded as e:
         raise HTTPException(
             status_code=429,
@@ -257,7 +269,7 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
 
     job_id = str(uuid.uuid4())
     brand_checks_store[job_id] = {"job_id": job_id, "status": "queued", "name": request.name, "topic": request.topic, "created_at": datetime.now().isoformat(), "result": None, "error": None}
-    auth_header = http_request.headers.get("Authorization", "")
+    auth_header = req.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
     background_tasks.add_task(run_brand_check_job, job_id, request, token)
     logger.info(f"Brand check job {job_id} created for '{request.name}' (ip={client_ip})")

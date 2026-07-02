@@ -178,3 +178,23 @@ async def get_user_id_from_token(token: str) -> str | None:
     except Exception as e:
         logger.warning(f"Token validation error: {e}")
     return None
+
+
+async def check_is_premium(user_id: str) -> bool:
+    """Check if user is admin or has purchased credits (premium)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=is_admin,total_credits_purchased",
+                headers=_headers(),
+                timeout=8,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                if data:
+                    return data[0].get('is_admin', False) or data[0].get('total_credits_purchased', 0) > 0
+    except Exception as e:
+        logger.warning(f"Premium check failed: {e}")
+    return False
