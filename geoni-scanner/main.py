@@ -221,7 +221,7 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
     job_id = str(uuid.uuid4())
     jobs_store[job_id] = {"job_id": job_id, "status": "queued", "domain": request.domain, "email": request.email, "created_at": datetime.now().isoformat(), "result": None, "error": None}
     # Extract user_id from Authorization header if present
-    auth_header = req.headers.get("Authorization", "")
+    auth_header = http_request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
     background_tasks.add_task(run_audit_job, job_id, request, token)
     logger.info(f"Audit job {job_id} created for {request.domain} (ip={client_ip})")
@@ -269,7 +269,7 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
 
     job_id = str(uuid.uuid4())
     brand_checks_store[job_id] = {"job_id": job_id, "status": "queued", "name": request.name, "topic": request.topic, "created_at": datetime.now().isoformat(), "result": None, "error": None}
-    auth_header = req.headers.get("Authorization", "")
+    auth_header = http_request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
     background_tasks.add_task(run_brand_check_job, job_id, request, token)
     logger.info(f"Brand check job {job_id} created for '{request.name}' (ip={client_ip})")
