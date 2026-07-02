@@ -375,9 +375,7 @@ def _build_tavily_query(name: str, topic: str = "", role: str = "", company: str
     Format: "Name" AND ("Role" OR "Company" OR "Location")
     If LinkedIn URL provided, use it directly as the query.
     """
-    if linkedin_url:
-        return linkedin_url
-
+    # LinkedIn is only used if publicly accessible (checked separately)
     # Base: exact name in quotes
     base = f'"{name}"'
 
@@ -420,8 +418,28 @@ async def check_brand_recall(
                 "checked": False, "model_results": {}, "performing_topics": [], "opportunity_topics": []}
 
     # Step 1: Tavily web search with enriched query
-    tavily_query = _build_tavily_query(name, topic, role, company, sector, location, linkedin_url, website, entity_type)
+    tavily_query = _build_tavily_query(name, topic, role, company, sector, location, "", website, entity_type)
     web_results = await _google_search(name, topic, tavily_query=tavily_query)
+
+    # Step 1b: If LinkedIn URL provided, check if it's publicly accessible
+    if linkedin_url:
+        try:
+            async with httpx.AsyncClient() as c:
+                r = await c.get(linkedin_url, timeout=8, follow_redirects=True,
+                    headers={"User-Agent": "Mozilla/5.0"})
+                if r.status_code == 200 and "linkedin.com" in r.url.host:
+                    # Public profile — add as extra Tavily search
+                    linkedin_results = await _google_search(name, topic, tavily_query=linkedin_url)
+                    # Merge, avoid duplicates
+                    existing_urls = {r['url'] for r in web_results}
+                    for lr in linkedin_results:
+                        if lr['url'] not in existing_urls:
+                            web_results.append(lr)
+                    logger.info(f"LinkedIn public, added {len(linkedin_results)} results")
+                else:
+                    logger.info(f"LinkedIn profile not public ({r.status_code}), skipping")
+        except Exception as e:
+            logger.info(f"LinkedIn check failed: {e}, skipping")
 
     # Step 1b: Identity verification (only if web results found and context given)
     has_context = any([role, company, location, sector])
