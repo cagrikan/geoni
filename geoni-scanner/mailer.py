@@ -7,6 +7,7 @@ so email delivery issues never block or fail the audit job itself.
 
 import os
 import logging
+from datetime import datetime
 
 import httpx
 
@@ -20,6 +21,20 @@ SCORE_COLOR = {
     "warn": "#FBBF24",
     "bad": "#f87171",
 }
+
+_TR_MONTHS = [
+    "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+    "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
+]
+
+
+def _format_tr_datetime(iso_str: str | None) -> str:
+    """'3 Temmuz 2026, 15:30' bicimine cevirir; ayristirilamazsa simdiki zamani kullanir."""
+    try:
+        dt = datetime.fromisoformat(iso_str) if iso_str else datetime.now()
+    except ValueError:
+        dt = datetime.now()
+    return f"{dt.day} {_TR_MONTHS[dt.month - 1]} {dt.year}, {dt.strftime('%H:%M')}"
 
 
 def _score_color(score: int) -> str:
@@ -45,6 +60,7 @@ def _build_report_html(domain: str, result: dict) -> str:
     breakdown = result.get("breakdown") or result.get("score_breakdown") or {}
     top_topics = result.get("top_topics", [])
     opportunities = result.get("opportunities", [])
+    formatted_date = _format_tr_datetime(result.get("created_at"))
 
     breakdown_labels = {
         "index_coverage": "Dizin Kapsamı",
@@ -52,6 +68,7 @@ def _build_report_html(domain: str, result: dict) -> str:
         "freshness": "Tazelik",
         "schema": "Şema Bütünlüğü",
         "engagement": "Etkileşim",
+        "brand_recall": "Marka Bilinirliği",
     }
     breakdown_rows = ""
     for key, value in breakdown.items():
@@ -66,12 +83,19 @@ def _build_report_html(domain: str, result: dict) -> str:
     return f"""
     <div style="background:#07070F;padding:32px 16px;font-family:Arial,sans-serif;">
       <div style="max-width:560px;margin:0 auto;background:#0E0E1C;border-radius:16px;overflow:hidden;border:1px solid rgba(129,140,248,0.2);">
-        <div style="padding:24px 32px;border-bottom:1px solid rgba(129,140,248,0.15);">
+        <div style="padding:24px 32px;border-bottom:1px solid rgba(129,140,248,0.15);display:flex;justify-content:space-between;align-items:center;">
           <span style="color:#818CF8;font-weight:bold;letter-spacing:2px;font-size:14px;">GEONI</span>
+          <span style="color:#64748B;font-size:12px;">{formatted_date}</span>
         </div>
         <div style="padding:32px;">
-          <p style="color:#8893AB;font-size:13px;margin:0 0 4px;">{domain}</p>
-          <h1 style="color:#FFFFFF;font-size:22px;margin:0 0 24px;">AI Görünürlük Raporu</h1>
+          <p style="color:#8893AB;font-size:13px;margin:0 0 20px;">
+            {formatted_date} tarihinde talep ettiğiniz AI Görünürlük Taraması tamamlandı.
+          </p>
+
+          <div style="background:rgba(129,140,248,0.08);border:1px solid rgba(129,140,248,0.2);border-radius:10px;padding:14px 18px;margin:0 0 24px;">
+            <div style="color:#64748B;font-size:11px;letter-spacing:1px;text-transform:uppercase;margin:0 0 4px;">Taranan Alan Adı</div>
+            <div style="color:#FFFFFF;font-size:18px;font-weight:bold;">{domain}</div>
+          </div>
 
           <div style="text-align:center;margin-bottom:24px;">
             <div style="font-size:48px;font-weight:bold;color:{color};">{score}</div>
@@ -87,6 +111,19 @@ def _build_report_html(domain: str, result: dict) -> str:
 
           <h2 style="color:#FFFFFF;font-size:16px;margin:24px 0 12px;">Kaçırdığınız Fırsatlar</h2>
           {_render_topic_list(opportunities, "Fırsat alanı tespit edilmedi.")}
+
+          <div style="margin-top:32px;text-align:center;">
+            <a href="https://app.geoni.ai" style="display:inline-block;background:#818CF8;color:#0D0D1A;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px;">
+              Tam Raporu Görüntüle
+            </a>
+          </div>
+        </div>
+        <div style="padding:20px 32px;border-top:1px solid rgba(129,140,248,0.15);text-align:center;">
+          <p style="color:#64748B;font-size:11px;margin:0 0 4px;">GEONI — AI Görünürlük Platformu</p>
+          <p style="color:#475569;font-size:11px;margin:0;">
+            Bu e-posta, <strong style="color:#64748B;">{domain}</strong> için app.geoni.ai üzerinden başlattığınız
+            ücretsiz AI görünürlük taraması sonucunda otomatik olarak gönderilmiştir.
+          </p>
         </div>
       </div>
     </div>
@@ -131,4 +168,3 @@ async def send_audit_report_email(to_email: str, domain: str, result: dict) -> b
     except Exception as e:
         logger.warning(f"Failed to send report email: {e}")
         return False
-
