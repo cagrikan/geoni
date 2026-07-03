@@ -486,7 +486,6 @@ async def judge_batch_accuracy(model_texts: dict, web_results: list, person_info
             )
             if r.status_code == 200:
                 raw = r.json()["choices"][0]["message"]["content"]
-                logger.info(f'judge_debug: raw_response={raw[:300]}')
                 data = json.loads(raw)
                 out = {}
                 for key in model_texts:
@@ -732,9 +731,7 @@ async def check_brand_recall(
     # Step 3: Tek toplu judge cagrisi (Madde 2.1)
     person_info = {"isim": name, "unvan": role, "sirket": company, "sehir": location, "alan": topic}
     representative_texts = {k: v["representative_text"] for k, v in model_raw.items() if v["representative_text"]}
-    logger.info(f'judge_debug: representative_texts keys={list(representative_texts.keys())}')
     judge_results = await judge_batch_accuracy(representative_texts, web_results, person_info)
-    logger.info(f'judge_debug: judge_results keys={list(judge_results.keys())}')
 
     model_results = {}
     per_model_final_score = {}
