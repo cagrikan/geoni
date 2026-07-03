@@ -5,6 +5,7 @@ respects robots.txt and sitemap.xml, with depth/page/time limits.
 """
 
 import asyncio
+import json
 import logging
 import time
 from urllib.parse import urljoin, urlparse
@@ -59,8 +60,42 @@ async def fetch_sitemap_urls(client: httpx.AsyncClient, base_url: str, limit: in
     return urls
 
 
+def _extract_schema_types(raw_blocks: list[str]) -> list[str]:
+    """
+    Parse <script type="application/ld+json"> block contents and return the
+    distinct @type values found (e.g. ["Organization", "FAQPage"]).
+    Tolerant of arrays, @graph wrappers, and malformed JSON (Madde 2.3).
+    """
+    types: set[str] = set()
+
+    def _collect(node):
+        if isinstance(node, dict):
+            t = node.get("@type")
+            if isinstance(t, str):
+                types.add(t)
+            elif isinstance(t, list):
+                types.update(x for x in t if isinstance(x, str))
+            if "@graph" in node and isinstance(node["@graph"], list):
+                for item in node["@graph"]:
+                    _collect(item)
+        elif isinstance(node, list):
+            for item in node:
+                _collect(item)
+
+    for raw in raw_blocks:
+        if not raw or not raw.strip():
+            continue
+        try:
+            data = json.loads(raw)
+            _collect(data)
+        except Exception:
+            continue
+
+    return sorted(types)
+
+
 async def extract_page_metadata(page) -> dict:
-    """Extract title, meta description, h1, canonical from a loaded Playwright page."""
+    """Extract title, meta description, h1, canonical, and JSON-LD schema types from a loaded Playwright page."""
     try:
         title = await page.title()
     except Exception:
@@ -69,6 +104,7 @@ async def extract_page_metadata(page) -> dict:
     meta_description = ""
     h1 = ""
     canonical_url = ""
+    schema_types: list[str] = []
 
     try:
         meta_description = await page.eval_on_selector(
@@ -90,11 +126,20 @@ async def extract_page_metadata(page) -> dict:
     except Exception:
         pass
 
+    try:
+        raw_ld_blocks = await page.eval_on_selector_all(
+            "script[type='application/ld+json']", "els => els.map(e => e.textContent)"
+        )
+        schema_types = _extract_schema_types(raw_ld_blocks or [])
+    except Exception:
+        pass
+
     return {
         "title": title or "",
         "meta_description": meta_description or "",
         "h1": h1,
         "canonical_url": canonical_url or "",
+        "schema_types": schema_types,
     }
 
 
