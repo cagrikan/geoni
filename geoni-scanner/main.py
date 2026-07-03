@@ -8,8 +8,11 @@ without a website (e.g. political candidates, executives).
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
+import asyncio
+import json
 import uuid
 from datetime import datetime
 import logging
@@ -65,6 +68,7 @@ logger = logging.getLogger(__name__)
 
 jobs_store = {}
 brand_checks_store = {}
+brand_check_events: dict[str, asyncio.Queue] = {}
 
 
 def get_client_ip(request: Request) -> str:
@@ -163,6 +167,12 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
     just the same knowledge-recall query used by the geoni.ai widget, kept
     consistent so results match whether run there or here.
     """
+    queue = brand_check_events.get(job_id)
+
+    def emit(message: str):
+        if queue is not None:
+            queue.put_nowait(message)
+
     try:
         result = await check_brand_recall(
             name=request.name,
@@ -175,6 +185,7 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
             linkedin_url=request.linkedin_url or "",
             website=request.website or "",
             entity_type=request.type or "person",
+            on_progress=emit,
         )
         brand_checks_store[job_id].update({
             "status": "complete",
@@ -205,6 +216,8 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
         logger.error(f"Brand check job {job_id} failed: {str(e)}")
         brand_checks_store[job_id]["status"] = "failed"
         brand_checks_store[job_id]["error"] = str(e)
+    finally:
+        emit("__done__")
 
 
 @app.get("/")
@@ -282,6 +295,7 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
 
     job_id = str(uuid.uuid4())
     brand_checks_store[job_id] = {"job_id": job_id, "status": "queued", "name": request.name, "topic": request.topic, "created_at": datetime.now().isoformat(), "result": None, "error": None}
+    brand_check_events[job_id] = asyncio.Queue()
     auth_header = http_request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
     background_tasks.add_task(run_brand_check_job, job_id, request, token)
@@ -299,6 +313,35 @@ async def get_brand_check_status(job_id: str):
         raise HTTPException(status_code=500, detail=f"Brand check failed: {job['error']}")
     else:
         return {"job_id": job_id, "status": job["status"], "created_at": job["created_at"]}
+
+@app.get("/api/brand-check/{job_id}/stream")
+async def stream_brand_check(job_id: str):
+    """
+    Live per-model progress for the loading screen (SSE). The queue is
+    created alongside the job in start_brand_check, so events emitted
+    before this connects are buffered, not lost.
+    """
+    queue = brand_check_events.get(job_id)
+    if queue is None:
+        raise HTTPException(status_code=404, detail="Brand check job not found")
+
+    async def event_generator():
+        try:
+            while True:
+                message = await queue.get()
+                if message == "__done__":
+                    job = brand_checks_store.get(job_id, {})
+                    yield f"data: {json.dumps({'done': True, 'status': job.get('status', 'complete')})}\n\n"
+                    break
+                yield f"data: {json.dumps({'message': message})}\n\n"
+        finally:
+            brand_check_events.pop(job_id, None)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 @app.get("/api/score/{domain}")
 async def get_cached_score(domain: str):

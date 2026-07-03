@@ -630,6 +630,7 @@ async def check_brand_recall(
     linkedin_url: str = "",
     website: str = "",
     entity_type: str = "person",
+    on_progress=None,  # optional callable(str) -> None, used to stream live status via SSE
 ) -> dict:
     """
     Full brand recall pipeline (v2-judge):
@@ -640,12 +641,17 @@ async def check_brand_recall(
     5. Model skoru = medyan(dogruluk*0.60 + guven*0.25 + uzunluk*0.15)
     6. Topic uretimi
     """
+    def emit(message: str):
+        if on_progress:
+            on_progress(message)
+
     if not any([ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY]):
         return {"recognized": False, "score": None, "topic": topic, "raw_list": None,
                 "checked": False, "model_results": {}, "performing_topics": [], "opportunity_topics": [],
                 "web_results": [], "scoring_version": SCORING_VERSION}
 
     # Step 1: Tavily web search with enriched query
+    emit("Web'de aranıyor…")
     tavily_query = _build_tavily_query(name, topic, role, company, sector, location, "", website, entity_type)
     web_results = await _google_search(name, topic, tavily_query=tavily_query)
 
@@ -670,6 +676,7 @@ async def check_brand_recall(
     # Step 1c: Identity verification (only if web results found and context given)
     has_context = any([role, company, location, sector])
     if web_results and has_context and OPENAI_API_KEY:
+        emit("Kimlik doğrulanıyor…")
         context_parts = []
         if role:     context_parts.append(f"Unvan: {role}")
         if company:  context_parts.append(f"Şirket: {company}")
@@ -714,10 +721,20 @@ async def check_brand_recall(
             logger.warning(f"Identity verification failed: {e}")
 
     # Step 2: Her model icin 3-formulasyonlu iki asamali tanima (paralel)
+    async def _tracked(coro, label):
+        try:
+            data = await coro
+            emit(f"{label} yanıtladı ✓")
+            return data
+        except Exception:
+            emit(f"{label} yanıt vermedi")
+            raise
+
+    emit("Claude, ChatGPT ve Gemini sorgulanıyor…")
     claude_data, openai_data, gemini_data = await asyncio.gather(
-        _check_model_two_phase(name, topic, web_results, _ask_claude),
-        _check_model_two_phase(name, topic, web_results, _ask_openai),
-        _check_model_two_phase(name, topic, web_results, _ask_gemini),
+        _tracked(_check_model_two_phase(name, topic, web_results, _ask_claude), "Claude"),
+        _tracked(_check_model_two_phase(name, topic, web_results, _ask_openai), "ChatGPT"),
+        _tracked(_check_model_two_phase(name, topic, web_results, _ask_gemini), "Gemini"),
         return_exceptions=True,
     )
 
@@ -729,9 +746,11 @@ async def check_brand_recall(
     model_raw = {"claude": safe(claude_data), "openai": safe(openai_data), "gemini": safe(gemini_data)}
 
     # Step 3: Tek toplu judge cagrisi (Madde 2.1)
+    emit("Yanıtlar web verisiyle karşılaştırılıyor…")
     person_info = {"isim": name, "unvan": role, "sirket": company, "sehir": location, "alan": topic}
     representative_texts = {k: v["representative_text"] for k, v in model_raw.items() if v["representative_text"]}
     judge_results = await judge_batch_accuracy(representative_texts, web_results, person_info)
+    emit("Puanlama hesaplanıyor…")
 
     model_results = {}
     per_model_final_score = {}
