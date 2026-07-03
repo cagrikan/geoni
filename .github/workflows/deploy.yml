@@ -30,3 +30,32 @@ jobs:
       
       - name: Update ECS service
         run: aws ecs update-service --cluster geoni-cluster --service geoni-scanner-service --force-new-deployment --region eu-central-1
+
+      - name: Wait for deployment to stabilize
+        run: aws ecs wait services-stable --cluster geoni-cluster --services geoni-scanner-service --region eu-central-1
+
+      - name: Re-register running task IPs with target group
+        env:
+          TG_ARN: arn:aws:elasticloadbalancing:eu-central-1:016031489497:targetgroup/geoni-scanner-tg/5d102036dfdd1047
+          REGION: eu-central-1
+        run: |
+          set -e
+          TASK_ARNS=$(aws ecs list-tasks --cluster geoni-cluster --service-name geoni-scanner-service --region "$REGION" --query 'taskArns' --output text)
+
+          CURRENT_IPS=""
+          for TASK_ARN in $TASK_ARNS; do
+            IP=$(aws ecs describe-tasks --cluster geoni-cluster --tasks "$TASK_ARN" --region "$REGION" \
+              --query "tasks[0].attachments[0].details[?name=='privateIPv4Address'].value | [0]" --output text)
+            CURRENT_IPS="$CURRENT_IPS $IP"
+            echo "Registering $IP"
+            aws elbv2 register-targets --target-group-arn "$TG_ARN" --targets Id="$IP",Port=8000 --region "$REGION"
+          done
+
+          REGISTERED_IPS=$(aws elbv2 describe-target-health --target-group-arn "$TG_ARN" --region "$REGION" \
+            --query 'TargetHealthDescriptions[*].Target.Id' --output text)
+          for IP in $REGISTERED_IPS; do
+            if ! echo "$CURRENT_IPS" | grep -qw "$IP"; then
+              echo "Deregistering stale target $IP"
+              aws elbv2 deregister-targets --target-group-arn "$TG_ARN" --targets Id="$IP",Port=8000 --region "$REGION"
+            fi
+          done
