@@ -23,6 +23,25 @@ def _headers():
     }
 
 
+async def get_total_scan_count() -> int:
+    """Public aggregate count for the landing page social-proof counter (Madde 3.1)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return 0
+    try:
+        async with httpx.AsyncClient() as c:
+            r = await c.get(
+                f"{SUPABASE_URL}/rest/v1/audits?select=id",
+                headers={**_headers(), "Prefer": "count=exact", "Range": "0-0"},
+                timeout=10,
+            )
+            content_range = r.headers.get("content-range", "")
+            total = content_range.split("/")[-1] if "/" in content_range else ""
+            return int(total) if total.isdigit() else 0
+    except Exception as e:
+        logger.warning(f"get_total_scan_count failed: {e}")
+        return 0
+
+
 async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str = None) -> bool:
     """Save domain audit result to Supabase audits table."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
