@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY    = os.environ.get("OPENAI_API_KEY", "")
+PERPLEXITY_API_KEY = os.environ.get("PERPLEXITY_API_KEY", "")
 GOOGLE_API_KEY     = os.environ.get("GOOGLE_API_KEY", "")
 TAVILY_API_KEY     = os.environ.get("TAVILY_API_KEY", "")
 
@@ -54,9 +55,10 @@ SCORING_VERSION = "v2-judge"
 RECALL_TEMPERATURE = 0.1
 
 WEIGHTS = {
-    "claude":           0.20,
-    "openai":           0.30,
-    "gemini":           0.30,
+    "claude":           0.16,
+    "openai":           0.24,
+    "gemini":           0.24,
+    "perplexity":       0.16,
     "response_quality": 0.10,
     "topic_relevance":  0.10,
 }
@@ -293,10 +295,35 @@ async def _ask_gemini(prompt: str, temperature: float = RECALL_TEMPERATURE, max_
     return None
 
 
+async def _ask_perplexity(prompt: str, temperature: float = RECALL_TEMPERATURE, max_tokens: int = 500) -> str | None:
+    if not PERPLEXITY_API_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient() as c:
+            r = await c.post(
+                "https://api.perplexity.ai/chat/completions",
+                headers={"Authorization": f"Bearer {PERPLEXITY_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "model": "sonar",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                },
+                timeout=30,
+            )
+            if r.status_code == 200:
+                return r.json()["choices"][0]["message"]["content"].strip()
+            logger.warning(f"Perplexity {r.status_code}: {r.text[:200]}")
+    except Exception as e:
+        logger.warning(f"Perplexity query failed: {e}")
+    return None
+
+
 MODEL_ASK_FUNCTIONS = {
     "claude": _ask_claude,
     "openai": _ask_openai,
     "gemini": _ask_gemini,
+    "perplexity": _ask_perplexity,
 }
 
 
@@ -645,7 +672,7 @@ async def check_brand_recall(
         if on_progress:
             on_progress(message)
 
-    if not any([ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY]):
+    if not any([ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY, PERPLEXITY_API_KEY]):
         return {"recognized": False, "score": None, "topic": topic, "raw_list": None,
                 "checked": False, "model_results": {}, "performing_topics": [], "opportunity_topics": [],
                 "web_results": [], "scoring_version": SCORING_VERSION}
@@ -730,11 +757,12 @@ async def check_brand_recall(
             emit(f"{label} yanıt vermedi")
             raise
 
-    emit("Claude, ChatGPT ve Gemini sorgulanıyor…")
-    claude_data, openai_data, gemini_data = await asyncio.gather(
+    emit("Claude, ChatGPT, Gemini ve Perplexity sorgulanıyor…")
+    claude_data, openai_data, gemini_data, perplexity_data = await asyncio.gather(
         _tracked(_check_model_two_phase(name, topic, web_results, _ask_claude), "Claude"),
         _tracked(_check_model_two_phase(name, topic, web_results, _ask_openai), "ChatGPT"),
         _tracked(_check_model_two_phase(name, topic, web_results, _ask_gemini), "Gemini"),
+        _tracked(_check_model_two_phase(name, topic, web_results, _ask_perplexity), "Perplexity"),
         return_exceptions=True,
     )
 
@@ -743,7 +771,12 @@ async def check_brand_recall(
             return {"formulation_parses": [], "representative_text": "", "recognized": False, "via_web": False}
         return d
 
-    model_raw = {"claude": safe(claude_data), "openai": safe(openai_data), "gemini": safe(gemini_data)}
+    model_raw = {
+        "claude": safe(claude_data),
+        "openai": safe(openai_data),
+        "gemini": safe(gemini_data),
+        "perplexity": safe(perplexity_data),
+    }
 
     # Step 3: Tek toplu judge cagrisi (Madde 2.1)
     emit("Yanıtlar web verisiyle karşılaştırılıyor…")
@@ -757,7 +790,7 @@ async def check_brand_recall(
     per_model_legacy_score = {}
     dogruluk_values = []
 
-    display_names = {"claude": "Claude", "openai": "ChatGPT", "gemini": "Gemini"}
+    display_names = {"claude": "Claude", "openai": "ChatGPT", "gemini": "Gemini", "perplexity": "Perplexity"}
 
     for key, data in model_raw.items():
         judge = judge_results.get(key)
@@ -801,9 +834,7 @@ async def check_brand_recall(
             model_results[key]["judge"] = judge
 
     # Step 4: Genel skor
-    claude_score = per_model_final_score["claude"]
-    openai_score = per_model_final_score["openai"]
-    gemini_score = per_model_final_score["gemini"]
+    model_keys = list(model_raw.keys())
 
     if dogruluk_values:
         quality_score = sum(dogruluk_values) / len(dogruluk_values)
@@ -813,9 +844,7 @@ async def check_brand_recall(
     relevance_score = _topic_relevance_score(web_results, name, topic)
 
     overall_score = int(round(
-        claude_score  * WEIGHTS["claude"] +
-        openai_score  * WEIGHTS["openai"] +
-        gemini_score  * WEIGHTS["gemini"] +
+        sum(per_model_final_score[k] * WEIGHTS[k] for k in model_keys) +
         quality_score * WEIGHTS["response_quality"] +
         relevance_score * WEIGHTS["topic_relevance"]
     ))
@@ -823,17 +852,16 @@ async def check_brand_recall(
     # Karsilastirma icin eski (legacy) skor da hesaplanir
     legacy_quality_score = sum(_length_band_score(t) for t in representative_texts.values()) / max(len(representative_texts), 1)
     legacy_overall_score = int(round(
-        per_model_legacy_score["claude"] * WEIGHTS["claude"] +
-        per_model_legacy_score["openai"] * WEIGHTS["openai"] +
-        per_model_legacy_score["gemini"] * WEIGHTS["gemini"] +
+        sum(per_model_legacy_score[k] * WEIGHTS[k] for k in model_keys) +
         legacy_quality_score * WEIGHTS["response_quality"] +
         relevance_score * WEIGHTS["topic_relevance"]
     ))
 
     score_breakdown = {
-        "claude":         round(claude_score, 1),
-        "chatgpt":        round(openai_score, 1),
-        "gemini":         round(gemini_score, 1),
+        "claude":         round(per_model_final_score["claude"], 1),
+        "chatgpt":        round(per_model_final_score["openai"], 1),
+        "gemini":         round(per_model_final_score["gemini"], 1),
+        "perplexity":     round(per_model_final_score["perplexity"], 1),
         "yanit_kalitesi": round(quality_score, 1),
         "konu_uyumu":     round(relevance_score, 1),
     }
@@ -844,7 +872,7 @@ async def check_brand_recall(
     topics = await _generate_brand_topics(name, topic, web_results, representative_texts)
 
     raw_parts = []
-    for key in ["claude", "openai", "gemini"]:
+    for key in model_keys:
         resp = model_raw[key]["representative_text"]
         if resp:
             via = " (web verisiyle)" if model_raw[key]["via_web"] else ""
@@ -853,8 +881,8 @@ async def check_brand_recall(
 
     logger.info(
         f"Brand recall for '{name}': score={overall_score} (legacy={legacy_overall_score}), "
-        f"{recognition_count}/3 models, {len(web_results)} web results, "
-        f"judged_models={len(dogruluk_values)}/3"
+        f"{recognition_count}/{len(model_keys)} models, {len(web_results)} web results, "
+        f"judged_models={len(dogruluk_values)}/{len(model_keys)}"
     )
 
     return {
