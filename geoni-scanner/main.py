@@ -24,7 +24,7 @@ from topics import generate_topics_and_opportunities
 from ratelimit import enforce_audit_rate_limits, RateLimitExceeded
 from mailer import send_audit_report_email
 from brand_recall import check_brand_recall, infer_brand_identity
-from db import save_audit, save_brand_check, get_user_id_from_token, check_is_premium
+from db import save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count
 
 class AuditRequest(BaseModel):
     domain: str
@@ -69,6 +69,7 @@ logger = logging.getLogger(__name__)
 jobs_store = {}
 brand_checks_store = {}
 brand_check_events: dict[str, asyncio.Queue] = {}
+audit_events: dict[str, asyncio.Queue] = {}
 
 
 def get_client_ip(request: Request) -> str:
@@ -84,12 +85,22 @@ def get_client_ip(request: Request) -> str:
 
 
 async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
+    queue = audit_events.get(job_id)
+
+    def emit(message: str):
+        if queue is not None:
+            queue.put_nowait(message)
+
     try:
         jobs_store[job_id]["status"] = "crawling"
+        emit(f"{request.domain} taranıyor…")
         crawl_result = await crawl_domain(request.domain, request.page_limit)
+        emit(f"{crawl_result['total_pages']} sayfa tarandı ✓")
 
         jobs_store[job_id]["status"] = "indexing"
+        emit("AI botlarının erişimi kontrol ediliyor…")
         indexing_status = await check_indexing_status(crawl_result["pages"])
+        emit("Dizin durumu kontrol edildi ✓")
 
         jobs_store[job_id]["status"] = "scoring"
 
@@ -98,7 +109,8 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
         # within that topic. This becomes a 6th scoring dimension.
         page_titles = [p.get("title", "") for p in crawl_result.get("pages", []) if p.get("title")]
         identity = await infer_brand_identity(request.domain, page_titles)
-        brand_recall_result = await check_brand_recall(identity["name"], identity["topic"])
+        brand_recall_result = await check_brand_recall(identity["name"], identity["topic"], on_progress=emit)
+        emit("Skor hesaplanıyor…")
 
         score_result = await compute_ai_visibility_score(crawl_result, indexing_status, brand_recall_result)
 
@@ -158,6 +170,8 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
         logger.error(f"Audit job {job_id} failed: {str(e)}")
         jobs_store[job_id]["status"] = "failed"
         jobs_store[job_id]["error"] = str(e)
+    finally:
+        emit("__done__")
 
 
 async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: str = ''):
@@ -225,6 +239,11 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
 async def health():
     return {"status": "healthy", "version": "0.9.0", "timestamp": datetime.now().isoformat()}
 
+@app.get("/api/stats/scan-count")
+async def scan_count():
+    """Public aggregate count for the landing page social-proof counter."""
+    return {"count": await get_total_scan_count()}
+
 @app.post("/api/audit/quick", response_model=AuditResponse)
 async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, http_request: Request):
     client_ip = get_client_ip(http_request)
@@ -246,6 +265,7 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
 
     job_id = str(uuid.uuid4())
     jobs_store[job_id] = {"job_id": job_id, "status": "queued", "domain": request.domain, "email": request.email, "created_at": datetime.now().isoformat(), "result": None, "error": None}
+    audit_events[job_id] = asyncio.Queue()
     # Extract user_id from Authorization header if present
     auth_header = http_request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
@@ -264,6 +284,31 @@ async def get_audit_status(job_id: str):
         raise HTTPException(status_code=500, detail=f"Audit failed: {job['error']}")
     else:
         return {"job_id": job_id, "status": job["status"], "created_at": job["created_at"]}
+
+@app.get("/api/audit/{job_id}/stream")
+async def stream_audit(job_id: str):
+    """Live crawl/index/model progress for the loading screen (SSE)."""
+    queue = audit_events.get(job_id)
+    if queue is None:
+        raise HTTPException(status_code=404, detail="Audit job not found")
+
+    async def event_generator():
+        try:
+            while True:
+                message = await queue.get()
+                if message == "__done__":
+                    job = jobs_store.get(job_id, {})
+                    yield f"data: {json.dumps({'done': True, 'status': job.get('status', 'complete')})}\n\n"
+                    break
+                yield f"data: {json.dumps({'message': message})}\n\n"
+        finally:
+            audit_events.pop(job_id, None)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 @app.get("/api/audit/{job_id}/results")
 async def get_audit_results(job_id: str):
