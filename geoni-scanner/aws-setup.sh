@@ -18,6 +18,11 @@ RDS_INSTANCE="geoni-postgres"
 REDIS_CLUSTER="geoni-redis"
 ECS_CLUSTER="geoni-cluster"
 ECS_SERVICE="geoni-scanner-service"
+ECS_CONTAINER_NAME=${ECS_CONTAINER_NAME:-"geoni-scanner"}
+ECS_CONTAINER_PORT=${ECS_CONTAINER_PORT:-"8000"}
+ECS_SUBNET_ID=${ECS_SUBNET_ID:-"subnet-d1978e9c"}
+ECS_SECURITY_GROUP_ID=${ECS_SECURITY_GROUP_ID:-"sg-b80512db"}
+ECS_TARGET_GROUP_ARN=${ECS_TARGET_GROUP_ARN:-"arn:aws:elasticloadbalancing:eu-central-1:016031489497:targetgroup/geoni-scanner-tg/5d102036dfdd1047"}
 
 # Colors
 RED='\033[0;31m'
@@ -146,6 +151,32 @@ create_ecs_cluster() {
     fi
 }
 
+create_ecs_service() {
+    echo ""
+    echo "Creating ECS Service..."
+
+    if aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_SERVICE --region $AWS_REGION --query 'services[0].status' --output text 2>/dev/null | grep -q "ACTIVE"; then
+        echo -e "${YELLOW}⚠️  ECS service already exists${NC}"
+    else
+        # Requires a task definition already registered under family $ECR_REPOSITORY
+        # (this script does not register one — see task-definition.json).
+        # Load balancer is attached at creation time: ECS cannot add one to an
+        # existing service later without deleting and recreating it, which is why
+        # this must not be skipped when provisioning from scratch.
+        aws ecs create-service \
+            --cluster $ECS_CLUSTER \
+            --service-name $ECS_SERVICE \
+            --task-definition $ECR_REPOSITORY \
+            --desired-count 1 \
+            --launch-type FARGATE \
+            --platform-version LATEST \
+            --network-configuration "awsvpcConfiguration={subnets=[$ECS_SUBNET_ID],securityGroups=[$ECS_SECURITY_GROUP_ID],assignPublicIp=ENABLED}" \
+            --load-balancers "targetGroupArn=$ECS_TARGET_GROUP_ARN,containerName=$ECS_CONTAINER_NAME,containerPort=$ECS_CONTAINER_PORT" \
+            --region $AWS_REGION
+        echo -e "${GREEN}✅ ECS service created with load balancer attached${NC}"
+    fi
+}
+
 create_cloudwatch_log_group() {
     echo ""
     echo "Creating CloudWatch Log Group..."
@@ -248,7 +279,10 @@ main() {
     
     # Build and push
     build_and_push_image
-    
+
+    # Create service (requires task definition registered under family $ECR_REPOSITORY)
+    create_ecs_service
+
     # Print instructions
     setup_github_secrets
     print_summary
