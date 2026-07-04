@@ -27,13 +27,66 @@ _TR_MONTHS = [
     "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
 ]
 
+_EN_MONTHS = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+]
 
-def _format_tr_datetime(iso_str: str | None) -> str:
-    """'3 Temmuz 2026, 15:30' bicimine cevirir; ayristirilamazsa simdiki zamani kullanir."""
+# E-posta raporu icin dil bazli tum sabit metinler (bkz. _build_report_html)
+_EMAIL_TEXT = {
+    "tr": {
+        "intro": "{date} tarihinde talep ettiğiniz AI Görünürlük Taraması tamamlandı.",
+        "scanned_domain": "Taranan Alan Adı",
+        "score_label": "AI Görünürlük Skoru",
+        "strong_topics": "Güçlü Olduğunuz Konular",
+        "strong_topics_empty": "Henüz güçlü bir konu tespit edilmedi.",
+        "missed_opportunities": "Kaçırdığınız Fırsatlar",
+        "opportunities_empty": "Fırsat alanı tespit edilmedi.",
+        "view_report": "Tam Raporu Görüntüle",
+        "footer_brand": "GEONI — AI Görünürlük Platformu",
+        "footer_note": 'Bu e-posta, <strong style="color:#64748B;">{domain}</strong> için app.geoni.ai üzerinden başlattığınız ücretsiz AI görünürlük taraması sonucunda otomatik olarak gönderilmiştir.',
+        "subject": "{domain} için AI Görünürlük Skorunuz: {score}/100",
+        "breakdown_labels": {
+            "index_coverage": "Dizin Kapsamı",
+            "authority": "Otorite",
+            "freshness": "Tazelik",
+            "schema": "Şema Bütünlüğü",
+            "engagement": "Etkileşim",
+            "brand_recall": "Marka Bilinirliği",
+        },
+    },
+    "en": {
+        "intro": "The AI Visibility Scan you requested on {date} is complete.",
+        "scanned_domain": "Scanned Domain",
+        "score_label": "AI Visibility Score",
+        "strong_topics": "Topics You Own",
+        "strong_topics_empty": "No strong topics detected yet.",
+        "missed_opportunities": "Opportunities You're Missing",
+        "opportunities_empty": "No opportunity areas detected.",
+        "view_report": "View Full Report",
+        "footer_brand": "GEONI — AI Visibility Platform",
+        "footer_note": 'This email was sent automatically as a result of the free AI visibility scan you started for <strong style="color:#64748B;">{domain}</strong> on app.geoni.ai.',
+        "subject": "Your AI Visibility Score for {domain}: {score}/100",
+        "breakdown_labels": {
+            "index_coverage": "Index Coverage",
+            "authority": "Authority",
+            "freshness": "Freshness",
+            "schema": "Schema Integrity",
+            "engagement": "Engagement",
+            "brand_recall": "Brand Recall",
+        },
+    },
+}
+
+
+def _format_datetime(iso_str: str | None, lang: str = "tr") -> str:
+    """'3 Temmuz 2026, 15:30' / 'July 3, 2026, 15:30' bicimine cevirir; ayristirilamazsa simdiki zamani kullanir."""
     try:
         dt = datetime.fromisoformat(iso_str) if iso_str else datetime.now()
     except ValueError:
         dt = datetime.now()
+    if lang == "en":
+        return f"{_EN_MONTHS[dt.month - 1]} {dt.day}, {dt.year}, {dt.strftime('%H:%M')}"
     return f"{dt.day} {_TR_MONTHS[dt.month - 1]} {dt.year}, {dt.strftime('%H:%M')}"
 
 
@@ -54,22 +107,16 @@ def _render_topic_list(topics: list[dict], empty_text: str) -> str:
     return f'<ul style="padding-left:18px;margin:0;">{items}</ul>'
 
 
-def _build_report_html(domain: str, result: dict) -> str:
+def _build_report_html(domain: str, result: dict, lang: str = "tr") -> str:
+    text = _EMAIL_TEXT.get(lang, _EMAIL_TEXT["tr"])
     score = result.get("score", 0)
     color = _score_color(score)
     breakdown = result.get("breakdown") or result.get("score_breakdown") or {}
     top_topics = result.get("top_topics", [])
     opportunities = result.get("opportunities", [])
-    formatted_date = _format_tr_datetime(result.get("created_at"))
+    formatted_date = _format_datetime(result.get("created_at"), lang)
 
-    breakdown_labels = {
-        "index_coverage": "Dizin Kapsamı",
-        "authority": "Otorite",
-        "freshness": "Tazelik",
-        "schema": "Şema Bütünlüğü",
-        "engagement": "Etkileşim",
-        "brand_recall": "Marka Bilinirliği",
-    }
+    breakdown_labels = text["breakdown_labels"]
     breakdown_rows = ""
     for key, value in breakdown.items():
         label = breakdown_labels.get(key, key)
@@ -89,40 +136,39 @@ def _build_report_html(domain: str, result: dict) -> str:
         </div>
         <div style="padding:32px;">
           <p style="color:#8893AB;font-size:13px;margin:0 0 20px;">
-            {formatted_date} tarihinde talep ettiğiniz AI Görünürlük Taraması tamamlandı.
+            {text["intro"].format(date=formatted_date)}
           </p>
 
           <div style="background:rgba(129,140,248,0.08);border:1px solid rgba(129,140,248,0.2);border-radius:10px;padding:14px 18px;margin:0 0 24px;">
-            <div style="color:#64748B;font-size:11px;letter-spacing:1px;text-transform:uppercase;margin:0 0 4px;">Taranan Alan Adı</div>
+            <div style="color:#64748B;font-size:11px;letter-spacing:1px;text-transform:uppercase;margin:0 0 4px;">{text["scanned_domain"]}</div>
             <div style="color:#FFFFFF;font-size:18px;font-weight:bold;">{domain}</div>
           </div>
 
           <div style="text-align:center;margin-bottom:24px;">
             <div style="font-size:48px;font-weight:bold;color:{color};">{score}</div>
-            <div style="color:#8893AB;font-size:12px;letter-spacing:1px;text-transform:uppercase;">AI Görünürlük Skoru</div>
+            <div style="color:#8893AB;font-size:12px;letter-spacing:1px;text-transform:uppercase;">{text["score_label"]}</div>
           </div>
 
           <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
             {breakdown_rows}
           </table>
 
-          <h2 style="color:#FFFFFF;font-size:16px;margin:24px 0 12px;">Güçlü Olduğunuz Konular</h2>
-          {_render_topic_list(top_topics, "Henüz güçlü bir konu tespit edilmedi.")}
+          <h2 style="color:#FFFFFF;font-size:16px;margin:24px 0 12px;">{text["strong_topics"]}</h2>
+          {_render_topic_list(top_topics, text["strong_topics_empty"])}
 
-          <h2 style="color:#FFFFFF;font-size:16px;margin:24px 0 12px;">Kaçırdığınız Fırsatlar</h2>
-          {_render_topic_list(opportunities, "Fırsat alanı tespit edilmedi.")}
+          <h2 style="color:#FFFFFF;font-size:16px;margin:24px 0 12px;">{text["missed_opportunities"]}</h2>
+          {_render_topic_list(opportunities, text["opportunities_empty"])}
 
           <div style="margin-top:32px;text-align:center;">
             <a href="https://app.geoni.ai" style="display:inline-block;background:#818CF8;color:#0D0D1A;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px;">
-              Tam Raporu Görüntüle
+              {text["view_report"]}
             </a>
           </div>
         </div>
         <div style="padding:20px 32px;border-top:1px solid rgba(129,140,248,0.15);text-align:center;">
-          <p style="color:#64748B;font-size:11px;margin:0 0 4px;">GEONI — AI Görünürlük Platformu</p>
+          <p style="color:#64748B;font-size:11px;margin:0 0 4px;">{text["footer_brand"]}</p>
           <p style="color:#475569;font-size:11px;margin:0;">
-            Bu e-posta, <strong style="color:#64748B;">{domain}</strong> için app.geoni.ai üzerinden başlattığınız
-            ücretsiz AI görünürlük taraması sonucunda otomatik olarak gönderilmiştir.
+            {text["footer_note"].format(domain=domain)}
           </p>
         </div>
       </div>
@@ -130,7 +176,7 @@ def _build_report_html(domain: str, result: dict) -> str:
     """
 
 
-async def send_audit_report_email(to_email: str, domain: str, result: dict) -> bool:
+async def send_audit_report_email(to_email: str, domain: str, result: dict, lang: str = "tr") -> bool:
     """
     Send the completed audit report via Resend. Returns True on success,
     False on any failure (auth missing, network error, API error) — never
@@ -140,7 +186,8 @@ async def send_audit_report_email(to_email: str, domain: str, result: dict) -> b
         logger.warning("RESEND_API_KEY not configured, skipping email send")
         return False
 
-    html = _build_report_html(domain, result)
+    text = _EMAIL_TEXT.get(lang, _EMAIL_TEXT["tr"])
+    html = _build_report_html(domain, result, lang)
     score = result.get("score", 0)
 
     try:
@@ -154,7 +201,7 @@ async def send_audit_report_email(to_email: str, domain: str, result: dict) -> b
                 json={
                     "from": FROM_EMAIL,
                     "to": [to_email],
-                    "subject": f"{domain} için AI Görünürlük Skorunuz: {score}/100",
+                    "subject": text["subject"].format(domain=domain, score=score),
                     "html": html,
                 },
                 timeout=15,

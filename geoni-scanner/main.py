@@ -190,7 +190,7 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
 
         # Fire-and-forget email delivery. send_audit_report_email never raises,
         # so a failed/unconfigured email send cannot affect the audit's success.
-        email_sent = await send_audit_report_email(request.email, request.domain, result_payload)
+        email_sent = await send_audit_report_email(request.email, request.domain, result_payload, lang=request.lang or "tr")
         jobs_store[job_id]["email_sent"] = email_sent
 
     except Exception as e:
