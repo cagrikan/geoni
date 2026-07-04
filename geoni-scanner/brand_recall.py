@@ -51,6 +51,28 @@ TAVILY_API_KEY     = os.environ.get("TAVILY_API_KEY", "")
 
 SCORING_VERSION = "v2-judge"
 
+# Canli SSE ilerleme mesajlari (dil secimine gore, bkz. check_brand_recall(lang=))
+PROGRESS_MESSAGES = {
+    "tr": {
+        "web_search":      "Web'de aranıyor…",
+        "verifying_identity": "Kimlik doğrulanıyor…",
+        "model_answered":  "{label} yanıtladı ✓",
+        "model_no_answer": "{label} yanıt vermedi",
+        "querying_models": "Claude, ChatGPT, Gemini ve Perplexity sorgulanıyor…",
+        "comparing":       "Yanıtlar web verisiyle karşılaştırılıyor…",
+        "scoring":         "Puanlama hesaplanıyor…",
+    },
+    "en": {
+        "web_search":      "Searching the web…",
+        "verifying_identity": "Verifying identity…",
+        "model_answered":  "{label} answered ✓",
+        "model_no_answer": "{label} did not answer",
+        "querying_models": "Querying Claude, ChatGPT, Gemini and Perplexity…",
+        "comparing":       "Comparing answers with web data…",
+        "scoring":         "Calculating score…",
+    },
+}
+
 # Recall sorgularinda skor tutarliligi icin temperature sabitlenir (Madde 2.7)
 RECALL_TEMPERATURE = 0.1
 
@@ -658,6 +680,7 @@ async def check_brand_recall(
     website: str = "",
     entity_type: str = "person",
     on_progress=None,  # optional callable(str) -> None, used to stream live status via SSE
+    lang: str = "tr",
 ) -> dict:
     """
     Full brand recall pipeline (v2-judge):
@@ -668,6 +691,8 @@ async def check_brand_recall(
     5. Model skoru = medyan(dogruluk*0.60 + guven*0.25 + uzunluk*0.15)
     6. Topic uretimi
     """
+    msgs = PROGRESS_MESSAGES.get(lang, PROGRESS_MESSAGES["tr"])
+
     def emit(message: str):
         if on_progress:
             on_progress(message)
@@ -678,7 +703,7 @@ async def check_brand_recall(
                 "web_results": [], "scoring_version": SCORING_VERSION}
 
     # Step 1: Tavily web search with enriched query
-    emit("Web'de aranıyor…")
+    emit(msgs["web_search"])
     tavily_query = _build_tavily_query(name, topic, role, company, sector, location, "", website, entity_type)
     web_results = await _google_search(name, topic, tavily_query=tavily_query)
 
@@ -703,7 +728,7 @@ async def check_brand_recall(
     # Step 1c: Identity verification (only if web results found and context given)
     has_context = any([role, company, location, sector])
     if web_results and has_context and OPENAI_API_KEY:
-        emit("Kimlik doğrulanıyor…")
+        emit(msgs["verifying_identity"])
         context_parts = []
         if role:     context_parts.append(f"Unvan: {role}")
         if company:  context_parts.append(f"Şirket: {company}")
@@ -751,13 +776,13 @@ async def check_brand_recall(
     async def _tracked(coro, label):
         try:
             data = await coro
-            emit(f"{label} yanıtladı ✓")
+            emit(msgs["model_answered"].format(label=label))
             return data
         except Exception:
-            emit(f"{label} yanıt vermedi")
+            emit(msgs["model_no_answer"].format(label=label))
             raise
 
-    emit("Claude, ChatGPT, Gemini ve Perplexity sorgulanıyor…")
+    emit(msgs["querying_models"])
     claude_data, openai_data, gemini_data, perplexity_data = await asyncio.gather(
         _tracked(_check_model_two_phase(name, topic, web_results, _ask_claude), "Claude"),
         _tracked(_check_model_two_phase(name, topic, web_results, _ask_openai), "ChatGPT"),
@@ -779,11 +804,11 @@ async def check_brand_recall(
     }
 
     # Step 3: Tek toplu judge cagrisi (Madde 2.1)
-    emit("Yanıtlar web verisiyle karşılaştırılıyor…")
+    emit(msgs["comparing"])
     person_info = {"isim": name, "unvan": role, "sirket": company, "sehir": location, "alan": topic}
     representative_texts = {k: v["representative_text"] for k, v in model_raw.items() if v["representative_text"]}
     judge_results = await judge_batch_accuracy(representative_texts, web_results, person_info)
-    emit("Puanlama hesaplanıyor…")
+    emit(msgs["scoring"])
 
     model_results = {}
     per_model_final_score = {}

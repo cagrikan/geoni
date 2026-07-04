@@ -31,6 +31,7 @@ class AuditRequest(BaseModel):
     email: EmailStr
     competitors: Optional[List[str]] = None
     page_limit: int = 500
+    lang: Optional[str] = "tr"
 
 class AuditResponse(BaseModel):
     job_id: str
@@ -48,6 +49,7 @@ class BrandCheckRequest(BaseModel):
     linkedin_url: Optional[str] = ""
     website: Optional[str] = ""
     email: Optional[str] = "anonymous@geoni.ai"
+    lang: Optional[str] = "tr"
 
 class BrandCheckResponse(BaseModel):
     job_id: str
@@ -71,6 +73,30 @@ brand_checks_store = {}
 brand_check_events: dict[str, asyncio.Queue] = {}
 audit_events: dict[str, asyncio.Queue] = {}
 
+# Canli SSE ilerleme mesajlari (dil secimine gore, bkz. run_audit_job)
+AUDIT_PROGRESS_MESSAGES = {
+    "tr": {
+        "crawling":      "{domain} taranıyor…",
+        "pages_scanned": "{count} sayfa tarandı ✓",
+        "checking_bots": "AI botlarının erişimi kontrol ediliyor…",
+        "index_checked": "Dizin durumu kontrol edildi ✓",
+        "scoring":       "Skor hesaplanıyor…",
+    },
+    "en": {
+        "crawling":      "Scanning {domain}…",
+        "pages_scanned": "{count} pages scanned ✓",
+        "checking_bots": "Checking AI bot access…",
+        "index_checked": "Index status checked ✓",
+        "scoring":       "Calculating score…",
+    },
+}
+
+
+def _rate_limit_message(lang: str, seconds: int) -> str:
+    if lang == "en":
+        return f"Too many requests. Please try again in {seconds} seconds."
+    return f"Çok fazla istek gönderdiniz. Lütfen {seconds} saniye sonra tekrar deneyin."
+
 
 def get_client_ip(request: Request) -> str:
     """
@@ -86,6 +112,7 @@ def get_client_ip(request: Request) -> str:
 
 async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
     queue = audit_events.get(job_id)
+    msgs = AUDIT_PROGRESS_MESSAGES.get(request.lang, AUDIT_PROGRESS_MESSAGES["tr"])
 
     def emit(message: str):
         if queue is not None:
@@ -93,14 +120,14 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
 
     try:
         jobs_store[job_id]["status"] = "crawling"
-        emit(f"{request.domain} taranıyor…")
+        emit(msgs["crawling"].format(domain=request.domain))
         crawl_result = await crawl_domain(request.domain, request.page_limit)
-        emit(f"{crawl_result['total_pages']} sayfa tarandı ✓")
+        emit(msgs["pages_scanned"].format(count=crawl_result['total_pages']))
 
         jobs_store[job_id]["status"] = "indexing"
-        emit("AI botlarının erişimi kontrol ediliyor…")
+        emit(msgs["checking_bots"])
         indexing_status = await check_indexing_status(crawl_result["pages"])
-        emit("Dizin durumu kontrol edildi ✓")
+        emit(msgs["index_checked"])
 
         jobs_store[job_id]["status"] = "scoring"
 
@@ -109,8 +136,8 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
         # within that topic. This becomes a 6th scoring dimension.
         page_titles = [p.get("title", "") for p in crawl_result.get("pages", []) if p.get("title")]
         identity = await infer_brand_identity(request.domain, page_titles)
-        brand_recall_result = await check_brand_recall(identity["name"], identity["topic"], on_progress=emit)
-        emit("Skor hesaplanıyor…")
+        brand_recall_result = await check_brand_recall(identity["name"], identity["topic"], on_progress=emit, lang=request.lang)
+        emit(msgs["scoring"])
 
         score_result = await compute_ai_visibility_score(crawl_result, indexing_status, brand_recall_result)
 
@@ -200,6 +227,7 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
             website=request.website or "",
             entity_type=request.type or "person",
             on_progress=emit,
+            lang=request.lang or "tr",
         )
         brand_checks_store[job_id].update({
             "status": "complete",
@@ -259,7 +287,7 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
     except RateLimitExceeded as e:
         raise HTTPException(
             status_code=429,
-            detail=f"Çok fazla istek gönderdiniz. Lütfen {e.retry_after_seconds} saniye sonra tekrar deneyin.",
+            detail=_rate_limit_message(request.lang or "tr", e.retry_after_seconds),
             headers={"Retry-After": str(e.retry_after_seconds)},
         )
 
@@ -334,7 +362,7 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
     except RateLimitExceeded as e:
         raise HTTPException(
             status_code=429,
-            detail=f"Çok fazla istek gönderdiniz. Lütfen {e.retry_after_seconds} saniye sonra tekrar deneyin.",
+            detail=_rate_limit_message(request.lang or "tr", e.retry_after_seconds),
             headers={"Retry-After": str(e.retry_after_seconds)},
         )
 
