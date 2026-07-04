@@ -24,7 +24,7 @@ from topics import generate_topics_and_opportunities
 from ratelimit import enforce_audit_rate_limits, RateLimitExceeded
 from mailer import send_audit_report_email
 from brand_recall import check_brand_recall, infer_brand_identity
-from db import save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count
+from db import save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits
 
 class AuditRequest(BaseModel):
     domain: str
@@ -32,6 +32,7 @@ class AuditRequest(BaseModel):
     competitors: Optional[List[str]] = None
     page_limit: int = 500
     lang: Optional[str] = "tr"
+    private: Optional[bool] = False
 
 class AuditResponse(BaseModel):
     job_id: str
@@ -50,6 +51,7 @@ class BrandCheckRequest(BaseModel):
     website: Optional[str] = ""
     email: Optional[str] = "anonymous@geoni.ai"
     lang: Optional[str] = "tr"
+    private: Optional[bool] = False
 
 class BrandCheckResponse(BaseModel):
     job_id: str
@@ -183,10 +185,17 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
             "completed_at": datetime.now().isoformat()
         })
 
-        # Save to Supabase
+        # Ozel/gecici tarama: Dashboard/Tarama Gecmisi'nde hic gorunmesin diye
+        # audits tablosuna hicbir kayit yazilmaz. Gercek AI sorgu maliyeti
+        # aynen olustugu icin kontor yine de dusulur (suistimali onlemek icin).
         user_id = await get_user_id_from_token(token) if token else None
-        await save_audit(job_id, {"domain": request.domain, "email": request.email}, jobs_store[job_id]["result"], user_id)
-        logger.info(f"Audit job {job_id} completed successfully")
+        if request.private:
+            if user_id:
+                await deduct_credits(user_id, 10, "web_audit_private", job_id)
+            logger.info(f"Private audit job {job_id} completed, not saved")
+        else:
+            await save_audit(job_id, {"domain": request.domain, "email": request.email}, jobs_store[job_id]["result"], user_id)
+            logger.info(f"Audit job {job_id} completed successfully")
 
         # Fire-and-forget email delivery. send_audit_report_email never raises,
         # so a failed/unconfigured email send cannot affect the audit's success.
@@ -250,10 +259,17 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
             },
             "completed_at": datetime.now().isoformat(),
         })
-        # Save to Supabase
+        # Ozel/gecici tarama: Dashboard/Tarama Gecmisi'nde hic gorunmesin diye
+        # audits tablosuna hicbir kayit yazilmaz. Gercek AI sorgu maliyeti
+        # aynen olustugu icin kontor yine de dusulur (suistimali onlemek icin).
         user_id = await get_user_id_from_token(token) if token else None
-        await save_brand_check(job_id, request.__dict__, brand_checks_store[job_id]["result"], user_id)
-        logger.info(f"Brand check job {job_id} completed for '{request.name}'"  )
+        if request.private:
+            if user_id:
+                await deduct_credits(user_id, 5, f"{request.type or 'person'}_check_private", job_id)
+            logger.info(f"Private brand check job {job_id} completed for '{request.name}', not saved")
+        else:
+            await save_brand_check(job_id, request.__dict__, brand_checks_store[job_id]["result"], user_id)
+            logger.info(f"Brand check job {job_id} completed for '{request.name}'"  )
     except Exception as e:
         logger.error(f"Brand check job {job_id} failed: {str(e)}")
         brand_checks_store[job_id]["status"] = "failed"
