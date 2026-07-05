@@ -41,6 +41,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+from db import log_provider_call
+
 logger = logging.getLogger(__name__)
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -262,6 +264,7 @@ async def _ask_claude(prompt: str, temperature: float = RECALL_TEMPERATURE, max_
                 timeout=30,
             )
             if r.status_code == 200:
+                asyncio.create_task(log_provider_call("anthropic"))
                 blocks = r.json().get("content", [])
                 return "\n".join(b.get("text", "") for b in blocks if b.get("type") == "text").strip()
             logger.warning(f"Claude {r.status_code}: {r.text[:200]}")
@@ -290,6 +293,7 @@ async def _ask_openai(prompt: str, temperature: float = RECALL_TEMPERATURE, max_
                 timeout=30,
             )
             if r.status_code == 200:
+                asyncio.create_task(log_provider_call("openai"))
                 return r.json()["choices"][0]["message"]["content"].strip()
             logger.warning(f"OpenAI {r.status_code}: {r.text[:200]}")
     except Exception as e:
@@ -309,6 +313,7 @@ async def _ask_gemini(prompt: str, temperature: float = RECALL_TEMPERATURE, max_
                 timeout=30,
             )
             if r.status_code == 200:
+                asyncio.create_task(log_provider_call("google"))
                 parts = r.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
                 return " ".join(p.get("text", "") for p in parts).strip()
             logger.warning(f"Gemini {r.status_code}: {r.text[:200]}")
@@ -334,6 +339,7 @@ async def _ask_perplexity(prompt: str, temperature: float = RECALL_TEMPERATURE, 
                 timeout=30,
             )
             if r.status_code == 200:
+                asyncio.create_task(log_provider_call("perplexity"))
                 return r.json()["choices"][0]["message"]["content"].strip()
             logger.warning(f"Perplexity {r.status_code}: {r.text[:200]}")
     except Exception as e:
@@ -534,6 +540,7 @@ async def judge_batch_accuracy(model_texts: dict, web_results: list, person_info
                 timeout=25,
             )
             if r.status_code == 200:
+                asyncio.create_task(log_provider_call("openai"))
                 raw = r.json()["choices"][0]["message"]["content"]
                 data = json.loads(raw)
                 out = {}
@@ -633,6 +640,7 @@ async def _generate_brand_topics(name: str, topic: str, google_results: list, re
                 timeout=30,
             )
             if r.status_code == 200:
+                asyncio.create_task(log_provider_call("anthropic"))
                 blocks = r.json().get("content", [])
                 raw = "\n".join(b.get("text", "") for b in blocks if b.get("type") == "text").strip()
                 data = _extract_structured_json(raw)
@@ -753,6 +761,7 @@ async def check_brand_recall(
                     timeout=15,
                 )
                 if vr.status_code == 200:
+                    asyncio.create_task(log_provider_call("openai"))
                     vdata = json.loads(vr.json()["choices"][0]["message"]["content"])
                     match_score = int(vdata.get("match", 100))
                     if match_score < 70:

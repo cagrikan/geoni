@@ -24,7 +24,10 @@ from topics import generate_topics_and_opportunities
 from ratelimit import enforce_audit_rate_limits, RateLimitExceeded
 from mailer import send_audit_report_email
 from brand_recall import check_brand_recall, infer_brand_identity
-from db import save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits
+from db import (
+    save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits,
+    is_strict_admin, get_admin_overview, admin_list_users, admin_list_audits, admin_adjust_credits, admin_set_is_admin,
+)
 
 class AuditRequest(BaseModel):
     domain: str
@@ -435,6 +438,59 @@ async def stream_brand_check(job_id: str):
 @app.get("/api/score/{domain}")
 async def get_cached_score(domain: str):
     return {"domain": domain, "score": None, "note": "Caching not yet implemented"}
+
+# ── Admin panel ─────────────────────────────────────────────────────────
+# Tum admin endpoint'leri Authorization: Bearer <supabase_token> bekler ve
+# profiles.is_admin=true zorunlu kilar (check_is_premium'un aksine, kredi
+# satin alan ama admin olmayan kullanicilari GECIRMEZ).
+
+class CreditAdjustRequest(BaseModel):
+    delta: int
+    reason: Optional[str] = ""
+
+class AdminFlagRequest(BaseModel):
+    is_admin: bool
+
+async def _require_admin(http_request: Request) -> str:
+    auth_header = http_request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    user_id = await get_user_id_from_token(token)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    if not await is_strict_admin(user_id):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user_id
+
+@app.get("/api/admin/overview")
+async def admin_overview(http_request: Request):
+    await _require_admin(http_request)
+    return await get_admin_overview()
+
+@app.get("/api/admin/users")
+async def admin_users(http_request: Request, search: str = "", limit: int = 50, offset: int = 0):
+    await _require_admin(http_request)
+    return await admin_list_users(search=search, limit=limit, offset=offset)
+
+@app.post("/api/admin/users/{user_id}/credits")
+async def admin_users_credits(user_id: str, body: CreditAdjustRequest, http_request: Request):
+    await _require_admin(http_request)
+    if not await admin_adjust_credits(user_id, body.delta, body.reason):
+        raise HTTPException(status_code=400, detail="Credit adjustment failed")
+    return {"success": True}
+
+@app.post("/api/admin/users/{user_id}/admin-flag")
+async def admin_users_flag(user_id: str, body: AdminFlagRequest, http_request: Request):
+    await _require_admin(http_request)
+    if not await admin_set_is_admin(user_id, body.is_admin):
+        raise HTTPException(status_code=400, detail="Update failed")
+    return {"success": True}
+
+@app.get("/api/admin/audits")
+async def admin_audits(http_request: Request, limit: int = 50, offset: int = 0):
+    await _require_admin(http_request)
+    return await admin_list_audits(limit=limit, offset=offset)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):

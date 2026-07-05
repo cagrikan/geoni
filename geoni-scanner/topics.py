@@ -14,12 +14,15 @@ Add more providers by implementing a `_call_<provider>()` function with the
 same signature and registering it in PROVIDER_CHAIN.
 """
 
+import asyncio
 import json
 import logging
 import os
 import re
 
 import httpx
+
+from db import log_provider_call
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +130,7 @@ async def _call_anthropic(prompt: str) -> dict | None:
                 timeout=30,
             )
             if resp.status_code == 200:
+                asyncio.create_task(log_provider_call("anthropic"))
                 data = resp.json()
                 text = "".join(
                     block.get("text", "") for block in data.get("content", [])
@@ -159,6 +163,7 @@ async def _call_openai(prompt: str) -> dict | None:
                 timeout=30,
             )
             if resp.status_code == 200:
+                asyncio.create_task(log_provider_call("openai"))
                 data = resp.json()
                 text = data["choices"][0]["message"]["content"]
                 return _extract_json(text)
@@ -180,6 +185,7 @@ async def _call_gemini(prompt: str) -> dict | None:
                 timeout=30,
             )
             if resp.status_code == 200:
+                asyncio.create_task(log_provider_call("google"))
                 data = resp.json()
                 text = data["candidates"][0]["content"]["parts"][0]["text"]
                 return _extract_json(text)
