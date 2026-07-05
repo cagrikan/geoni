@@ -9,6 +9,8 @@ import logging
 from datetime import datetime, timedelta, timezone
 import httpx
 
+from anthropic_admin import get_anthropic_cost_summary
+
 logger = logging.getLogger(__name__)
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
@@ -287,6 +289,7 @@ async def get_admin_overview() -> dict:
     empty = {
         "total_users": 0, "total_audits": 0, "audits_today": 0, "audits_week": 0,
         "credits_purchased": 0, "credits_spent": 0, "provider_usage": {"today": {}, "week": {}},
+        "anthropic_cost": None,
     }
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return empty
@@ -355,6 +358,7 @@ async def get_admin_overview() -> dict:
         "credits_purchased": credits_purchased,
         "credits_spent": credits_spent,
         "provider_usage": provider_usage,
+        "anthropic_cost": await get_anthropic_cost_summary(),
     }
 
 
