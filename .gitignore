@@ -1,0 +1,10 @@
+.DS_Store
+__pycache__/
+*.pyc
+*.bak
+*.bak[0-9]
+.env
+.env.*
+.claude/
+node_modules/
+/geoni-frontend/
