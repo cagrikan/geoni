@@ -1044,7 +1044,12 @@ function showLine(idx) {
 function revealPhase2() {
   const p2 = document.getElementById('phase2');
   p2.style.display = 'block';
-  p2.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  // Kullanici hala hero'nun basindaysa (asagi kaymamissa) gorunume getir -
+  // ama zaten asagi inmisse zorla yukari cekme (bkz. "scroll ile asagi
+  // iniyorum, sonra birden sayfa tekrar yukari cikiyor" bug raporu).
+  if (window.scrollY < window.innerHeight * 0.6) {
+    p2.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  }
   ['demo-name','demo-topic'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') sendQuery(); });
