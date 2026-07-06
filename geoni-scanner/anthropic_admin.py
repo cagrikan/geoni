@@ -38,11 +38,15 @@ _summary_cache = {"value": None, "fetched_at": None}
 _SUMMARY_CACHE_TTL = timedelta(minutes=5)
 
 
-async def _fetch_daily_cents(start: datetime, end: datetime) -> dict:
-    """date (YYYY-MM-DD) -> cost in cents, from Anthropic's Cost Report API."""
+async def _fetch_daily_cents(start: datetime, end: datetime) -> dict | None:
+    """date (YYYY-MM-DD) -> cost in cents, from Anthropic's Cost Report API.
+    Returns None (not an empty dict) if the very first page fails - e.g. a
+    429 - so the caller can tell "confirmed zero spend" apart from "we
+    don't actually know" and avoid caching a false $0.00."""
     daily_cents = {}
     if not ANTHROPIC_ADMIN_KEY:
         return daily_cents
+    got_any_page = False
     try:
         async with httpx.AsyncClient() as client:
             page = None
@@ -58,7 +62,8 @@ async def _fetch_daily_cents(start: datetime, end: datetime) -> dict:
                 )
                 if r.status_code != 200:
                     logger.warning(f"Anthropic cost report failed: {r.status_code} {r.text[:200]}")
-                    return daily_cents
+                    return daily_cents if got_any_page else None
+                got_any_page = True
                 body = r.json()
                 for bucket in body.get("data", []):
                     date_key = bucket.get("starting_at", "")[:10]
@@ -74,6 +79,7 @@ async def _fetch_daily_cents(start: datetime, end: datetime) -> dict:
                     break
     except Exception as e:
         logger.warning(f"Anthropic cost report error: {e}")
+        return daily_cents if got_any_page else None
     return daily_cents
 
 
@@ -92,14 +98,23 @@ async def get_anthropic_cost_summary() -> dict | None:
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     month_cents = await _fetch_daily_cents(month_start, now)
+    if month_cents is None:
+        # Fetch failed outright (e.g. rate limited) - do NOT cache a false
+        # $0.00. Serve the last known-good summary if we have one (and don't
+        # touch fetched_at, so the next call retries immediately rather than
+        # waiting out the full TTL).
+        return _summary_cache["value"]
 
     if _all_time_cache["value"] is not None and _all_time_cache["fetched_at"] and now - _all_time_cache["fetched_at"] < _ALL_TIME_CACHE_TTL:
         usd_all_time = _all_time_cache["value"]
     else:
         all_time_cents = await _fetch_daily_cents(now - timedelta(days=ALL_TIME_LOOKBACK_DAYS), now)
-        usd_all_time = sum(all_time_cents.values()) / 100
-        _all_time_cache["value"] = usd_all_time
-        _all_time_cache["fetched_at"] = now
+        if all_time_cents is None:
+            usd_all_time = _all_time_cache["value"] or 0.0
+        else:
+            usd_all_time = sum(all_time_cents.values()) / 100
+            _all_time_cache["value"] = usd_all_time
+            _all_time_cache["fetched_at"] = now
 
     today_key = now.strftime("%Y-%m-%d")
     week_start_key = (now - timedelta(days=7)).strftime("%Y-%m-%d")

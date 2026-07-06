@@ -42,11 +42,15 @@ _summary_cache = {"value": None, "fetched_at": None}
 _SUMMARY_CACHE_TTL = timedelta(minutes=5)
 
 
-async def _fetch_daily_costs(start: datetime, end: datetime) -> dict:
-    """date (YYYY-MM-DD) -> USD spent that day, from OpenAI's Costs API."""
+async def _fetch_daily_costs(start: datetime, end: datetime) -> dict | None:
+    """date (YYYY-MM-DD) -> USD spent that day, from OpenAI's Costs API.
+    Returns None (not an empty dict) if the very first page fails - so the
+    caller can tell "confirmed zero spend" apart from "we don't actually
+    know" and avoid caching a false $0.00."""
     daily = {}
     if not OPENAI_ADMIN_KEY:
         return daily
+    got_any_page = False
     try:
         async with httpx.AsyncClient() as client:
             page = None
@@ -67,7 +71,8 @@ async def _fetch_daily_costs(start: datetime, end: datetime) -> dict:
                 )
                 if r.status_code != 200:
                     logger.warning(f"OpenAI costs fetch failed: {r.status_code} {r.text[:200]}")
-                    return daily
+                    return daily if got_any_page else None
+                got_any_page = True
                 body = r.json()
                 for bucket in body.get("data", []):
                     date_key = datetime.fromtimestamp(bucket["start_time"], tz=timezone.utc).strftime("%Y-%m-%d")
@@ -82,6 +87,7 @@ async def _fetch_daily_costs(start: datetime, end: datetime) -> dict:
                 page = next_page
     except Exception as e:
         logger.warning(f"OpenAI costs fetch error: {e}")
+        return daily if got_any_page else None
     return daily
 
 
@@ -100,14 +106,22 @@ async def get_openai_cost_summary() -> dict | None:
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     month_daily = await _fetch_daily_costs(month_start, now)
+    if month_daily is None:
+        # Fetch failed outright (e.g. rate limited) - do NOT cache a false
+        # $0.00. Serve the last known-good summary if we have one (and don't
+        # touch fetched_at, so the next call retries immediately).
+        return _summary_cache["value"]
 
     if _all_time_cache["value"] is not None and _all_time_cache["fetched_at"] and now - _all_time_cache["fetched_at"] < _ALL_TIME_CACHE_TTL:
         usd_all_time = _all_time_cache["value"]
     else:
         all_time_daily = await _fetch_daily_costs(now - timedelta(days=ALL_TIME_LOOKBACK_DAYS), now)
-        usd_all_time = sum(all_time_daily.values())
-        _all_time_cache["value"] = usd_all_time
-        _all_time_cache["fetched_at"] = now
+        if all_time_daily is None:
+            usd_all_time = _all_time_cache["value"] or 0.0
+        else:
+            usd_all_time = sum(all_time_daily.values())
+            _all_time_cache["value"] = usd_all_time
+            _all_time_cache["fetched_at"] = now
 
     today_key = now.strftime("%Y-%m-%d")
     week_start_key = (now - timedelta(days=7)).strftime("%Y-%m-%d")
