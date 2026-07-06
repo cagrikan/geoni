@@ -62,7 +62,9 @@ async def _fetch_daily_costs(start: datetime, end: datetime) -> dict:
                 for bucket in body.get("data", []):
                     date_key = datetime.fromtimestamp(bucket["start_time"], tz=timezone.utc).strftime("%Y-%m-%d")
                     for item in bucket.get("results", []):
-                        amount = (item.get("amount") or {}).get("value") or 0
+                        # "value" comes back as a numeric string (e.g. "0.0000123"),
+                        # not a float - cast explicitly or this raises on the sum below.
+                        amount = float((item.get("amount") or {}).get("value") or 0)
                         daily[date_key] = daily.get(date_key, 0) + amount
                 next_page = body.get("next_page")
                 if not next_page:
