@@ -113,6 +113,12 @@ def _rate_limit_message(lang: str, seconds: int) -> str:
     return f"Çok fazla istek gönderdiniz. Lütfen {seconds} saniye sonra tekrar deneyin."
 
 
+def _login_required_message(lang: str) -> str:
+    if lang == "en":
+        return "Please sign in to run a person/brand check."
+    return "Kişi/marka taraması için lütfen giriş yapın."
+
+
 def get_client_ip(request: Request) -> str:
     """
     Resolve the real client IP, accounting for the ALB which sits in front
@@ -380,12 +386,17 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
     """
     client_ip = get_client_ip(http_request)
 
+    # Kisi/marka taramasi 4 AI motoruna paralel gercek sorgu maliyeti tasir -
+    # web sitesi taramasinin aksine anonim kullanima acik degil, giris sart.
+    auth_header_rl2 = http_request.headers.get("Authorization", "")
+    token_rl2 = auth_header_rl2.replace("Bearer ", "") if auth_header_rl2.startswith("Bearer ") else ""
+    user_id_rl2 = await get_user_id_from_token(token_rl2) if token_rl2 else None
+    if not user_id_rl2:
+        raise HTTPException(status_code=401, detail=_login_required_message(request.lang or "tr"))
+
     try:
         # Skip rate limit for premium/admin users
-        auth_header_rl2 = http_request.headers.get("Authorization", "")
-        token_rl2 = auth_header_rl2.replace("Bearer ", "") if auth_header_rl2.startswith("Bearer ") else ""
-        user_id_rl2 = await get_user_id_from_token(token_rl2) if token_rl2 else None
-        is_premium2 = await check_is_premium(user_id_rl2) if user_id_rl2 else False
+        is_premium2 = await check_is_premium(user_id_rl2)
         if not is_premium2:
             enforce_audit_rate_limits(client_ip, request.email, request.name)
     except RateLimitExceeded as e:
