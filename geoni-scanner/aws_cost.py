@@ -19,6 +19,32 @@ logger = logging.getLogger(__name__)
 _cache = {"data": None, "fetched_at": None}
 CACHE_TTL = timedelta(minutes=30)
 
+# All-time spend needs a much wider query - cached separately and for longer,
+# since Cost Explorer bills per call and old months never change.
+ALL_TIME_START = datetime(2024, 1, 1, tzinfo=timezone.utc)
+_all_time_cache = {"value": None, "fetched_at": None}
+_ALL_TIME_CACHE_TTL = timedelta(hours=6)
+
+
+def _fetch_total_cost(client, start: str, end: str) -> float:
+    total = 0.0
+    next_token = None
+    for _ in range(20):  # safety cap on pagination
+        kwargs = {
+            "TimePeriod": {"Start": start, "End": end},
+            "Granularity": "MONTHLY",
+            "Metrics": ["UnblendedCost"],
+        }
+        if next_token:
+            kwargs["NextPageToken"] = next_token
+        resp = client.get_cost_and_usage(**kwargs)
+        for period in resp.get("ResultsByTime", []):
+            total += float(period["Total"]["UnblendedCost"]["Amount"])
+        next_token = resp.get("NextPageToken")
+        if not next_token:
+            break
+    return total
+
 
 def get_aws_cost_summary() -> dict | None:
     """Daily USD cost today/last-7-days/month-to-date, plus a top-6 service
@@ -41,6 +67,13 @@ def get_aws_cost_summary() -> dict | None:
             Metrics=["UnblendedCost"],
             GroupBy=[{"Type": "DIMENSION", "Key": "SERVICE"}],
         )
+
+        if _all_time_cache["value"] is not None and _all_time_cache["fetched_at"] and now - _all_time_cache["fetched_at"] < _ALL_TIME_CACHE_TTL:
+            usd_all_time = _all_time_cache["value"]
+        else:
+            usd_all_time = _fetch_total_cost(client, ALL_TIME_START.strftime("%Y-%m-%d"), end)
+            _all_time_cache["value"] = usd_all_time
+            _all_time_cache["fetched_at"] = now
     except Exception as e:
         logger.warning(f"AWS Cost Explorer fetch failed: {e}")
         return None
@@ -74,6 +107,7 @@ def get_aws_cost_summary() -> dict | None:
         "usd_today": round(usd_today, 2),
         "usd_week": round(usd_week, 2),
         "usd_month": round(usd_month, 2),
+        "usd_all_time": round(usd_all_time, 2),
         "daily": daily,
         "by_service": {k: round(v, 2) for k, v in top_services.items()},
     }

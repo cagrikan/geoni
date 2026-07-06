@@ -19,27 +19,25 @@ logger = logging.getLogger(__name__)
 
 ANTHROPIC_ADMIN_KEY = os.environ.get("ANTHROPIC_ADMIN_KEY", "")
 ANTHROPIC_VERSION = "2023-06-01"
+FMT = "%Y-%m-%dT%H:%M:%SZ"
+
+# All-time spend needs many paginated calls over a wide window - cache it so
+# every admin panel load doesn't re-walk the full history.
+ALL_TIME_START = datetime(2024, 1, 1, tzinfo=timezone.utc)
+_all_time_cache = {"value": None, "fetched_at": None}
+_ALL_TIME_CACHE_TTL = timedelta(hours=6)
 
 
-async def get_anthropic_cost_summary() -> dict | None:
-    """Real USD cost today/last-7-days/month-to-date from Anthropic's Cost
-    Report API, fetched once from the start of the current month so all
-    three figures (and the daily chart) come from a single query.
-    Returns None if no admin key is configured (feature simply not enabled)."""
-    if not ANTHROPIC_ADMIN_KEY:
-        return None
-
-    now = datetime.now(timezone.utc)
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    fmt = "%Y-%m-%dT%H:%M:%SZ"
-
+async def _fetch_daily_cents(start: datetime, end: datetime) -> dict:
+    """date (YYYY-MM-DD) -> cost in cents, from Anthropic's Cost Report API."""
     daily_cents = {}
-
+    if not ANTHROPIC_ADMIN_KEY:
+        return daily_cents
     try:
         async with httpx.AsyncClient() as client:
             page = None
-            for _ in range(10):  # safety cap - one page per ~31 buckets, a month-to-date window fits in a handful
-                params = {"starting_at": month_start.strftime(fmt), "ending_at": now.strftime(fmt)}
+            for _ in range(60):  # safety cap - all-time range can span many pages
+                params = {"starting_at": start.strftime(FMT), "ending_at": end.strftime(FMT)}
                 if page:
                     params["page"] = page
                 r = await client.get(
@@ -50,7 +48,7 @@ async def get_anthropic_cost_summary() -> dict | None:
                 )
                 if r.status_code != 200:
                     logger.warning(f"Anthropic cost report failed: {r.status_code} {r.text[:200]}")
-                    return None
+                    return daily_cents
                 body = r.json()
                 for bucket in body.get("data", []):
                     date_key = bucket.get("starting_at", "")[:10]
@@ -66,17 +64,39 @@ async def get_anthropic_cost_summary() -> dict | None:
                     break
     except Exception as e:
         logger.warning(f"Anthropic cost report error: {e}")
+    return daily_cents
+
+
+async def get_anthropic_cost_summary() -> dict | None:
+    """Real USD cost today/last-7-days/month-to-date (for the chart) plus
+    all-time spend (for the remaining-balance estimate).
+    Returns None if no admin key is configured (feature simply not enabled)."""
+    if not ANTHROPIC_ADMIN_KEY:
         return None
+
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    month_cents = await _fetch_daily_cents(month_start, now)
+
+    if _all_time_cache["value"] is not None and _all_time_cache["fetched_at"] and now - _all_time_cache["fetched_at"] < _ALL_TIME_CACHE_TTL:
+        usd_all_time = _all_time_cache["value"]
+    else:
+        all_time_cents = await _fetch_daily_cents(ALL_TIME_START, now)
+        usd_all_time = sum(all_time_cents.values()) / 100
+        _all_time_cache["value"] = usd_all_time
+        _all_time_cache["fetched_at"] = now
 
     today_key = now.strftime("%Y-%m-%d")
     week_start_key = (now - timedelta(days=7)).strftime("%Y-%m-%d")
-    usd_today = daily_cents.get(today_key, 0) / 100
-    usd_week = sum(c for d, c in daily_cents.items() if d >= week_start_key) / 100
-    usd_month = sum(daily_cents.values()) / 100
+    usd_today = month_cents.get(today_key, 0) / 100
+    usd_week = sum(c for d, c in month_cents.items() if d >= week_start_key) / 100
+    usd_month = sum(month_cents.values()) / 100
 
     return {
         "usd_today": round(usd_today, 4),
         "usd_week": round(usd_week, 4),
         "usd_month": round(usd_month, 4),
-        "daily": [{"date": d, "usd": round(c / 100, 4)} for d, c in sorted(daily_cents.items())],
+        "usd_all_time": round(usd_all_time, 4),
+        "daily": [{"date": d, "usd": round(c / 100, 4)} for d, c in sorted(month_cents.items())],
     }
