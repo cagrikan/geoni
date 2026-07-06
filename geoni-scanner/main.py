@@ -29,6 +29,7 @@ from db import (
     is_strict_admin, get_admin_summary, get_admin_scans_daily, get_admin_credits_stats, get_admin_provider_usage,
     admin_list_users, admin_list_audits, admin_adjust_credits, admin_set_is_admin,
     get_manual_balances, set_manual_balance, get_manual_topups_total, list_manual_topups, add_manual_topup,
+    get_credit_packages, record_purchase, get_admin_sales_stats, get_pricing_tiers, add_pricing_tier, delete_pricing_tier,
 )
 from anthropic_admin import get_anthropic_cost_summary
 from aws_cost import get_aws_cost_summary
@@ -36,6 +37,7 @@ from openai_admin import get_openai_cost_summary
 from tavily_admin import get_tavily_usage_summary
 from perplexity_admin import get_perplexity_cost_summary
 from gemini_admin import get_gemini_cost_summary
+from lemonsqueezy import verify_webhook_signature, create_checkout, parse_order_webhook
 
 class AuditRequest(BaseModel):
     domain: str
@@ -556,6 +558,83 @@ async def admin_add_topup(body: TopupRequest, http_request: Request):
     if not await add_manual_topup(body.provider, body.amount, body.note):
         raise HTTPException(status_code=400, detail="Top-up kaydedilemedi")
     return {"success": True}
+
+@app.get("/api/admin/stats/sales")
+async def admin_sales_stats(http_request: Request, days: int = 14):
+    await _require_admin(http_request)
+    return await get_admin_sales_stats(days=days)
+
+class PricingTierRequest(BaseModel):
+    platform: str = "web"
+    min_credits: int
+    max_credits: Optional[int] = None
+    price_per_credit: float
+    currency: str = "TRY"
+
+@app.get("/api/admin/pricing-tiers")
+async def admin_get_pricing_tiers(http_request: Request):
+    await _require_admin(http_request)
+    return await get_pricing_tiers()
+
+@app.post("/api/admin/pricing-tiers")
+async def admin_add_pricing_tier(body: PricingTierRequest, http_request: Request):
+    await _require_admin(http_request)
+    if not await add_pricing_tier(body.platform, body.min_credits, body.max_credits, body.price_per_credit, body.currency):
+        raise HTTPException(status_code=400, detail="Fiyat kademesi eklenemedi")
+    return {"success": True}
+
+@app.delete("/api/admin/pricing-tiers/{tier_id}")
+async def admin_delete_pricing_tier(tier_id: str, http_request: Request):
+    await _require_admin(http_request)
+    if not await delete_pricing_tier(tier_id):
+        raise HTTPException(status_code=400, detail="Fiyat kademesi silinemedi")
+    return {"success": True}
+
+@app.get("/api/credit-packages")
+async def credit_packages():
+    return await get_credit_packages(active_only=True)
+
+class CheckoutRequest(BaseModel):
+    package_id: str
+
+@app.post("/api/checkout/create")
+async def create_checkout_session(body: CheckoutRequest, http_request: Request):
+    auth_header = http_request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
+    user_id = await get_user_id_from_token(token) if token else None
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Giriş yapmanız gerekiyor")
+
+    packages = await get_credit_packages(active_only=True)
+    package = next((p for p in packages if p["id"] == body.package_id), None)
+    if not package or not package.get("lemonsqueezy_variant_id"):
+        raise HTTPException(status_code=400, detail="Geçersiz paket")
+
+    url = await create_checkout(package["lemonsqueezy_variant_id"], user_id, package["credits"])
+    if not url:
+        raise HTTPException(status_code=502, detail="Ödeme sayfası oluşturulamadı")
+    return {"checkout_url": url}
+
+@app.post("/api/webhooks/lemonsqueezy")
+async def lemonsqueezy_webhook(http_request: Request):
+    raw_body = await http_request.body()
+    signature = http_request.headers.get("X-Signature", "")
+    if not verify_webhook_signature(raw_body, signature):
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
+    payload = json.loads(raw_body)
+    order = parse_order_webhook(payload)
+    if not order:
+        return {"ignored": True}
+
+    ok = await record_purchase(
+        user_id=order["user_id"],
+        credits=order["credits"],
+        amount_paid=order["amount_paid"],
+        currency_paid=order["currency_paid"],
+        external_id=order["external_id"],
+    )
+    return {"success": ok}
 
 @app.get("/api/admin/users")
 async def admin_users(http_request: Request, search: str = "", limit: int = 50, offset: int = 0):

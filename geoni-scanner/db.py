@@ -462,6 +462,181 @@ async def get_admin_credits_stats(days: int = 14) -> dict:
     return result
 
 
+async def get_credit_packages(active_only: bool = True) -> list:
+    """Purchasable credit packages (Lemon Squeezy variants) for the Buy
+    Credits page."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return []
+    try:
+        async with httpx.AsyncClient() as client:
+            url = f"{SUPABASE_URL}/rest/v1/credit_packages?select=*&order=credits.asc"
+            if active_only:
+                url += "&is_active=eq.true"
+            r = await client.get(url, headers=_headers(), timeout=10)
+            if r.status_code == 200:
+                return r.json()
+    except Exception as e:
+        logger.warning(f"get_credit_packages error: {e}")
+    return []
+
+
+async def record_purchase(user_id: str, credits: int, amount_paid: float, currency_paid: str, external_id: str, channel: str = "web") -> bool:
+    """Credits a user's balance for a REAL payment (Lemon Squeezy webhook).
+    Idempotent on external_id - a retried/duplicate webhook delivery for
+    the same order is a no-op, not a double-credit."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not credits:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            dup = await client.get(
+                f"{SUPABASE_URL}/rest/v1/credit_transactions?select=id&external_id=eq.{external_id}",
+                headers=_headers(), timeout=10,
+            )
+            if dup.status_code == 200 and dup.json():
+                logger.info(f"record_purchase: external_id {external_id} already recorded, skipping")
+                return True
+
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credit_balance,total_credits_purchased",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code != 200 or not r.json():
+                return False
+            row = r.json()[0]
+            new_balance = (row.get("credit_balance") or 0) + credits
+            new_purchased = (row.get("total_credits_purchased") or 0) + credits
+            patch_r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
+                headers=_headers(),
+                json={"credit_balance": new_balance, "total_credits_purchased": new_purchased},
+                timeout=10,
+            )
+            if patch_r.status_code not in (200, 204):
+                return False
+
+            await client.post(
+                f"{SUPABASE_URL}/rest/v1/credit_transactions",
+                headers=_headers(),
+                json={
+                    "user_id": user_id,
+                    "amount": credits,
+                    "type": "purchase",
+                    "description": "Lemon Squeezy satın alma",
+                    "channel": channel,
+                    "amount_paid": amount_paid,
+                    "currency_paid": currency_paid,
+                    "external_id": external_id,
+                },
+                timeout=10,
+            )
+            return True
+    except Exception as e:
+        logger.warning(f"record_purchase error: {e}")
+    return False
+
+
+async def get_admin_sales_stats(days: int = 14) -> dict:
+    """Real revenue (from actual Lemon Squeezy purchases), broken down by
+    channel (web/ios/android) and by signup traffic source (utm_source),
+    plus a list of recent purchases for the Satış tab."""
+    result = {"revenue_by_channel": {}, "revenue_total": 0, "currency": "TRY", "by_source": {}, "recent": []}
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return result
+
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/credit_transactions"
+                f"?select=user_id,amount,channel,amount_paid,currency_paid,created_at"
+                f"&type=eq.purchase&created_at=gte.{since}&order=created_at.desc&limit=1000",
+                headers=_headers(), timeout=15,
+            )
+            purchases = r.json() if r.status_code == 200 else []
+    except Exception as e:
+        logger.warning(f"get_admin_sales_stats purchases error: {e}")
+        purchases = []
+
+    for p in purchases:
+        channel = p.get("channel") or "web"
+        amount_paid = float(p.get("amount_paid") or 0)
+        result["revenue_by_channel"][channel] = result["revenue_by_channel"].get(channel, 0) + amount_paid
+        result["revenue_total"] += amount_paid
+        if p.get("currency_paid"):
+            result["currency"] = p["currency_paid"]
+    result["recent"] = purchases[:20]
+
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles?select=utm_source&created_at=gte.{since}",
+                headers=_headers(), timeout=15,
+            )
+            profiles = r.json() if r.status_code == 200 else []
+    except Exception as e:
+        logger.warning(f"get_admin_sales_stats sources error: {e}")
+        profiles = []
+
+    by_source = {}
+    for p in profiles:
+        source = p.get("utm_source") or "direct"
+        by_source[source] = by_source.get(source, 0) + 1
+    result["by_source"] = by_source
+
+    return result
+
+
+async def get_pricing_tiers() -> list:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return []
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/credit_pricing_tiers?select=*&order=platform.asc,min_credits.asc",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code == 200:
+                return r.json()
+    except Exception as e:
+        logger.warning(f"get_pricing_tiers error: {e}")
+    return []
+
+
+async def add_pricing_tier(platform: str, min_credits: int, max_credits: int | None, price_per_credit: float, currency: str = "TRY") -> bool:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/credit_pricing_tiers",
+                headers=_headers(),
+                json={
+                    "platform": platform, "min_credits": min_credits, "max_credits": max_credits,
+                    "price_per_credit": price_per_credit, "currency": currency,
+                },
+                timeout=10,
+            )
+            return r.status_code in (200, 201)
+    except Exception as e:
+        logger.warning(f"add_pricing_tier error: {e}")
+    return False
+
+
+async def delete_pricing_tier(tier_id: str) -> bool:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.delete(
+                f"{SUPABASE_URL}/rest/v1/credit_pricing_tiers?id=eq.{tier_id}",
+                headers=_headers(), timeout=10,
+            )
+            return r.status_code in (200, 204)
+    except Exception as e:
+        logger.warning(f"delete_pricing_tier error: {e}")
+    return False
+
+
 async def get_admin_provider_usage() -> dict:
     """Call-count fallback for the 4 external AI motors (see anthropic_admin.py
     for the one motor - Anthropic - that also has real USD cost data)."""
