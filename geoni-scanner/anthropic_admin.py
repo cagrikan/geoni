@@ -21,11 +21,21 @@ ANTHROPIC_ADMIN_KEY = os.environ.get("ANTHROPIC_ADMIN_KEY", "")
 ANTHROPIC_VERSION = "2023-06-01"
 FMT = "%Y-%m-%dT%H:%M:%SZ"
 
-# All-time spend needs many paginated calls over a wide window - cache it so
-# every admin panel load doesn't re-walk the full history.
-ALL_TIME_START = datetime(2024, 1, 1, tzinfo=timezone.utc)
+# "All-time" is capped to a lookback window rather than a fixed old epoch: a
+# multi-year range needs many sequential paginated calls, and if any single
+# page errors the whole fetch returns early with only the (all-zero) earliest
+# pages summed - reporting $0 spend even when real recent spend is nonzero.
+# 120 days is few enough pages to be reliable while still covering realistic
+# GEONI-era usage. Cached so every admin panel load doesn't re-walk it.
+ALL_TIME_LOOKBACK_DAYS = 120
 _all_time_cache = {"value": None, "fetched_at": None}
 _ALL_TIME_CACHE_TTL = timedelta(hours=6)
+
+# The month-to-date fetch has no such natural cache, so repeated admin panel
+# reloads within a short window (or several admins/tabs open at once) hit
+# Anthropic's own rate limit (429) - cache the whole summary briefly too.
+_summary_cache = {"value": None, "fetched_at": None}
+_SUMMARY_CACHE_TTL = timedelta(minutes=5)
 
 
 async def _fetch_daily_cents(start: datetime, end: datetime) -> dict:
@@ -75,6 +85,10 @@ async def get_anthropic_cost_summary() -> dict | None:
         return None
 
     now = datetime.now(timezone.utc)
+
+    if _summary_cache["value"] is not None and _summary_cache["fetched_at"] and now - _summary_cache["fetched_at"] < _SUMMARY_CACHE_TTL:
+        return _summary_cache["value"]
+
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     month_cents = await _fetch_daily_cents(month_start, now)
@@ -82,7 +96,7 @@ async def get_anthropic_cost_summary() -> dict | None:
     if _all_time_cache["value"] is not None and _all_time_cache["fetched_at"] and now - _all_time_cache["fetched_at"] < _ALL_TIME_CACHE_TTL:
         usd_all_time = _all_time_cache["value"]
     else:
-        all_time_cents = await _fetch_daily_cents(ALL_TIME_START, now)
+        all_time_cents = await _fetch_daily_cents(now - timedelta(days=ALL_TIME_LOOKBACK_DAYS), now)
         usd_all_time = sum(all_time_cents.values()) / 100
         _all_time_cache["value"] = usd_all_time
         _all_time_cache["fetched_at"] = now
@@ -93,10 +107,13 @@ async def get_anthropic_cost_summary() -> dict | None:
     usd_week = sum(c for d, c in month_cents.items() if d >= week_start_key) / 100
     usd_month = sum(month_cents.values()) / 100
 
-    return {
+    result = {
         "usd_today": round(usd_today, 4),
         "usd_week": round(usd_week, 4),
         "usd_month": round(usd_month, 4),
         "usd_all_time": round(usd_all_time, 4),
         "daily": [{"date": d, "usd": round(c / 100, 4)} for d, c in sorted(month_cents.items())],
     }
+    _summary_cache["value"] = result
+    _summary_cache["fetched_at"] = now
+    return result
