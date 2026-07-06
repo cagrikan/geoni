@@ -105,12 +105,14 @@ async def get_anthropic_cost_summary() -> dict | None:
         # waiting out the full TTL).
         return _summary_cache["value"]
 
+    all_time_is_fresh = True
     if _all_time_cache["value"] is not None and _all_time_cache["fetched_at"] and now - _all_time_cache["fetched_at"] < _ALL_TIME_CACHE_TTL:
         usd_all_time = _all_time_cache["value"]
     else:
         all_time_cents = await _fetch_daily_cents(now - timedelta(days=ALL_TIME_LOOKBACK_DAYS), now)
         if all_time_cents is None:
             usd_all_time = _all_time_cache["value"] or 0.0
+            all_time_is_fresh = _all_time_cache["value"] is not None
         else:
             usd_all_time = sum(all_time_cents.values()) / 100
             _all_time_cache["value"] = usd_all_time
@@ -128,7 +130,9 @@ async def get_anthropic_cost_summary() -> dict | None:
         "usd_month": round(usd_month, 4),
         "usd_all_time": round(usd_all_time, 4),
         "daily": [{"date": d, "usd": round(c / 100, 4)} for d, c in sorted(month_cents.items())],
+        "as_of": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
-    _summary_cache["value"] = result
-    _summary_cache["fetched_at"] = now
+    if all_time_is_fresh:
+        _summary_cache["value"] = result
+        _summary_cache["fetched_at"] = now
     return result

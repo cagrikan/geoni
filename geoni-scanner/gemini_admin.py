@@ -169,6 +169,7 @@ async def get_gemini_cost_summary() -> dict | None:
         "usd_month": round(usd_month, 4),
         "usd_all_time": round(usd_all_time, 4),
         "daily": [{"date": d, "usd": round(v, 4)} for d, v in sorted(month_daily.items())],
+        "as_of": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     _summary_cache["value"] = result
     _summary_cache["fetched_at"] = now

@@ -66,4 +66,5 @@ async def get_perplexity_cost_summary() -> dict:
         "usd_all_time": round(usd_all_time, 4),
         "daily": [{"date": d, "usd": round(v, 4)} for d, v in sorted(month_daily.items())],
         "estimated": True,
+        "as_of": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
     }

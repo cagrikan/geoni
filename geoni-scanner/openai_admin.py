@@ -112,12 +112,18 @@ async def get_openai_cost_summary() -> dict | None:
         # touch fetched_at, so the next call retries immediately).
         return _summary_cache["value"]
 
+    all_time_is_fresh = True
     if _all_time_cache["value"] is not None and _all_time_cache["fetched_at"] and now - _all_time_cache["fetched_at"] < _ALL_TIME_CACHE_TTL:
         usd_all_time = _all_time_cache["value"]
     else:
         all_time_daily = await _fetch_daily_costs(now - timedelta(days=ALL_TIME_LOOKBACK_DAYS), now)
         if all_time_daily is None:
+            # Fetch failed - fall back to the last known value if we have one,
+            # but if we don't (e.g. right after a restart), showing 0 here is
+            # a stopgap that must NOT get locked into the summary cache below,
+            # or a transient failure becomes a persistent wrong $0.00.
             usd_all_time = _all_time_cache["value"] or 0.0
+            all_time_is_fresh = _all_time_cache["value"] is not None
         else:
             usd_all_time = sum(all_time_daily.values())
             _all_time_cache["value"] = usd_all_time
@@ -135,7 +141,9 @@ async def get_openai_cost_summary() -> dict | None:
         "usd_month": round(usd_month, 4),
         "usd_all_time": round(usd_all_time, 4),
         "daily": [{"date": d, "usd": round(v, 4)} for d, v in sorted(month_daily.items())],
+        "as_of": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
-    _summary_cache["value"] = result
-    _summary_cache["fetched_at"] = now
+    if all_time_is_fresh:
+        _summary_cache["value"] = result
+        _summary_cache["fetched_at"] = now
     return result

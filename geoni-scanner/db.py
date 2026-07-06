@@ -333,19 +333,26 @@ async def get_admin_summary() -> dict:
     """Cheapest possible admin panel numbers, run concurrently so this
     endpoint answers fast while the heavier widgets (charts, external API
     calls) load independently on their own endpoints."""
-    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+    week_start = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    total_users, total_audits, new_users_today, returning_users_today = await asyncio.gather(
+    (total_users, total_audits, new_users_today, returning_users_today,
+     new_users_week, returning_users_week) = await asyncio.gather(
         _count("profiles?select=id"),
         _count("audits?select=id"),
         _count(f"profiles?select=id&created_at=gte.{today_start}"),
         _returning_users_today(today_start),
+        _count(f"profiles?select=id&created_at=gte.{week_start}"),
+        _returning_users_today(week_start),
     )
     return {
         "total_users": total_users,
         "total_audits": total_audits,
         "new_users_today": new_users_today,
         "returning_users_today": returning_users_today,
+        "new_users_week": new_users_week,
+        "returning_users_week": returning_users_week,
     }
 
 
@@ -391,22 +398,31 @@ async def get_admin_scans_daily(days: int = 14) -> dict:
 
 
 async def get_admin_credits_stats(days: int = 14) -> dict:
-    """Purchased/spent totals plus a daily granted-vs-spent trend and a
-    breakdown of spend by reason (web/person/brand scan, admin adjustment)."""
-    result = {"purchased": 0, "spent": 0, "daily": [], "by_reason": {}}
+    """Purchased/spent/gifted totals plus a daily granted-vs-spent trend and a
+    breakdown of spend by reason (web/person/brand scan, admin adjustment).
+    Admin users are internal/test accounts, not real customers - their
+    activity is excluded from purchased/spent/gifted and the trend/reason
+    breakdown, and reported separately (admin_spent) instead."""
+    result = {"purchased": 0, "spent": 0, "gifted": 0, "admin_spent": 0, "daily": [], "by_reason": {}}
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return result
 
+    admin_ids = set()
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/profiles?select=total_credits_purchased,total_credits_spent",
+                f"{SUPABASE_URL}/rest/v1/profiles?select=id,total_credits_purchased,total_credits_spent,total_credits_gifted,is_admin",
                 headers=_headers(), timeout=10,
             )
             if r.status_code == 200:
                 for row in r.json():
-                    result["purchased"] += row.get("total_credits_purchased") or 0
-                    result["spent"] += row.get("total_credits_spent") or 0
+                    if row.get("is_admin"):
+                        admin_ids.add(row["id"])
+                        result["admin_spent"] += row.get("total_credits_spent") or 0
+                    else:
+                        result["purchased"] += row.get("total_credits_purchased") or 0
+                        result["spent"] += row.get("total_credits_spent") or 0
+                        result["gifted"] += row.get("total_credits_gifted") or 0
     except Exception as e:
         logger.warning(f"admin_credits totals error: {e}")
 
@@ -414,7 +430,7 @@ async def get_admin_credits_stats(days: int = 14) -> dict:
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/credit_transactions?select=amount,type,description,created_at&created_at=gte.{since}&order=created_at.asc&limit=5000",
+                f"{SUPABASE_URL}/rest/v1/credit_transactions?select=amount,type,description,created_at,user_id&created_at=gte.{since}&order=created_at.asc&limit=5000",
                 headers=_headers(), timeout=15,
             )
             rows = r.json() if r.status_code == 200 else []
@@ -425,6 +441,8 @@ async def get_admin_credits_stats(days: int = 14) -> dict:
     daily_buckets = {}
     reason_totals = {}
     for row in rows:
+        if row.get("user_id") in admin_ids:
+            continue
         date_key = (row.get("created_at") or "")[:10]
         amount = row.get("amount") or 0
         if date_key:
@@ -628,7 +646,7 @@ async def admin_list_users(search: str = "", limit: int = 50, offset: int = 0) -
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/profiles?select=id,full_name,credit_balance,total_credits_purchased,total_credits_spent,is_admin,created_at&order=created_at.desc&limit=1000",
+                f"{SUPABASE_URL}/rest/v1/profiles?select=id,full_name,credit_balance,total_credits_purchased,total_credits_spent,total_credits_gifted,is_admin,created_at&order=created_at.desc&limit=1000",
                 headers=_headers(), timeout=15,
             )
             profiles = r.json() if r.status_code == 200 else []
@@ -649,13 +667,16 @@ async def admin_list_users(search: str = "", limit: int = 50, offset: int = 0) -
 
 
 async def admin_adjust_credits(user_id: str, delta: int, reason: str = "") -> bool:
-    """Manual credit grant (positive delta) or deduction (negative delta) by an admin."""
+    """Manual credit grant (positive delta) or deduction (negative delta) by an admin.
+    Grants are tracked in total_credits_gifted, NOT total_credits_purchased - a gift
+    isn't revenue, and once a real payment flow exists, purchased-based earnings
+    calculations must not count these."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not delta:
         return False
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credit_balance,total_credits_purchased",
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credit_balance,total_credits_gifted",
                 headers=_headers(), timeout=10,
             )
             if r.status_code != 200 or not r.json():
@@ -664,7 +685,7 @@ async def admin_adjust_credits(user_id: str, delta: int, reason: str = "") -> bo
             new_balance = max(0, row.get("credit_balance", 0) + delta)
             update = {"credit_balance": new_balance}
             if delta > 0:
-                update["total_credits_purchased"] = (row.get("total_credits_purchased") or 0) + delta
+                update["total_credits_gifted"] = (row.get("total_credits_gifted") or 0) + delta
 
             patch_r = await client.patch(
                 f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
