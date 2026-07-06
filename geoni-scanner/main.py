@@ -28,6 +28,7 @@ from db import (
     save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits,
     is_strict_admin, get_admin_summary, get_admin_scans_daily, get_admin_credits_stats, get_admin_provider_usage,
     admin_list_users, admin_list_audits, admin_adjust_credits, admin_set_is_admin,
+    get_manual_balances, set_manual_balance,
 )
 from anthropic_admin import get_anthropic_cost_summary
 from aws_cost import get_aws_cost_summary
@@ -495,6 +496,23 @@ async def admin_stats_anthropic_cost(http_request: Request):
 async def admin_stats_aws_cost(http_request: Request):
     await _require_admin(http_request)
     return await asyncio.to_thread(get_aws_cost_summary) or {}
+
+class ManualBalanceRequest(BaseModel):
+    provider: str
+    balance: float
+    currency: Optional[str] = "USD"
+
+@app.get("/api/admin/stats/manual-balances")
+async def admin_manual_balances(http_request: Request):
+    await _require_admin(http_request)
+    return await get_manual_balances()
+
+@app.post("/api/admin/stats/manual-balances")
+async def admin_set_manual_balance(body: ManualBalanceRequest, http_request: Request):
+    await _require_admin(http_request)
+    if not await set_manual_balance(body.provider, body.balance, body.currency):
+        raise HTTPException(status_code=400, detail="Balance update failed")
+    return {"success": True}
 
 @app.get("/api/admin/users")
 async def admin_users(http_request: Request, search: str = "", limit: int = 50, offset: int = 0):

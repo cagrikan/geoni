@@ -473,6 +473,47 @@ async def get_admin_provider_usage() -> dict:
     return provider_usage
 
 
+async def get_manual_balances() -> dict:
+    """Manually-entered real balances for providers with no balance API
+    (OpenAI, Google, Perplexity, Tavily) - keyed by provider."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return {}
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/manual_balances?select=provider,balance,currency,updated_at",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code == 200:
+                return {row["provider"]: row for row in r.json()}
+            logger.info(f"manual_balances query failed ({r.status_code}) - table may not exist yet")
+    except Exception as e:
+        logger.warning(f"get_manual_balances error: {e}")
+    return {}
+
+
+async def set_manual_balance(provider: str, balance: float, currency: str = "USD") -> bool:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/manual_balances",
+                headers={**_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
+                json={
+                    "provider": provider,
+                    "balance": balance,
+                    "currency": currency,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                },
+                timeout=10,
+            )
+            return r.status_code in (200, 201, 204)
+    except Exception as e:
+        logger.warning(f"set_manual_balance error: {e}")
+    return False
+
+
 async def admin_list_users(search: str = "", limit: int = 50, offset: int = 0) -> dict:
     """Merges profiles with auth emails (profiles has no email column). Search/pagination done in-process - fine at MVP scale."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
