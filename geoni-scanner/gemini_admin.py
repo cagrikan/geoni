@@ -11,6 +11,12 @@ read-only service account (GCP_BILLING_SA_KEY secret - BigQuery Data Viewer
 Billing export data lags real usage by up to ~24h, so "today" may be
 incomplete/zero even with real spend happening - this is a BigQuery/export
 limitation, not a bug here.
+
+The billing account has a "Prepay - AI Studio" ledger (a real prepaid
+credit balance, unlike AWS's pure postpaid model) - amounts are in the
+account's own currency (TRY), not USD. The admin panel pairs this real
+cost with a manually-logged top-up total (like OpenAI/Anthropic) to
+estimate remaining balance.
 """
 
 import os
