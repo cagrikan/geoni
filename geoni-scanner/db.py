@@ -514,6 +514,59 @@ async def set_manual_balance(provider: str, balance: float, currency: str = "USD
     return False
 
 
+async def get_manual_topups_total(provider: str) -> float:
+    """Sum of all logged top-ups for a provider (e.g. openai) - paired with
+    the provider's real Costs API spend to estimate remaining balance,
+    since top-ups happen repeatedly over time rather than as one fixed value."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return 0.0
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/manual_topups?select=amount&provider=eq.{provider}",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code == 200:
+                return sum(float(row.get("amount") or 0) for row in r.json())
+            logger.info(f"manual_topups query failed ({r.status_code}) - table may not exist yet")
+    except Exception as e:
+        logger.warning(f"get_manual_topups_total error: {e}")
+    return 0.0
+
+
+async def list_manual_topups(provider: str, limit: int = 20) -> list:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return []
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/manual_topups?select=id,amount,note,created_at&provider=eq.{provider}&order=created_at.desc&limit={limit}",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code == 200:
+                return r.json()
+    except Exception as e:
+        logger.warning(f"list_manual_topups error: {e}")
+    return []
+
+
+async def add_manual_topup(provider: str, amount: float, note: str = "") -> bool:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/manual_topups",
+                headers=_headers(),
+                json={"provider": provider, "amount": amount, "note": note},
+                timeout=10,
+            )
+            return r.status_code in (200, 201)
+    except Exception as e:
+        logger.warning(f"add_manual_topup error: {e}")
+    return False
+
+
 async def admin_list_users(search: str = "", limit: int = 50, offset: int = 0) -> dict:
     """Merges profiles with auth emails (profiles has no email column). Search/pagination done in-process - fine at MVP scale."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:

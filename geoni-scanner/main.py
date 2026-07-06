@@ -28,10 +28,11 @@ from db import (
     save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits,
     is_strict_admin, get_admin_summary, get_admin_scans_daily, get_admin_credits_stats, get_admin_provider_usage,
     admin_list_users, admin_list_audits, admin_adjust_credits, admin_set_is_admin,
-    get_manual_balances, set_manual_balance,
+    get_manual_balances, set_manual_balance, get_manual_topups_total, list_manual_topups, add_manual_topup,
 )
 from anthropic_admin import get_anthropic_cost_summary
 from aws_cost import get_aws_cost_summary
+from openai_admin import get_openai_cost_summary
 
 class AuditRequest(BaseModel):
     domain: str
@@ -512,6 +513,30 @@ async def admin_set_manual_balance(body: ManualBalanceRequest, http_request: Req
     await _require_admin(http_request)
     if not await set_manual_balance(body.provider, body.balance, body.currency):
         raise HTTPException(status_code=400, detail="Balance update failed")
+    return {"success": True}
+
+@app.get("/api/admin/stats/openai-cost")
+async def admin_stats_openai_cost(http_request: Request):
+    await _require_admin(http_request)
+    return await get_openai_cost_summary() or {}
+
+class TopupRequest(BaseModel):
+    provider: str
+    amount: float
+    note: Optional[str] = ""
+
+@app.get("/api/admin/stats/topups")
+async def admin_topups(http_request: Request, provider: str):
+    await _require_admin(http_request)
+    total = await get_manual_topups_total(provider)
+    history = await list_manual_topups(provider)
+    return {"total": total, "history": history}
+
+@app.post("/api/admin/stats/topups")
+async def admin_add_topup(body: TopupRequest, http_request: Request):
+    await _require_admin(http_request)
+    if not await add_manual_topup(body.provider, body.amount, body.note):
+        raise HTTPException(status_code=400, detail="Top-up kaydedilemedi")
     return {"success": True}
 
 @app.get("/api/admin/users")
