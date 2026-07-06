@@ -33,6 +33,7 @@ from db import (
 from anthropic_admin import get_anthropic_cost_summary
 from aws_cost import get_aws_cost_summary
 from openai_admin import get_openai_cost_summary
+from tavily_admin import get_tavily_usage_summary
 
 class AuditRequest(BaseModel):
     domain: str
@@ -519,6 +520,11 @@ async def admin_set_manual_balance(body: ManualBalanceRequest, http_request: Req
 async def admin_stats_openai_cost(http_request: Request):
     await _require_admin(http_request)
     return await get_openai_cost_summary() or {}
+
+@app.get("/api/admin/stats/tavily-usage")
+async def admin_stats_tavily_usage(http_request: Request):
+    await _require_admin(http_request)
+    return await get_tavily_usage_summary()
 
 class TopupRequest(BaseModel):
     provider: str
