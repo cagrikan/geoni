@@ -518,7 +518,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
     <button type="button" class="nav-toggle-btn" id="theme-toggle" title="Tema" aria-label="Tema degistir">
       <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></svg>
     </button>
-    <button type="button" class="nav-toggle-btn" id="lang-toggle" title="Language" aria-label="Dil degistir">TR</button>
+    <button type="button" class="nav-toggle-btn" id="lang-toggle" title="Language" aria-label="Dil degistir">EN</button>
   </div>
 </nav>
 
@@ -1019,7 +1019,7 @@ function applyLang(lang) {
     }
   });
   const langBtn = document.getElementById('lang-toggle');
-  if (langBtn) langBtn.textContent = lang === 'en' ? 'EN' : 'TR';
+  if (langBtn) langBtn.textContent = lang === 'en' ? 'TR' : 'EN';
 }
 
 function toggleLang() {
