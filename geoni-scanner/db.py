@@ -300,15 +300,52 @@ async def _count(query: str) -> int:
         return 0
 
 
+async def _returning_users_today(today_start: str) -> int:
+    """Users who scanned today but whose profile predates today (as opposed
+    to a brand-new signup scanning for the first time same-day)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return 0
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/audits?select=user_id&created_at=gte.{today_start}&limit=5000",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code != 200:
+                return 0
+            active_ids = {row["user_id"] for row in r.json() if row.get("user_id")}
+            if not active_ids:
+                return 0
+            r2 = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles?select=id,created_at&id=in.({','.join(active_ids)})",
+                headers=_headers(), timeout=10,
+            )
+            if r2.status_code != 200:
+                return 0
+            return sum(1 for row in r2.json() if (row.get("created_at") or "") < today_start)
+    except Exception as e:
+        logger.warning(f"returning_users_today error: {e}")
+        return 0
+
+
 async def get_admin_summary() -> dict:
-    """Cheapest possible admin panel numbers - the two plain counts, run
-    concurrently so this endpoint answers fast while the heavier widgets
-    (charts, external API calls) load independently on their own endpoints."""
-    total_users, total_audits = await asyncio.gather(
+    """Cheapest possible admin panel numbers, run concurrently so this
+    endpoint answers fast while the heavier widgets (charts, external API
+    calls) load independently on their own endpoints."""
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    total_users, total_audits, new_users_today, returning_users_today = await asyncio.gather(
         _count("profiles?select=id"),
         _count("audits?select=id"),
+        _count(f"profiles?select=id&created_at=gte.{today_start}"),
+        _returning_users_today(today_start),
     )
-    return {"total_users": total_users, "total_audits": total_audits}
+    return {
+        "total_users": total_users,
+        "total_audits": total_audits,
+        "new_users_today": new_users_today,
+        "returning_users_today": returning_users_today,
+    }
 
 
 async def get_admin_scans_daily(days: int = 14) -> dict:
