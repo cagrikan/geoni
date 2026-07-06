@@ -233,6 +233,8 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 .premium-teaser p{color:var(--text-sub);font-size:.82rem;margin-bottom:14px;line-height:1.6}
 .premium-teaser a{display:inline-block;background:var(--accent);color:#FFFFFF;padding:9px 20px;border-radius:8px;font-size:.83rem;font-weight:600;text-decoration:none;transition:opacity .2s}
 .premium-teaser a:hover{opacity:.85}
+.premium-teaser-btn{display:inline-block;margin-top:8px;background:var(--accent);color:#FFFFFF;padding:8px 18px;border-radius:8px;font-size:.8rem;font-weight:600;text-decoration:none;transition:opacity .2s}
+.premium-teaser-btn:hover{opacity:.85}
 .web-result{margin-top:12px;padding:14px 16px;border-radius:10px;border:1px solid var(--border-mid);background:var(--surface-2)}
 .web-result__badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.74rem;padding:4px 10px;border-radius:20px;margin-bottom:8px}
 .web-result__badge--yes{background:rgba(74,222,128,.1);color:var(--good);border:1px solid rgba(74,222,128,.25)}
@@ -833,6 +835,7 @@ const I18N = {
     "demo_web_known": "AI bu siteyi/markayı tanıyor",
     "demo_web_unknown": "AI bu siteyi/markayı tanımıyor",
     "demo_web_limit": "Ücretsiz deneme hakkınızı kullandınız.",
+    "demo_web_limit_cta": "Giriş Yap →",
     "demo_web_error": "Bir şeyler ters gitti, lütfen tekrar deneyin.",
     "demo_web_placeholder_hint": "Bir domain girip AI'ın onu tanıyıp tanımadığına bakın.",
     "insight1_eyebrow": "// Aramanın dönüşümü",
@@ -951,6 +954,7 @@ const I18N = {
     "demo_web_known": "AI recognizes this site/brand",
     "demo_web_unknown": "AI doesn't recognize this site/brand",
     "demo_web_limit": "You've used your free trial queries.",
+    "demo_web_limit_cta": "Log In →",
     "demo_web_error": "Something went wrong, please try again.",
     "demo_web_placeholder_hint": "Enter a domain and see if AI recognizes it.",
     "insight1_eyebrow": "// The shift in search",
@@ -1410,7 +1414,11 @@ async function runWebCheck() {
   // Ucretsiz deneme limiti: 3 hak (localStorage bazli)
   const queryCount = parseInt(localStorage.getItem('geoni_web_query_count') || '0');
   if (queryCount >= 3) {
-    resultEl.innerHTML = `<div class="web-result"><div class="web-result__desc">⏳ ${dict.demo_web_limit}</div></div>`;
+    resultEl.innerHTML = `
+      <div class="web-result">
+        <div class="web-result__desc">⏳ ${dict.demo_web_limit}</div>
+        <a href="https://app.geoni.ai/login" class="premium-teaser-btn">${dict.demo_web_limit_cta}</a>
+      </div>`;
     return;
   }
 
