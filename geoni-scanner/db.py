@@ -539,11 +539,12 @@ async def get_admin_sales_stats(days: int = 14) -> dict:
     """Real revenue (from actual Lemon Squeezy purchases), broken down by
     channel (web/ios/android) and by signup traffic source (utm_source),
     plus a list of recent purchases for the Satış tab."""
-    result = {"revenue_by_channel": {}, "revenue_total": 0, "currency": "TRY", "by_source": {}, "recent": []}
+    result = {"revenue_by_channel": {}, "revenue_total": 0, "currency": "TRY", "by_source": {}, "recent": [], "daily": []}
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return result
 
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(timezone.utc)
+    since = (now - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(
@@ -557,6 +558,7 @@ async def get_admin_sales_stats(days: int = 14) -> dict:
         logger.warning(f"get_admin_sales_stats purchases error: {e}")
         purchases = []
 
+    daily_buckets = {}
     for p in purchases:
         channel = p.get("channel") or "web"
         amount_paid = float(p.get("amount_paid") or 0)
@@ -564,7 +566,12 @@ async def get_admin_sales_stats(days: int = 14) -> dict:
         result["revenue_total"] += amount_paid
         if p.get("currency_paid"):
             result["currency"] = p["currency_paid"]
+        date_key = (p.get("created_at") or "")[:10]
+        if date_key:
+            daily_buckets[date_key] = daily_buckets.get(date_key, 0) + amount_paid
     result["recent"] = purchases[:20]
+    ordered_days = [(now - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days - 1, -1, -1)]
+    result["daily"] = [{"date": d, "revenue": round(daily_buckets.get(d, 0), 2)} for d in ordered_days]
 
     try:
         async with httpx.AsyncClient() as client:
