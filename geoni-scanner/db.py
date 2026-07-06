@@ -301,15 +301,20 @@ async def _count(query: str) -> int:
         return 0
 
 
-async def _returning_users_today(today_start: str) -> int:
-    """Users who scanned today but whose profile predates today (as opposed
-    to a brand-new signup scanning for the first time same-day)."""
+async def _returning_users(activity_since: str, signup_before: str) -> int:
+    """Users active (scanned) since `activity_since` whose profile predates
+    `signup_before` (as opposed to a brand-new signup scanning for the first
+    time). `signup_before` must be the SAME fixed cutoff (today_start) across
+    both the "today" and "this week" calls - otherwise the two counts use
+    different definitions of "new" and today's number can exceed the week's,
+    which reads as a bug (today's activity is a subset of the week's, so its
+    returning-count must be too)."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return 0
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/audits?select=user_id&created_at=gte.{today_start}&limit=5000",
+                f"{SUPABASE_URL}/rest/v1/audits?select=user_id&created_at=gte.{activity_since}&limit=5000",
                 headers=_headers(), timeout=10,
             )
             if r.status_code != 200:
@@ -323,9 +328,9 @@ async def _returning_users_today(today_start: str) -> int:
             )
             if r2.status_code != 200:
                 return 0
-            return sum(1 for row in r2.json() if (row.get("created_at") or "") < today_start)
+            return sum(1 for row in r2.json() if (row.get("created_at") or "") < signup_before)
     except Exception as e:
-        logger.warning(f"returning_users_today error: {e}")
+        logger.warning(f"returning_users error: {e}")
         return 0
 
 
@@ -342,9 +347,9 @@ async def get_admin_summary() -> dict:
         _count("profiles?select=id"),
         _count("audits?select=id"),
         _count(f"profiles?select=id&created_at=gte.{today_start}"),
-        _returning_users_today(today_start),
+        _returning_users(today_start, today_start),
         _count(f"profiles?select=id&created_at=gte.{week_start}"),
-        _returning_users_today(week_start),
+        _returning_users(week_start, today_start),
     )
     return {
         "total_users": total_users,
