@@ -120,7 +120,6 @@ async def get_openai_cost_summary() -> dict | None:
             usd_all_time = _all_time_cache["value"] or 0.0
         else:
             usd_all_time = sum(all_time_daily.values())
-            logger.info(f"OpenAI all-time debug: {len(all_time_daily)} day-buckets, sum={usd_all_time}, sample={list(all_time_daily.items())[-5:]}")
             _all_time_cache["value"] = usd_all_time
             _all_time_cache["fetched_at"] = now
 

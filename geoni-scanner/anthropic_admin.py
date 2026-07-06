@@ -113,7 +113,6 @@ async def get_anthropic_cost_summary() -> dict | None:
             usd_all_time = _all_time_cache["value"] or 0.0
         else:
             usd_all_time = sum(all_time_cents.values()) / 100
-            logger.info(f"Anthropic all-time debug: {len(all_time_cents)} day-buckets, sum_usd={usd_all_time}, sample={list(all_time_cents.items())[-5:]}")
             _all_time_cache["value"] = usd_all_time
             _all_time_cache["fetched_at"] = now
 
