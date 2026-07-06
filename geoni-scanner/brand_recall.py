@@ -324,7 +324,8 @@ async def _ask_gemini(prompt: str, temperature: float = RECALL_TEMPERATURE, max_
     try:
         async with httpx.AsyncClient() as c:
             r = await c.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GOOGLE_API_KEY}",
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+                headers={"x-goog-api-key": GOOGLE_API_KEY},
                 json={"contents": [{"role": "user", "parts": [{"text": prompt}]}],
                       "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature}},
                 timeout=30,
