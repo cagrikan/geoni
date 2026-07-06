@@ -34,6 +34,9 @@
   --audit-panel-bg:#0A0A1A;
   --audit-head-bg:#07070F;
   --option-bg:#0E0E1C;
+  --good:#4ade80;
+  --warn:#FBBF24;
+  --bad:#f87171;
 }
 :root[data-theme="light"]{
   --bg:#F8FAFC;
@@ -54,6 +57,9 @@
   --audit-panel-bg:#FFFFFF;
   --audit-head-bg:#F8FAFC;
   --option-bg:#FFFFFF;
+  --good:#16A34A;
+  --warn:#B45309;
+  --bad:#DC2626;
 }
 @media(prefers-color-scheme:light){
   :root:not([data-theme="dark"]){
@@ -64,6 +70,7 @@
     --nav-bg:rgba(248,250,252,0.8); --chat-input-bg:#F1F5F9;
     --bubble-ai-bg:#EEF2FF; --bubble-ai-text:#334155;
     --audit-panel-bg:#FFFFFF; --audit-head-bg:#F8FAFC; --option-bg:#FFFFFF;
+    --good:#16A34A; --warn:#B45309; --bad:#DC2626;
   }
 }
 html{scroll-behavior:smooth}
@@ -293,35 +300,54 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 .audit-send:disabled{opacity:.35;cursor:not-allowed}
 @media(max-width:600px){.audit-panel{width:calc(100vw - 32px);right:16px;bottom:80px}}
 
-/* SAMPLE REPORT MODAL */
+/* SAMPLE REPORT MODAL - api.geoni.ai'daki gercek sonuc sayfasi (results/
+   score-gauge/breakdown/topics) ile ayni gorsel dil, birebir tasindi */
 .sample-modal-overlay{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;backdrop-filter:blur(4px);transition:opacity .2s}
 .sample-modal-overlay.hidden{display:none}
-.sample-modal{position:relative;width:100%;max-width:720px;background:var(--surface);border:1px solid var(--border-mid);border-radius:20px;box-shadow:0 40px 100px rgba(0,0,0,.5);padding:32px;margin-bottom:40px}
-.sample-modal__close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--text-muted);font-size:1.3rem;cursor:pointer;padding:6px 10px;border-radius:8px;transition:color .2s}
+.sample-modal{position:relative;width:100%;max-width:900px;background:var(--surface);border:1px solid var(--border-mid);border-radius:20px;box-shadow:0 40px 100px rgba(0,0,0,.5);padding:8px 8px 32px;margin-bottom:40px}
+.sample-modal__close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--text-muted);font-size:1.3rem;cursor:pointer;padding:6px 10px;border-radius:8px;transition:color .2s;z-index:1}
 .sample-modal__close:hover{color:var(--text)}
-.sample-modal__banner{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:10px;padding:12px 16px;font-size:.8rem;color:#F59E0B;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin-bottom:24px;font-family:var(--mono)}
+.sample-modal__banner{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:10px;padding:12px 16px;font-size:.8rem;color:#F59E0B;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin:24px 24px 0;font-family:var(--mono)}
 .sample-modal__banner a{color:var(--accent);text-decoration:none;font-weight:700}
 .sample-modal__banner a:hover{text-decoration:underline}
-.sr-head{display:flex;align-items:center;gap:16px;margin-bottom:24px}
-.sr-avatar{width:56px;height:56px;border-radius:50%;background:var(--accent-dim);border:1px solid var(--border-mid);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:1.3rem;color:var(--accent);flex-shrink:0}
-.sr-name{font-family:var(--display);font-size:1.25rem;font-weight:700;color:var(--text)}
-.sr-role{font-size:.85rem;color:var(--text-sub);margin-top:2px}
-.sr-score-row{display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center;background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:20px 24px;margin-bottom:24px}
-.sr-score-num{font-family:var(--display);font-size:2.6rem;font-weight:700;color:var(--accent);line-height:1}
-.sr-score-label{font-size:.7rem;font-family:var(--mono);color:var(--text-muted);letter-spacing:.08em;text-transform:uppercase;margin-top:4px}
-.sr-models{display:flex;gap:10px;flex-wrap:wrap}
-.sr-model{display:flex;align-items:center;gap:6px;font-size:.78rem;font-family:var(--mono);padding:5px 11px;border-radius:20px;border:1px solid var(--border-mid)}
-.sr-model--yes{color:#4ade80;border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.06)}
-.sr-model--no{color:#f87171;border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.06)}
-.sr-summary{color:var(--text-sub);font-size:.92rem;line-height:1.7;margin-bottom:24px}
-.sr-cols{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-.sr-col h4{font-family:var(--display);font-size:.85rem;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:6px}
-.sr-col ul{list-style:none;display:flex;flex-direction:column;gap:9px}
-.sr-col li{font-size:.82rem;color:var(--text-sub);line-height:1.5;padding-left:16px;position:relative}
-.sr-col li::before{position:absolute;left:0}
-.sr-col--ok li::before{content:'✓';color:#4ade80}
-.sr-col--gap li::before{content:'△';color:#F59E0B}
-@media(max-width:600px){.sr-cols{grid-template-columns:1fr}.sample-modal{padding:22px}}
+
+/* ── results (api.geoni.ai/ResultsPage'den birebir) ── */
+.results{max-width:1100px;margin:0 auto;padding:24px 32px 8px}
+.results__header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:32px;padding-bottom:24px;border-bottom:1px solid var(--border-mid);flex-wrap:wrap;gap:16px}
+.results__scanned{display:flex;flex-direction:column;align-items:flex-end;text-align:right}
+.results__scanned-label{font-family:var(--mono);font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px}
+.results__scanned-value{font-family:var(--mono);font-size:.95rem;color:var(--accent)}
+.results__title{font-family:var(--display);font-size:clamp(1.4rem,2.4vw,1.9rem);font-weight:700;color:var(--text);margin:0 0 6px}
+.results__date{font-family:var(--mono);font-size:.78rem;color:var(--text-muted)}
+.results__top{display:grid;grid-template-columns:220px 1fr;gap:24px;margin-bottom:32px}
+.score-gauge{background:var(--surface-2);border:1px solid var(--border-mid);border-radius:18px;padding:24px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.score-gauge__svg{width:140px;height:140px;margin-bottom:16px}
+.score-gauge__num{font-family:var(--display);font-size:2.2rem;font-weight:700;font-variant-numeric:tabular-nums}
+.score-gauge__label{font-family:var(--mono);font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-top:6px}
+.breakdown{background:var(--surface-2);border:1px solid var(--border);border-radius:18px;padding:24px 28px;display:flex;flex-direction:column;gap:14px;justify-content:center}
+.breakdown__row{display:flex;flex-direction:column;gap:6px}
+.breakdown__row-top{display:flex;justify-content:space-between;font-size:.85rem}
+.breakdown__row-label{color:var(--text-sub)}
+.breakdown__row-value{font-family:var(--mono);color:var(--text);font-variant-numeric:tabular-nums}
+.breakdown__bar-track{height:6px;background:var(--border);border-radius:4px;overflow:hidden}
+.breakdown__bar-fill{height:100%;border-radius:4px;background:var(--accent);transition:width .6s ease}
+.results__stats{display:grid;grid-template-columns:repeat(4,1fr);background:var(--border);border:1px solid var(--border);border-radius:16px;overflow:hidden;gap:1px;margin-bottom:32px}
+.results__stats--six{grid-template-columns:repeat(3,1fr)}
+.results__stat{background:var(--surface);padding:18px 16px;text-align:center}
+.results__stat-n{font-family:var(--display);font-size:1.4rem;font-weight:700;color:var(--accent);display:block}
+.results__stat-l{color:var(--text-sub);font-size:.74rem;margin-top:4px;font-family:var(--mono)}
+.topics{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.topics__col h3{font-family:var(--display);font-size:1rem;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.topics__col-icon{color:var(--accent);flex-shrink:0}
+.topic-card{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:10px}
+.topic-card__title{font-size:.87rem;color:var(--text);margin-bottom:8px;line-height:1.4}
+.topic-card__meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.topic-badge{font-family:var(--mono);font-size:.66rem;padding:3px 9px;border-radius:20px;letter-spacing:.03em}
+.topic-badge--platform{background:rgba(129,140,248,.1);color:var(--accent);border:1px solid rgba(129,140,248,.2)}
+.topic-badge--competitor{background:rgba(248,113,113,.08);color:#FCA5A5;border:1px solid rgba(248,113,113,.18)}
+.topics__empty{color:var(--text-muted);font-size:.85rem;font-family:var(--mono);padding:20px;text-align:center;border:1px dashed var(--border-mid);border-radius:12px}
+@media(max-width:800px){.results__top{grid-template-columns:1fr}.results__stats{grid-template-columns:repeat(2,1fr)}.topics{grid-template-columns:1fr}}
+@media(max-width:600px){.sample-modal{padding:8px 4px 22px}.results{padding:20px 14px 8px}}
 </style>
 
   <!-- LLM.txt -->
@@ -853,10 +879,7 @@ const I18N = {
     "audit_subtitle": "Ücretsiz AI Görünürlük Raporu",
     "audit_input_ph": "Yanıtınızı yazın...",
     "sample_banner_note": "Bu bir örnek rapordur — gerçek veri değildir.",
-    "sample_banner_cta": "Kendi Sitenizi Ücretsiz Tarayın →",
-    "sample_score_label": "GEO Görünürlük Skoru",
-    "sample_col_performing": "Güçlü Olduğu Konular",
-    "sample_col_opportunity": "Fırsat Alanları"
+    "sample_banner_cta": "Kendi Sitenizi Ücretsiz Tarayın →"
   },
   "en": {
     "nav_why": "Why GEO",
@@ -967,10 +990,7 @@ const I18N = {
     "audit_subtitle": "Free AI Visibility Report",
     "audit_input_ph": "Type your answer...",
     "sample_banner_note": "This is a sample report — not real data.",
-    "sample_banner_cta": "Scan Your Own Site For Free →",
-    "sample_score_label": "GEO Visibility Score",
-    "sample_col_performing": "Strong Topics",
-    "sample_col_opportunity": "Opportunity Areas"
+    "sample_banner_cta": "Scan Your Own Site For Free →"
   }
 };
 let CURRENT_LANG = localStorage.getItem('geoni_site_lang') || 'tr';
@@ -1037,103 +1057,169 @@ function toggleTheme() {
   document.getElementById('lang-toggle').addEventListener('click', toggleLang);
 })();
 
-// ── ORNEK RAPOR MODALI ───────────────────────────────────────────────────
+// ── ORNEK RAPOR MODALI (api.geoni.ai/BrandCheckResultsPage ile ayni veri
+// seklini ve gorsel dili kullanir: score_breakdown, model_results,
+// performing_topics/opportunity_topics) ──────────────────────────────────
+const SAMPLE_LABELS = {
+  tr: {
+    title: 'AI Görünürlük Raporu', queried: 'SORGULANAN', scoreLabel: 'GEO Skoru',
+    claude: 'Claude', chatgpt: 'ChatGPT', gemini: 'Gemini', perplexity: 'Perplexity',
+    yanit_kalitesi: 'Yanıt Kalitesi', konu_uyumu: 'Konu Uyumu',
+    recognizingModels: 'Tanıyan Model', webResults: 'Web Sonucu',
+    claudeRecognizes: 'Claude Tanıyor mu', chatgptRecognizes: 'ChatGPT Tanıyor mu',
+    geminiRecognizes: 'Gemini Tanıyor mu', perplexityRecognizes: 'Perplexity Tanıyor mu',
+    yes: 'Evet', no: 'Hayır',
+    strongTopics: 'Güçlü Olduğu Konular', opportunities: 'Fırsat Alanları',
+  },
+  en: {
+    title: 'AI Visibility Report', queried: 'QUERIED', scoreLabel: 'GEO Score',
+    claude: 'Claude', chatgpt: 'ChatGPT', gemini: 'Gemini', perplexity: 'Perplexity',
+    yanit_kalitesi: 'Response Quality', konu_uyumu: 'Topic Relevance',
+    recognizingModels: 'Recognizing Models', webResults: 'Web Results',
+    claudeRecognizes: 'Claude Recognizes', chatgptRecognizes: 'ChatGPT Recognizes',
+    geminiRecognizes: 'Gemini Recognizes', perplexityRecognizes: 'Perplexity Recognizes',
+    yes: 'Yes', no: 'No',
+    strongTopics: 'Strong Topics', opportunities: 'Opportunity Areas',
+  },
+};
+
 const SAMPLE_REPORTS = [
   {
-    initials: 'EM',
     name: 'Elon Musk',
-    role: { tr: 'CEO, Tesla & SpaceX', en: 'CEO, Tesla & SpaceX' },
+    topic: { tr: 'elektrikli araç ve uzay teknolojisi', en: 'electric vehicles & space technology' },
     score: 94,
-    models: { chatgpt: true, claude: true, gemini: true, perplexity: true },
-    summary: {
-      tr: 'Dört büyük AI motorunda da güçlü ve tutarlı şekilde tanınıyor. Elektrikli araç ve uzay teknolojisi sorgularında neredeyse her yanıtta ilk sırada geçiyor.',
-      en: 'Recognized strongly and consistently across all four major AI engines. Appears near the top of almost every answer for EV and space-technology queries.',
-    },
-    performing: {
-      tr: ['Elektrikli araç teknolojisi', 'Uzay taşımacılığı ve roket teknolojisi', 'Yapay zeka güvenliği tartışmaları', 'Yenilenebilir enerji girişimleri'],
-      en: ['Electric vehicle technology', 'Space transportation & rocketry', 'AI safety debates', 'Renewable energy ventures'],
-    },
-    opportunity: {
-      tr: ['Yeni girişim duyurularında ilk 48 saatte görünürlük'],
-      en: ['Visibility in the first 48 hours after new venture announcements'],
-    },
+    score_breakdown: { claude: 96, chatgpt: 95, gemini: 92, perplexity: 93, yanit_kalitesi: 91, konu_uyumu: 97 },
+    model_results: { claude: { recognized: true }, chatgpt: { recognized: true }, gemini: { recognized: true }, perplexity: { recognized: true } },
+    google_result_count: 48,
+    performing_topics: [
+      { topic: { tr: 'Elektrikli araç teknolojisi', en: 'Electric vehicle technology' }, platforms: ['claude','chatgpt','gemini'], source_url: 'https://tesla.com' },
+      { topic: { tr: 'Uzay taşımacılığı ve roket teknolojisi', en: 'Space transportation & rocketry' }, platforms: ['claude','chatgpt','gemini','perplexity'], source_url: 'https://spacex.com' },
+      { topic: { tr: 'Yapay zeka güvenliği tartışmaları', en: 'AI safety debates' }, platforms: ['chatgpt','perplexity'] },
+    ],
+    opportunity_topics: [
+      { topic: { tr: 'Yeni girişim duyurularında ilk 48 saatlik görünürlük', en: 'Visibility in the first 48h after new venture announcements' }, platforms: [], competitors: ['Sam Altman', 'Jeff Bezos'] },
+    ],
   },
   {
-    initials: 'BG',
     name: 'Bill Gates',
-    role: { tr: 'Kurucu, Microsoft · Gates Foundation', en: 'Founder, Microsoft · Gates Foundation' },
+    topic: { tr: 'teknoloji ve küresel sağlık', en: 'technology & global health' },
     score: 91,
-    models: { chatgpt: true, claude: true, gemini: true, perplexity: false },
-    summary: {
-      tr: 'Teknoloji ve küresel sağlık konularında üç motorda güçlü şekilde tanınıyor. Perplexity yanıtlarında daha güncel haber kaynaklarına ağırlık verildiği için görünürlük daha düşük.',
-      en: 'Strongly recognized across three engines for technology and global health topics. Perplexity weighs more recent news sources, so visibility there is lower.',
-    },
-    performing: {
-      tr: ['Yazılım ve işletim sistemi tarihi', 'Küresel sağlık ve aşı programları', 'İklim teknolojisi yatırımları'],
-      en: ['Software & operating system history', 'Global health & vaccine programs', 'Climate technology investments'],
-    },
-    opportunity: {
-      tr: ['Güncel haber/röportaj bazlı sorgularda Perplexity görünürlüğü', 'Yapay zeka politikası tartışmalarında daha güçlü konumlanma'],
-      en: ['Perplexity visibility in recent news/interview-style queries', 'Stronger positioning in AI policy debates'],
-    },
+    score_breakdown: { claude: 93, chatgpt: 94, gemini: 90, perplexity: 78, yanit_kalitesi: 89, konu_uyumu: 92 },
+    model_results: { claude: { recognized: true }, chatgpt: { recognized: true }, gemini: { recognized: true }, perplexity: { recognized: false } },
+    google_result_count: 41,
+    performing_topics: [
+      { topic: { tr: 'Yazılım ve işletim sistemi tarihi', en: 'Software & operating system history' }, platforms: ['claude','chatgpt','gemini'], source_url: 'https://microsoft.com' },
+      { topic: { tr: 'Küresel sağlık ve aşı programları', en: 'Global health & vaccine programs' }, platforms: ['claude','chatgpt'], source_url: 'https://gatesfoundation.org' },
+      { topic: { tr: 'İklim teknolojisi yatırımları', en: 'Climate technology investments' }, platforms: ['gemini'] },
+    ],
+    opportunity_topics: [
+      { topic: { tr: 'Güncel haber/röportaj bazlı sorgularda Perplexity görünürlüğü', en: 'Perplexity visibility in recent news/interview queries' }, platforms: [], competitors: ['Warren Buffett'] },
+      { topic: { tr: 'Yapay zeka politikası tartışmalarında daha güçlü konumlanma', en: 'Stronger positioning in AI policy debates' }, platforms: [], competitors: ['Sam Altman'] },
+    ],
   },
   {
-    initials: 'AY',
     name: { tr: 'Ayşe Yılmaz', en: 'Ayşe Yılmaz' },
-    role: { tr: 'Kurucu, butik e-ticaret markası', en: 'Founder, boutique e-commerce brand' },
+    topic: { tr: 'butik e-ticaret markası kurucusu', en: 'boutique e-commerce brand founder' },
     score: 28,
-    fictional: true,
-    models: { chatgpt: false, claude: false, gemini: true, perplexity: false },
-    summary: {
-      tr: 'Sadece Gemini\'nin bir web taraması sonucunda dolaylı olarak geçiyor - diğer üç motorda hiç tanınmıyor. Rakipleri aynı sorularda düzenli olarak öneriliyor.',
-      en: "Only appears indirectly via one of Gemini's web-search results - completely unrecognized by the other three engines. Competitors are routinely recommended for the same queries.",
-    },
-    performing: {
-      tr: ['Marka adıyla doğrudan arama'],
-      en: ['Direct branded-name search'],
-    },
-    opportunity: {
-      tr: ['"En iyi butik e-ticaret markaları" gibi kategori sorgularında yokluk', 'Rakip karşılaştırma sorularında hiç anılmıyor', 'ChatGPT ve Claude\'da hiçbir bağlamda tanınmıyor', 'Ürün kategorisi bazlı öneri listelerinde yok'],
-      en: ['Absent from category queries like "best boutique e-commerce brands"', 'Never mentioned in competitor-comparison queries', 'Unrecognized by ChatGPT and Claude in any context', 'Missing from product-category recommendation lists'],
-    },
+    score_breakdown: { claude: 12, chatgpt: 15, gemini: 61, perplexity: 8, yanit_kalitesi: 34, konu_uyumu: 22 },
+    model_results: { claude: { recognized: false }, chatgpt: { recognized: false }, gemini: { recognized: true }, perplexity: { recognized: false } },
+    google_result_count: 6,
+    performing_topics: [
+      { topic: { tr: 'Marka adıyla doğrudan arama', en: 'Direct branded-name search' }, platforms: ['gemini'] },
+    ],
+    opportunity_topics: [
+      { topic: { tr: '"En iyi butik e-ticaret markaları" gibi kategori sorguları', en: 'Category queries like "best boutique e-commerce brands"' }, platforms: [], competitors: ['Rakip A', 'Rakip B'] },
+      { topic: { tr: 'Rakip karşılaştırma sorguları', en: 'Competitor-comparison queries' }, platforms: [], competitors: ['Rakip A'] },
+      { topic: { tr: 'ChatGPT ve Claude\'da hiçbir bağlamda tanınmıyor', en: 'Unrecognized by ChatGPT and Claude in any context' }, platforms: [] },
+      { topic: { tr: 'Ürün kategorisi bazlı öneri listeleri', en: 'Product-category recommendation lists' }, platforms: [], competitors: ['Rakip B', 'Rakip C'] },
+    ],
   },
 ];
 
-function renderSampleReport(r, lang) {
-  const dict = I18N[lang] || I18N.tr;
-  const name = typeof r.name === 'string' ? r.name : r.name[lang] || r.name.tr;
-  const role = r.role[lang] || r.role.tr;
-  const summary = r.summary[lang] || r.summary.tr;
-  const performing = r.performing[lang] || r.performing.tr;
-  const opportunity = r.opportunity[lang] || r.opportunity.tr;
-  const modelLabels = { chatgpt: 'ChatGPT', claude: 'Claude', gemini: 'Gemini', perplexity: 'Perplexity' };
-  const modelsHtml = Object.entries(r.models).map(([key, ok]) =>
-    `<span class="sr-model ${ok ? 'sr-model--yes' : 'sr-model--no'}">${ok ? '✓' : '✗'} ${modelLabels[key]}</span>`
-  ).join('');
+function scoreColorSample(score) {
+  if (score >= 65) return 'var(--good)';
+  if (score >= 40) return 'var(--warn)';
+  return 'var(--bad)';
+}
+
+function pickLocalized(v, lang) {
+  return typeof v === 'string' ? v : (v[lang] || v.tr);
+}
+
+function scoreGaugeHtml(score, label) {
+  const radius = 64, circumference = 2 * Math.PI * radius;
+  const offset = circumference - (score / 100) * circumference;
+  const color = scoreColorSample(score);
   return `
-    <div class="sr-head">
-      <div class="sr-avatar">${r.initials}</div>
+    <div class="score-gauge">
+      <svg viewBox="0 0 160 160" class="score-gauge__svg">
+        <circle cx="80" cy="80" r="${radius}" fill="none" stroke="var(--border)" stroke-width="10"/>
+        <circle cx="80" cy="80" r="${radius}" fill="none" stroke="${color}" stroke-width="10"
+          stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"
+          stroke-linecap="round" transform="rotate(-90 80 80)"/>
+      </svg>
+      <div class="score-gauge__num" style="color:${color}">${score}</div>
+      <div class="score-gauge__label">${label}</div>
+    </div>`;
+}
+
+function breakdownHtml(breakdown, L) {
+  const labels = { claude: L.claude, chatgpt: L.chatgpt, gemini: L.gemini, perplexity: L.perplexity, yanit_kalitesi: L.yanit_kalitesi, konu_uyumu: L.konu_uyumu };
+  return `<div class="breakdown">${Object.entries(breakdown).map(([key, value]) => `
+    <div class="breakdown__row">
+      <div class="breakdown__row-top"><span class="breakdown__row-label">${labels[key] || key}</span><span class="breakdown__row-value">${value}</span></div>
+      <div class="breakdown__bar-track"><div class="breakdown__bar-fill" style="width:${Math.min(value,100)}%"></div></div>
+    </div>`).join('')}</div>`;
+}
+
+function topicCardHtml(t, lang, isOpportunity) {
+  const title = pickLocalized(t.topic, lang);
+  const platformBadges = (t.platforms || []).map(p => `<span class="topic-badge topic-badge--platform">${p}</span>`).join('');
+  const competitorBadges = isOpportunity ? (t.competitors || []).slice(0,3).map(c => `<span class="topic-badge topic-badge--competitor">${c}</span>`).join('') : '';
+  const sourceLink = (!isOpportunity && t.source_url) ? `<a href="${t.source_url}" target="_blank" rel="noopener" class="topic-card__source" style="font-size:.72rem;color:var(--accent);text-decoration:none">${t.source_url.replace(/^https?:\/\//,'')} →</a>` : '';
+  return `<div class="topic-card"><div class="topic-card__title">${title}</div><div class="topic-card__meta">${platformBadges}${competitorBadges}</div>${sourceLink}</div>`;
+}
+
+function renderSampleReport(r, lang) {
+  const L = SAMPLE_LABELS[lang] || SAMPLE_LABELS.tr;
+  const name = pickLocalized(r.name, lang);
+  const topic = pickLocalized(r.topic, lang);
+  const total = Object.keys(r.model_results).length;
+  const recognitionCount = Object.values(r.model_results).filter(m => m.recognized).length;
+  const statColor = (ok) => ok ? 'var(--good)' : 'var(--bad)';
+  const statText = (ok) => ok ? L.yes : L.no;
+
+  return `
+    <div class="results__header">
       <div>
-        <div class="sr-name">${name}</div>
-        <div class="sr-role">${role}</div>
+        <h1 class="results__title">${L.title}</h1>
+      </div>
+      <div class="results__scanned">
+        <span class="results__scanned-label">${L.queried}</span>
+        <span class="results__scanned-value">${name}</span>
+        <span style="display:block;font-family:var(--mono);font-size:.72rem;color:var(--text-muted);margin-top:2px">${topic}</span>
       </div>
     </div>
-    <div class="sr-score-row">
-      <div>
-        <div class="sr-score-num">${r.score}</div>
-        <div class="sr-score-label">${dict.sample_score_label}</div>
-      </div>
-      <div class="sr-models">${modelsHtml}</div>
+    <div class="results__top">
+      ${scoreGaugeHtml(r.score, L.scoreLabel)}
+      ${breakdownHtml(r.score_breakdown, L)}
     </div>
-    <p class="sr-summary">${summary}</p>
-    <div class="sr-cols">
-      <div class="sr-col sr-col--ok">
-        <h4>${dict.sample_col_performing}</h4>
-        <ul>${performing.map(t => `<li>${t}</li>`).join('')}</ul>
+    <div class="results__stats results__stats--six">
+      <div class="results__stat"><span class="results__stat-n">${recognitionCount}/${total}</span><span class="results__stat-l">${L.recognizingModels}</span></div>
+      <div class="results__stat"><span class="results__stat-n">${r.google_result_count}</span><span class="results__stat-l">${L.webResults}</span></div>
+      <div class="results__stat"><span class="results__stat-n" style="color:${statColor(r.model_results.claude.recognized)}">${statText(r.model_results.claude.recognized)}</span><span class="results__stat-l">${L.claudeRecognizes}</span></div>
+      <div class="results__stat"><span class="results__stat-n" style="color:${statColor(r.model_results.chatgpt.recognized)}">${statText(r.model_results.chatgpt.recognized)}</span><span class="results__stat-l">${L.chatgptRecognizes}</span></div>
+      <div class="results__stat"><span class="results__stat-n" style="color:${statColor(r.model_results.gemini.recognized)}">${statText(r.model_results.gemini.recognized)}</span><span class="results__stat-l">${L.geminiRecognizes}</span></div>
+      <div class="results__stat"><span class="results__stat-n" style="color:${statColor(r.model_results.perplexity.recognized)}">${statText(r.model_results.perplexity.recognized)}</span><span class="results__stat-l">${L.perplexityRecognizes}</span></div>
+    </div>
+    <div class="topics">
+      <div class="topics__col">
+        <h3><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="topics__col-icon"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> ${L.strongTopics}</h3>
+        ${r.performing_topics.map(t => topicCardHtml(t, lang, false)).join('')}
       </div>
-      <div class="sr-col sr-col--gap">
-        <h4>${dict.sample_col_opportunity}</h4>
-        <ul>${opportunity.map(t => `<li>${t}</li>`).join('')}</ul>
+      <div class="topics__col">
+        <h3><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="topics__col-icon"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg> ${L.opportunities}</h3>
+        ${r.opportunity_topics.map(t => topicCardHtml(t, lang, true)).join('')}
       </div>
     </div>
   `;
