@@ -239,6 +239,10 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 .web-result__badge--no{background:rgba(248,113,113,.1);color:var(--bad);border:1px solid rgba(248,113,113,.25)}
 .web-result__desc{font-size:.82rem;color:var(--text-sub);line-height:1.6}
 .web-result__meta{font-size:.72rem;color:var(--text-muted);font-family:var(--mono);margin-top:6px}
+.web-result__models{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.web-result__model{font-family:var(--mono);font-size:.68rem;padding:3px 9px;border-radius:20px;border:1px solid var(--border-mid)}
+.web-result__model--yes{color:var(--good);border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.06)}
+.web-result__model--no{color:var(--bad);border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.06)}
 
 /* DEMO PHASES */
 .ai-line{padding:3px 0;font-size:.82rem;font-family:var(--mono);color:#C4CDD6;line-height:1.6}
@@ -1431,9 +1435,14 @@ async function runWebCheck() {
     const badgeText = data.known ? `✓ ${dict.demo_web_known}` : `✗ ${dict.demo_web_unknown}`;
     const desc = data.description ? `<div class="web-result__desc">${data.description}</div>` : '';
     const meta = [data.sector, data.website].filter(Boolean).join(' · ');
+    const modelLabels = { claude: 'Claude', chatgpt: 'ChatGPT', gemini: 'Gemini', tavily: 'Tavily' };
+    const modelsHtml = Object.entries(data.models || {}).map(([key, m]) =>
+      `<span class="web-result__model ${m.known ? 'web-result__model--yes' : 'web-result__model--no'}">${m.known ? '✓' : '✗'} ${modelLabels[key] || key}</span>`
+    ).join('');
     resultEl.innerHTML = `
       <div class="web-result">
         <span class="web-result__badge ${badgeClass}">${badgeText}</span>
+        ${modelsHtml ? `<div class="web-result__models">${modelsHtml}</div>` : ''}
         ${desc}
         ${meta ? `<div class="web-result__meta">${meta}</div>` : ''}
       </div>`;
