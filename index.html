@@ -1239,10 +1239,16 @@ function closeSampleModal() {
   document.body.style.overflow = '';
 }
 
-document.getElementById('sample-report-btn').addEventListener('click', openSampleModal);
-document.getElementById('sample-modal-close').addEventListener('click', closeSampleModal);
-document.getElementById('sample-modal-overlay').addEventListener('click', (e) => {
-  if (e.target.id === 'sample-modal-overlay') closeSampleModal();
+// Modal HTML'i bu script bloğundan SONRA (dokümanın daha aşağısında)
+// tanımlı - DOMContentLoaded'a kadar bekleyip element referanslarını
+// öyle alıyoruz, yoksa getElementById null döner ve addEventListener
+// hata firlatip script'in geri kalanini (kapatma butonu dahil) durdurur.
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('sample-report-btn').addEventListener('click', openSampleModal);
+  document.getElementById('sample-modal-close').addEventListener('click', closeSampleModal);
+  document.getElementById('sample-modal-overlay').addEventListener('click', (e) => {
+    if (e.target.id === 'sample-modal-overlay') closeSampleModal();
+  });
 });
 
 const _origApplyLangForSample = applyLang;
