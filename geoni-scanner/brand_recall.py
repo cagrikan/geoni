@@ -42,6 +42,7 @@ from urllib.parse import urlparse
 import httpx
 
 from db import log_provider_call
+from perplexity_admin import record_perplexity_call
 
 logger = logging.getLogger(__name__)
 
@@ -356,7 +357,11 @@ async def _ask_perplexity(prompt: str, temperature: float = RECALL_TEMPERATURE, 
             )
             if r.status_code == 200:
                 asyncio.create_task(log_provider_call("perplexity"))
-                return r.json()["choices"][0]["message"]["content"].strip()
+                body = r.json()
+                usage = body.get("usage")
+                if usage:
+                    asyncio.create_task(record_perplexity_call(usage))
+                return body["choices"][0]["message"]["content"].strip()
             logger.warning(f"Perplexity {r.status_code}: {r.text[:200]}")
     except Exception as e:
         logger.warning(f"Perplexity query failed: {e}")

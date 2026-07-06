@@ -34,6 +34,7 @@ from anthropic_admin import get_anthropic_cost_summary
 from aws_cost import get_aws_cost_summary
 from openai_admin import get_openai_cost_summary
 from tavily_admin import get_tavily_usage_summary
+from perplexity_admin import get_perplexity_cost_summary
 
 class AuditRequest(BaseModel):
     domain: str
@@ -525,6 +526,11 @@ async def admin_stats_openai_cost(http_request: Request):
 async def admin_stats_tavily_usage(http_request: Request):
     await _require_admin(http_request)
     return await get_tavily_usage_summary()
+
+@app.get("/api/admin/stats/perplexity-cost")
+async def admin_stats_perplexity_cost(http_request: Request):
+    await _require_admin(http_request)
+    return await get_perplexity_cost_summary()
 
 class TopupRequest(BaseModel):
     provider: str

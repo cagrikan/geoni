@@ -514,6 +514,58 @@ async def set_manual_balance(provider: str, balance: float, currency: str = "USD
     return False
 
 
+async def log_perplexity_usage(cost_usd: float, prompt_tokens: int, completion_tokens: int) -> None:
+    """Fire-and-forget cost log for Perplexity calls. Perplexity has no cost/usage
+    API at all (unlike OpenAI/Anthropic) - GEONI computes cost itself from the
+    token counts already returned in every response, using published per-token
+    + per-request pricing (see perplexity_admin.py). Requires the
+    perplexity_usage_log table - silently no-ops if missing."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                f"{SUPABASE_URL}/rest/v1/perplexity_usage_log",
+                headers=_headers(),
+                json={
+                    "cost_usd": cost_usd,
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                },
+                timeout=5,
+            )
+    except Exception as e:
+        logger.debug(f"Perplexity usage log skipped: {e}")
+
+
+async def get_perplexity_cost_daily(start: datetime, end: datetime) -> dict:
+    """date (YYYY-MM-DD) -> USD cost that day, summed from GEONI's own
+    perplexity_usage_log rows (self-computed, since Perplexity has no cost API)."""
+    daily = {}
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return daily
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/perplexity_usage_log"
+                f"?select=cost_usd,created_at"
+                f"&created_at=gte.{start.strftime('%Y-%m-%dT%H:%M:%SZ')}"
+                f"&created_at=lt.{end.strftime('%Y-%m-%dT%H:%M:%SZ')}",
+                headers=_headers(), timeout=15,
+            )
+            if r.status_code == 200:
+                for row in r.json():
+                    date_key = (row.get("created_at") or "")[:10]
+                    if not date_key:
+                        continue
+                    daily[date_key] = daily.get(date_key, 0) + float(row.get("cost_usd") or 0)
+            else:
+                logger.info(f"perplexity_usage_log query failed ({r.status_code}) - table may not exist yet")
+    except Exception as e:
+        logger.warning(f"get_perplexity_cost_daily error: {e}")
+    return daily
+
+
 async def get_manual_topups_total(provider: str) -> float:
     """Sum of all logged top-ups for a provider (e.g. openai) - paired with
     the provider's real Costs API spend to estimate remaining balance,
