@@ -27,19 +27,61 @@
   --display:'Space Grotesk',sans-serif;
   --body:'Inter',sans-serif;
   --mono:'JetBrains Mono',monospace;
+  --nav-bg:rgba(7,7,15,0.75);
+  --chat-input-bg:#0A0A1F;
+  --bubble-ai-bg:#1A1A30;
+  --bubble-ai-text:#CBD5E1;
+  --audit-panel-bg:#0A0A1A;
+  --audit-head-bg:#07070F;
+  --option-bg:#0E0E1C;
+}
+:root[data-theme="light"]{
+  --bg:#F8FAFC;
+  --surface:#FFFFFF;
+  --surface-2:#F1F5F9;
+  --border:rgba(99,102,241,0.14);
+  --border-mid:rgba(99,102,241,0.28);
+  --accent:#6366F1;
+  --accent-dim:rgba(99,102,241,0.08);
+  --accent-2:#0891B2;
+  --text:#0F172A;
+  --text-sub:#475569;
+  --text-muted:#94A3B8;
+  --nav-bg:rgba(248,250,252,0.8);
+  --chat-input-bg:#F1F5F9;
+  --bubble-ai-bg:#EEF2FF;
+  --bubble-ai-text:#334155;
+  --audit-panel-bg:#FFFFFF;
+  --audit-head-bg:#F8FAFC;
+  --option-bg:#FFFFFF;
+}
+@media(prefers-color-scheme:light){
+  :root:not([data-theme="dark"]){
+    --bg:#F8FAFC; --surface:#FFFFFF; --surface-2:#F1F5F9;
+    --border:rgba(99,102,241,0.14); --border-mid:rgba(99,102,241,0.28);
+    --accent:#6366F1; --accent-dim:rgba(99,102,241,0.08); --accent-2:#0891B2;
+    --text:#0F172A; --text-sub:#475569; --text-muted:#94A3B8;
+    --nav-bg:rgba(248,250,252,0.8); --chat-input-bg:#F1F5F9;
+    --bubble-ai-bg:#EEF2FF; --bubble-ai-text:#334155;
+    --audit-panel-bg:#FFFFFF; --audit-head-bg:#F8FAFC; --option-bg:#FFFFFF;
+  }
 }
 html{scroll-behavior:smooth}
-body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased}
+body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased;transition:background .2s,color .2s}
 
 /* NAV */
-nav{position:fixed;inset:0 0 auto;z-index:100;padding:18px 48px;display:flex;justify-content:space-between;align-items:center;background:rgba(7,7,15,0.75);backdrop-filter:blur(24px);border-bottom:1px solid var(--border)}
+nav{position:fixed;inset:0 0 auto;z-index:100;padding:18px 48px;display:flex;justify-content:space-between;align-items:center;background:var(--nav-bg);backdrop-filter:blur(24px);border-bottom:1px solid var(--border)}
 .logo{display:flex;align-items:center;gap:10px;text-decoration:none}
 .logo-text{font-family:var(--display);font-weight:300;font-size:1.1rem;letter-spacing:.22em;color:#64748B}
 .nav-links{display:flex;gap:28px;list-style:none}
 .nav-links a{color:var(--text-sub);text-decoration:none;font-size:.875rem;transition:color .2s}
 .nav-links a:hover{color:var(--text)}
-.nav-cta{background:var(--accent);color:#0D0D1A;padding:9px 22px;border-radius:7px;font-size:.875rem;font-weight:600;text-decoration:none;transition:opacity .2s}
+.nav-cta{background:var(--accent);color:#FFFFFF;padding:9px 22px;border-radius:7px;font-size:.875rem;font-weight:600;text-decoration:none;transition:opacity .2s}
 .nav-cta:hover{opacity:.85}
+.nav-toggles{display:flex;align-items:center;gap:10px;margin-right:8px}
+.nav-toggle-btn{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;border:1px solid var(--border-mid);background:transparent;color:var(--text-sub);cursor:pointer;transition:all .2s;font-family:var(--mono);font-size:.72rem;font-weight:600}
+.nav-toggle-btn:hover{color:var(--text);border-color:rgba(129,140,248,.4)}
+.nav-toggle-btn svg{width:16px;height:16px}
 
 /* HERO */
 .hero{min-height:100vh;display:flex;align-items:center;padding:120px 48px 80px;position:relative;overflow:hidden}
@@ -50,7 +92,7 @@ h1{font-family:var(--display);font-size:clamp(2.4rem,3.8vw,3.4rem);font-weight:7
 h1 .grad{background:linear-gradient(135deg,var(--accent) 20%,var(--accent-2) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .hero-sub{color:var(--text-sub);font-size:1.05rem;line-height:1.75;margin-bottom:38px;max-width:460px}
 .hero-btns{display:flex;gap:14px;align-items:center}
-.btn-p{background:var(--accent);color:#0D0D1A;padding:13px 26px;border-radius:8px;font-size:.925rem;font-weight:600;text-decoration:none;transition:opacity .2s,transform .2s;display:inline-block}
+.btn-p{background:var(--accent);color:#FFFFFF;padding:13px 26px;border-radius:8px;font-size:.925rem;font-weight:600;text-decoration:none;transition:opacity .2s,transform .2s;display:inline-block}
 .btn-p:hover{opacity:.85;transform:translateY(-1px)}
 .btn-g{color:var(--text-sub);padding:13px 22px;border-radius:8px;font-size:.925rem;text-decoration:none;border:1px solid var(--border-mid);transition:all .2s}
 .btn-g:hover{color:var(--text);border-color:rgba(129,140,248,.35)}
@@ -69,7 +111,7 @@ h1 .grad{background:linear-gradient(135deg,var(--accent) 20%,var(--accent-2) 100
 .av-ai{background:rgba(34,211,238,.1);color:var(--accent-2);border:1px solid rgba(34,211,238,.2)}
 .bubble{border-radius:12px;padding:11px 15px;font-size:.84rem;color:var(--text-sub);line-height:1.6;flex:1;font-family:var(--mono);color:#CBD5E1}
 .bubble-u{background:rgba(129,140,248,.07);color:var(--text)}
-.bubble-ai{background:#1A1A30;color:#CBD5E1}
+.bubble-ai{background:var(--bubble-ai-bg);color:var(--bubble-ai-text)}
 .cur{display:inline-block;width:2px;height:13px;background:var(--accent-2);animation:blink 1s step-end infinite;vertical-align:text-bottom;margin-left:1px}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
 .not-listed{margin-top:12px;padding-top:12px;border-top:1px solid rgba(129,140,248,.08);font-size:.78rem;color:#F87171;display:none}
@@ -110,7 +152,7 @@ h2{font-family:var(--display);font-size:clamp(1.8rem,2.8vw,2.4rem);font-weight:7
 .pkg{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 24px;display:flex;flex-direction:column;position:relative;transition:border-color .3s}
 .pkg:hover{border-color:rgba(129,140,248,.25)}
 .pkg.hot{border-color:var(--accent);background:linear-gradient(150deg,rgba(129,140,248,.07),var(--surface))}
-.hot-badge{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--accent);color:#0D0D1A;font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 13px;border-radius:20px;font-family:var(--mono);white-space:nowrap}
+.hot-badge{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--accent);color:#FFFFFF;font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 13px;border-radius:20px;font-family:var(--mono);white-space:nowrap}
 .pkg-tier{font-family:var(--mono);font-size:.7rem;color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:7px}
 .pkg-name{font-family:var(--display);font-size:1.3rem;font-weight:700;margin-bottom:8px}
 .pkg-price{font-size:.88rem;color:var(--text-sub);margin-bottom:22px;padding-bottom:22px;border-bottom:1px solid var(--border)}
@@ -119,9 +161,9 @@ h2{font-family:var(--display);font-size:clamp(1.8rem,2.8vw,2.4rem);font-weight:7
 .pkg-feats li{font-size:.82rem;color:var(--text-sub);display:flex;align-items:flex-start;gap:8px;line-height:1.5}
 .pkg-feats li::before{content:'→';color:var(--accent);flex-shrink:0;font-family:var(--mono)}
 .pkg-btn{margin-top:26px;padding:11px;border-radius:8px;font-size:.84rem;font-weight:600;text-align:center;text-decoration:none;transition:all .2s;border:1px solid var(--border);color:var(--text-sub);display:block}
-.pkg.hot .pkg-btn{background:var(--accent);color:#0D0D1A;border-color:var(--accent)}
+.pkg.hot .pkg-btn{background:var(--accent);color:#FFFFFF;border-color:var(--accent)}
 .pkg-btn:hover{border-color:rgba(129,140,248,.4);color:var(--text)}
-.pkg.hot .pkg-btn:hover{opacity:.85;color:#0D0D1A}
+.pkg.hot .pkg-btn:hover{opacity:.85;color:#FFFFFF}
 
 /* CTA */
 .cta-wrap{padding:96px 48px}
@@ -156,10 +198,10 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 .chat-body{padding:14px 18px;min-height:180px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;max-height:240px}
 .chat-input-area{display:flex;flex-direction:column;gap:10px;padding:16px 18px;border-top:1px solid rgba(129,140,248,.2);background:rgba(129,140,248,.03)}
 .input-row{display:flex;gap:8px}
-.demo-input{flex:1;background:#0A0A1F;border:1px solid rgba(129,140,248,.3);border-radius:8px;padding:11px 15px;color:var(--text);font-family:var(--mono);font-size:.82rem;outline:none;transition:border-color .2s, box-shadow .2s}
+.demo-input{flex:1;background:var(--chat-input-bg);border:1px solid rgba(129,140,248,.3);border-radius:8px;padding:11px 15px;color:var(--text);font-family:var(--mono);font-size:.82rem;outline:none;transition:border-color .2s, box-shadow .2s}
 .demo-input:focus{border-color:rgba(129,140,248,.7);box-shadow:0 0 0 3px rgba(129,140,248,.08)}
 .demo-input::placeholder{color:#475569}
-.demo-btn{background:var(--accent);color:#0D0D1A;border:none;border-radius:8px;padding:11px 20px;font-size:.82rem;font-weight:700;cursor:pointer;transition:opacity .2s, transform .15s;font-family:var(--mono);white-space:nowrap;letter-spacing:.03em}
+.demo-btn{background:var(--accent);color:#FFFFFF;border:none;border-radius:8px;padding:11px 20px;font-size:.82rem;font-weight:700;cursor:pointer;transition:opacity .2s, transform .15s;font-family:var(--mono);white-space:nowrap;letter-spacing:.03em}
 .demo-btn:hover{opacity:.9;transform:translateY(-1px)}
 .demo-btn:disabled{opacity:.35;cursor:not-allowed}
 .demo-empty{color:#94A3B8;font-size:.8rem;font-family:var(--mono);text-align:center;margin:auto;line-height:1.7}
@@ -197,19 +239,19 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 .leg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .calc-select{width:100%;margin-top:20px;background:var(--surface-2);border:1px solid rgba(129,140,248,.25);border-radius:8px;padding:11px 14px;color:var(--text);font-family:var(--mono);font-size:.82rem;outline:none;cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23818CF8' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center}
 .calc-select:focus{border-color:rgba(129,140,248,.5)}
-.calc-select option{background:#0E0E1C}
+.calc-select option{background:var(--option-bg);color:var(--text)}
 .calc-big-num{font-family:var(--display);font-size:3.2rem;font-weight:700;color:var(--accent);line-height:1}
 .calc-unit{font-family:var(--mono);font-size:.75rem;letter-spacing:.08em;color:var(--text-sub);margin-top:6px;text-transform:uppercase}
 .calc-msg{color:var(--text-sub);font-size:.88rem;line-height:1.7;margin-top:14px}
 @media(max-width:900px){.insights-inner{grid-template-columns:1fr}.insights-bar{padding:0 20px 60px}}
 
 /* AUDIT CHAT WIDGET */
-.audit-btn{position:fixed;bottom:28px;right:28px;z-index:1000;background:var(--accent);color:#0D0D1A;border:none;border-radius:50px;padding:13px 22px;font-size:.82rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 8px 32px rgba(129,140,248,.35);transition:transform .2s,box-shadow .2s;font-family:var(--mono);letter-spacing:.04em}
+.audit-btn{position:fixed;bottom:28px;right:28px;z-index:1000;background:var(--accent);color:#FFFFFF;border:none;border-radius:50px;padding:13px 22px;font-size:.82rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 8px 32px rgba(129,140,248,.35);transition:transform .2s,box-shadow .2s;font-family:var(--mono);letter-spacing:.04em}
 .audit-btn:hover{transform:translateY(-2px);box-shadow:0 12px 44px rgba(129,140,248,.45)}
 .audit-btn svg{flex-shrink:0}
-.audit-panel{position:fixed;bottom:88px;right:28px;z-index:1000;width:380px;height:560px;background:#0A0A1A;border:1px solid rgba(129,140,248,.22);border-radius:20px;box-shadow:0 24px 80px rgba(0,0,0,.6);display:flex;flex-direction:column;overflow:hidden;transition:opacity .25s,transform .25s}
+.audit-panel{position:fixed;bottom:88px;right:28px;z-index:1000;width:380px;height:560px;background:var(--audit-panel-bg);border:1px solid rgba(129,140,248,.22);border-radius:20px;box-shadow:0 24px 80px rgba(0,0,0,.6);display:flex;flex-direction:column;overflow:hidden;transition:opacity .25s,transform .25s}
 .audit-panel.hidden{opacity:0;transform:translateY(12px);pointer-events:none}
-.audit-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;background:#07070F;border-bottom:1px solid rgba(129,140,248,.12)}
+.audit-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;background:var(--audit-head-bg);border-bottom:1px solid rgba(129,140,248,.12)}
 .audit-head-left{display:flex;align-items:center;gap:10px}
 .audit-head-title{font-family:var(--mono);font-size:.78rem;color:var(--text);letter-spacing:.06em}
 .audit-head-sub{font-size:.65rem;color:var(--text-muted);letter-spacing:.04em}
@@ -236,17 +278,17 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 .abtn-group{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px;align-self:flex-start;max-width:88%}
 .abtn{background:rgba(129,140,248,.08);border:1px solid rgba(129,140,248,.25);border-radius:8px;padding:7px 13px;font-size:.78rem;color:var(--text-sub);cursor:pointer;transition:all .2s;font-family:var(--mono)}
 .abtn:hover,.abtn.sel{background:rgba(129,140,248,.18);border-color:var(--accent);color:var(--text)}
-.abtn-send{background:var(--accent);border-color:var(--accent);color:#0D0D1A;margin-top:4px}
+.abtn-send{background:var(--accent);border-color:var(--accent);color:#FFFFFF;margin-top:4px}
 .abtn-send:hover{opacity:.85}
 .score-card{background:rgba(129,140,248,.06);border:1px solid rgba(129,140,248,.2);border-radius:12px;padding:16px;margin-top:4px;text-align:center}
 .score-num{font-family:var(--display);font-size:2.4rem;font-weight:700;color:var(--accent)}
 .score-label{font-size:.72rem;font-family:var(--mono);color:var(--text-muted);letter-spacing:.08em;margin-top:4px}
 .score-note{font-size:.78rem;color:var(--text-sub);margin-top:10px;line-height:1.6;text-align:left}
-.audit-input-wrap{padding:12px 14px;border-top:1px solid rgba(129,140,248,.1);display:flex;gap:8px;background:#07070F}
-.audit-input{flex:1;background:#0E0E1C;border:1px solid rgba(129,140,248,.2);border-radius:8px;padding:9px 13px;color:var(--text);font-size:.82rem;outline:none;transition:border-color .2s;font-family:var(--body)}
+.audit-input-wrap{padding:12px 14px;border-top:1px solid rgba(129,140,248,.1);display:flex;gap:8px;background:var(--audit-head-bg)}
+.audit-input{flex:1;background:var(--option-bg);border:1px solid rgba(129,140,248,.2);border-radius:8px;padding:9px 13px;color:var(--text);font-size:.82rem;outline:none;transition:border-color .2s;font-family:var(--body)}
 .audit-input:focus{border-color:rgba(129,140,248,.5)}
 .audit-input::placeholder{color:#334155}
-.audit-send{background:var(--accent);color:#0D0D1A;border:none;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:700;font-size:.82rem;transition:opacity .2s}
+.audit-send{background:var(--accent);color:#FFFFFF;border:none;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:700;font-size:.82rem;transition:opacity .2s}
 .audit-send:hover{opacity:.85}
 .audit-send:disabled{opacity:.35;cursor:not-allowed}
 @media(max-width:600px){.audit-panel{width:calc(100vw - 32px);right:16px;bottom:80px}}
@@ -411,12 +453,18 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
   <span class="logo-text">geoni</span>
 </a>
   <ul class="nav-links">
-    <li><a href="#neden">Neden GEO</a></li>
-    <li><a href="#geo">GEO Nedir</a></li>
-    <li><a href="#nasil">Nasıl Çalışır</a></li>
-    <li><a href="#paketler">Paketler</a></li>
+    <li><a href="#neden" data-i18n="nav_why">Neden GEO</a></li>
+    <li><a href="#geo" data-i18n="nav_geo">GEO Nedir</a></li>
+    <li><a href="#nasil" data-i18n="nav_how">Nasıl Çalışır</a></li>
+    <li><a href="#paketler" data-i18n="nav_packages">Paketler</a></li>
   </ul>
-  <a href="https://app.geoni.ai" class="nav-cta">Ücretsiz Ön Rapor</a>
+  <div class="nav-toggles">
+    <button type="button" class="nav-toggle-btn" id="theme-toggle" title="Tema" aria-label="Tema degistir">
+      <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></svg>
+    </button>
+    <button type="button" class="nav-toggle-btn" id="lang-toggle" title="Language" aria-label="Dil degistir">TR</button>
+  </div>
+  <a href="https://app.geoni.ai" class="nav-cta" data-i18n="nav_cta">Ücretsiz Ön Rapor</a>
 </nav>
 
 <!-- HERO -->
@@ -424,12 +472,12 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
   <div class="hero-ambient"></div>
   <div class="hero-inner">
     <div>
-      <span class="hero-eyebrow">// Yeni Nesil Görünürlük</span>
-      <h1>Rakibiniz her <span class="grad">AI yanıtında</span> var. Siz yoksunuz.</h1>
-      <p class="hero-sub">Arama motorları değişti. Artık kullanıcılar sonuç listesine değil, tek bir AI yanıtına bakıyor. O yanıtta yer almayan marka, müşteri için yok hükmünde. GEONI, markanızı bu yanıtların içine taşır.</p>
+      <span class="hero-eyebrow" data-i18n="hero_eyebrow">// Yeni Nesil Görünürlük</span>
+      <h1 data-i18n="hero_h1">Rakibiniz her <span class="grad">AI yanıtında</span> var. Siz yoksunuz.</h1>
+      <p class="hero-sub" data-i18n="hero_sub">Arama motorları değişti. Artık kullanıcılar sonuç listesine değil, tek bir AI yanıtına bakıyor. O yanıtta yer almayan marka, müşteri için yok hükmünde. GEONI, markanızı bu yanıtların içine taşır.</p>
       <div class="hero-btns">
-        <a href="https://app.geoni.ai" class="btn-p">Ücretsiz AI Ön Rapor Al</a>
-        <a href="#geo" class="btn-g">Nasıl Çalışır? →</a>
+        <a href="https://app.geoni.ai" class="btn-p" data-i18n="hero_cta1">Ücretsiz AI Ön Rapor Al</a>
+        <a href="#geo" class="btn-g" data-i18n="hero_cta2">Nasıl Çalışır? →</a>
       </div>
     </div>
 
@@ -437,7 +485,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
     <div class="chat-win">
       <div class="chat-bar">
         <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
-        <span class="chat-label">AI Yanıt Motoru</span>
+        <span class="chat-label" data-i18n="chat_label">AI Yanıt Motoru</span>
       </div>
       <div class="chat-body" id="p1-body">
         <div class="msg">
@@ -450,17 +498,17 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
         </div>
       </div>
       <div id="phase2" style="display:none">
-        <div class="phase-sep"><span>↓ Şimdi siz deneyin</span></div>
+        <div class="phase-sep"><span data-i18n="phase_sep">↓ Şimdi siz deneyin</span></div>
         <div class="chat-body" id="p2-body">
-          <div class="demo-empty" style="margin:4px auto 8px">Şimdi kendinizi deneyin —<br>AI sizi görüyor mu?</div>
+          <div class="demo-empty" style="margin:4px auto 8px" data-i18n="demo_empty">Şimdi kendinizi deneyin —<br>AI sizi görüyor mu?</div>
         </div>
         <div class="chat-input-area">
-          <div style="font-size:.65rem;font-family:var(--mono);color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:2px">Kişi veya Kurum</div>
-          <input type="text" id="demo-name" class="demo-input" placeholder="örn: Sabri Çağrı Çakır, GEONI AI...">
-          <div style="font-size:.65rem;font-family:var(--mono);color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:2px;margin-top:4px">Hangi Konuda</div>
+          <div style="font-size:.65rem;font-family:var(--mono);color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:2px" data-i18n="demo_label_who">Kişi veya Kurum</div>
+          <input type="text" id="demo-name" class="demo-input" placeholder="örn: Sabri Çağrı Çakır, GEONI AI..." data-i18n-ph="demo_ph_who">
+          <div style="font-size:.65rem;font-family:var(--mono);color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:2px;margin-top:4px" data-i18n="demo_label_topic">Hangi Konuda</div>
           <div class="input-row">
-            <input type="text" id="demo-topic" class="demo-input" placeholder="Faaliyet alanı... örn: yazılım, e-dönüşüm, fintech">
-            <button id="demo-btn" class="demo-btn" onclick="sendQuery()">Tara →</button>
+            <input type="text" id="demo-topic" class="demo-input" placeholder="Faaliyet alanı... örn: yazılım, e-dönüşüm, fintech" data-i18n-ph="demo_ph_topic">
+            <button id="demo-btn" class="demo-btn" onclick="sendQuery()" data-i18n="demo_btn">Tara →</button>
           </div>
         </div>
       </div>
@@ -474,37 +522,37 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 
     <!-- TREND CHART -->
     <div class="insight-card">
-      <span class="eyebrow-sm">// Aramanın dönüşümü</span>
-      <p class="insight-sub">Google trafiği gerilerken AI sorgu hacmi hızla yükseliyor</p>
+      <span class="eyebrow-sm" data-i18n="insight1_eyebrow">// Aramanın dönüşümü</span>
+      <p class="insight-sub" data-i18n="insight1_sub">Google trafiği gerilerken AI sorgu hacmi hızla yükseliyor</p>
       <div id="chart-wrap" style="margin-top:20px"></div>
       <div class="chart-legend">
-        <span class="leg-item"><span class="leg-dot" style="background:#F87171"></span>Google Arama Trafiği</span>
-        <span class="leg-item"><span class="leg-dot" style="background:#818CF8"></span>AI Sorgu Hacmi</span>
+        <span class="leg-item"><span class="leg-dot" style="background:#F87171"></span><span data-i18n="legend_google">Google Arama Trafiği</span></span>
+        <span class="leg-item"><span class="leg-dot" style="background:#818CF8"></span><span data-i18n="legend_ai">AI Sorgu Hacmi</span></span>
       </div>
     </div>
 
     <!-- LOSS CALCULATOR -->
     <div class="insight-card">
-      <span class="eyebrow-sm">// Kayıp hesabı</span>
-      <p class="insight-sub">Sektörünüzde kaç AI sorgusu kaçırıyorsunuz?</p>
+      <span class="eyebrow-sm" data-i18n="insight2_eyebrow">// Kayıp hesabı</span>
+      <p class="insight-sub" data-i18n="insight2_sub">Sektörünüzde kaç AI sorgusu kaçırıyorsunuz?</p>
       <select id="calc-sector" class="calc-select">
-        <option value="">Sektörünüzü seçin...</option>
-        <option value="10500000">E-Ticaret &amp; Perakende</option>
-        <option value="8400000">Yazılım &amp; Teknoloji</option>
-        <option value="7000000">Sağlık &amp; Medikal</option>
-        <option value="5600000">Finans &amp; Yatırım</option>
-        <option value="4800000">Pazarlama &amp; Ajans</option>
-        <option value="5200000">Eğitim &amp; Akademi</option>
-        <option value="3800000">Hukuk &amp; Danışmanlık</option>
-        <option value="3200000">Gayrimenkul</option>
-        <option value="2800000">Üretim &amp; Sanayi</option>
-        <option value="4200000">Turizm &amp; Konaklama</option>
+        <option value="" data-i18n="calc_select_default">Sektörünüzü seçin...</option>
+        <option value="10500000" data-i18n-opt="sector_ecommerce">E-Ticaret &amp; Perakende</option>
+        <option value="8400000" data-i18n-opt="sector_tech">Yazılım &amp; Teknoloji</option>
+        <option value="7000000" data-i18n-opt="sector_health">Sağlık &amp; Medikal</option>
+        <option value="5600000" data-i18n-opt="sector_finance">Finans &amp; Yatırım</option>
+        <option value="4800000" data-i18n-opt="sector_marketing">Pazarlama &amp; Ajans</option>
+        <option value="5200000" data-i18n-opt="sector_education">Eğitim &amp; Akademi</option>
+        <option value="3800000" data-i18n-opt="sector_legal">Hukuk &amp; Danışmanlık</option>
+        <option value="3200000" data-i18n-opt="sector_realestate">Gayrimenkul</option>
+        <option value="2800000" data-i18n-opt="sector_manufacturing">Üretim &amp; Sanayi</option>
+        <option value="4200000" data-i18n-opt="sector_tourism">Turizm &amp; Konaklama</option>
       </select>
       <div class="calc-result" id="calc-result" style="display:none;margin-top:24px;text-align:center">
         <div class="calc-big-num" id="calc-num">0</div>
-        <div class="calc-unit">AI sorgusu / gün</div>
-        <div class="calc-msg">sektörünüzde günlük yapılıyor. Görünmüyorsanız<br>bunların <strong style="color:var(--text)">tamamını</strong> kaçırıyorsunuz.</div>
-        <div style="font-size:.68rem;font-family:var(--mono);color:var(--text-muted);margin-top:10px;letter-spacing:.04em">* Türkiye tahmini, 2025 · ~70M internet kullanıcısı baz alınmıştır</div>
+        <div class="calc-unit" data-i18n="calc_unit">AI sorgusu / gün</div>
+        <div class="calc-msg" data-i18n="calc_msg">sektörünüzde günlük yapılıyor. Görünmüyorsanız<br>bunların <strong style="color:var(--text)">tamamını</strong> kaçırıyorsunuz.</div>
+        <div style="font-size:.68rem;font-family:var(--mono);color:var(--text-muted);margin-top:10px;letter-spacing:.04em" data-i18n="calc_footnote">* Türkiye tahmini, 2025 · ~70M internet kullanıcısı baz alınmıştır</div>
         
       </div>
       <div id="calc-placeholder" style="margin-top:32px;text-align:center">
@@ -514,7 +562,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
           <rect x="32" y="16" width="8" height="44" rx="2" fill="#22D3EE"/>
           <rect x="44" y="6" width="8" height="54" rx="2" fill="#22D3EE"/>
         </svg>
-        <div style="font-size:.82rem;color:var(--text-muted);line-height:1.6">Sektörünüzü seçtikten sonra<br>kaybı göreceksiniz.</div>
+        <div style="font-size:.82rem;color:var(--text-muted);line-height:1.6" data-i18n="calc_placeholder">Sektörünüzü seçtikten sonra<br>kaybı göreceksiniz.</div>
       </div>
     </div>
 
@@ -524,19 +572,19 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 <!-- WHAT IS GEO -->
 <section id="geo">
   <div class="inner">
-    <span class="eyebrow">// GEO Nedir?</span>
-    <h2>Google sizi listeliyor. AI sizi anlatıyor —<br>ya da anlatmıyor.</h2>
-    <p class="sub">Generative Engine Optimization; markanızın ChatGPT, Perplexity, Claude ve Gemini tarafından kaynak olarak gösterilmesi için uygulanan sistematik optimizasyon sürecidir. Sıralama yarışı bitti — şimdi yanıt içinde yer alma yarışı var.</p>
+    <span class="eyebrow" data-i18n="geo_eyebrow">// GEO Nedir?</span>
+    <h2 data-i18n="geo_h2">Google sizi listeliyor. AI sizi anlatıyor —<br>ya da anlatmıyor.</h2>
+    <p class="sub" data-i18n="geo_sub">Generative Engine Optimization; markanızın ChatGPT, Perplexity, Claude ve Gemini tarafından kaynak olarak gösterilmesi için uygulanan sistematik optimizasyon sürecidir. Sıralama yarışı bitti — şimdi yanıt içinde yer alma yarışı var.</p>
     <div class="compare">
       <div class="cmp-card reveal">
         <div class="cmp-icon">🔍</div>
-        <div class="cmp-title">SEO (Klasik)</div>
-        <p class="cmp-desc">Google 10 seçenek sunar. Kullanıcı tarar, karşılaştırır, tıklar. Markanız sıralamada yoksa gözden kaçar.</p>
+        <div class="cmp-title" data-i18n="cmp_seo_title">SEO (Klasik)</div>
+        <p class="cmp-desc" data-i18n="cmp_seo_desc">Google 10 seçenek sunar. Kullanıcı tarar, karşılaştırır, tıklar. Markanız sıralamada yoksa gözden kaçar.</p>
       </div>
       <div class="cmp-card active reveal">
         <div class="cmp-icon">🤖</div>
-        <div class="cmp-title">GEO (Yeni)</div>
-        <p class="cmp-desc">AI tek bir isim söyler. Tavsiye, açıklama, bağlam — hepsi o yanıtın içinde. Markanız orada değilse, müşteri için var olmamışsınız gibidir.</p>
+        <div class="cmp-title" data-i18n="cmp_geo_title">GEO (Yeni)</div>
+        <p class="cmp-desc" data-i18n="cmp_geo_desc">AI tek bir isim söyler. Tavsiye, açıklama, bağlam — hepsi o yanıtın içinde. Markanız orada değilse, müşteri için var olmamışsınız gibidir.</p>
       </div>
     </div>
   </div>
@@ -545,39 +593,39 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 <!-- HOW IT WORKS -->
 <section class="how-bg" id="nasil">
   <div class="inner">
-    <span class="eyebrow">// Nasıl Çalışır?</span>
-    <h2>Nasıl çalışır?</h2>
-    <p class="sub">AI görünürlüğü tek hamlede kazanılmaz. Her katman, markanızı bir AI yanıtına daha yaklaştırır.</p>
+    <span class="eyebrow" data-i18n="how_eyebrow">// Nasıl Çalışır?</span>
+    <h2 data-i18n="how_h2">Nasıl çalışır?</h2>
+    <p class="sub" data-i18n="how_sub">AI görünürlüğü tek hamlede kazanılmaz. Her katman, markanızı bir AI yanıtına daha yaklaştırır.</p>
     <div class="steps">
       <div class="step reveal">
         <div class="step-icon">📡</div>
-        <div class="step-name">Kaynak Otoritesi</div>
-        <p class="step-desc">AI motorları güvendiği kaynaklardan öğrenir. Markanızı bu kaynakların dilinde var ederiz — Wikipedia, sektör yayınları, referans platformlar.</p>
+        <div class="step-name" data-i18n="step1_name">Kaynak Otoritesi</div>
+        <p class="step-desc" data-i18n="step1_desc">AI motorları güvendiği kaynaklardan öğrenir. Markanızı bu kaynakların dilinde var ederiz — Wikipedia, sektör yayınları, referans platformlar.</p>
       </div>
       <div class="step reveal">
         <div class="step-icon">🏗️</div>
-        <div class="step-name">Yapısal İçerik</div>
-        <p class="step-desc">Tanımlar, karşılaştırmalar, soru-cevap formatları — alıntılaması için yazıyoruz. Her içerik parçası, bir AI yanıtının kaynağı olacak şekilde kurgulanır.</p>
+        <div class="step-name" data-i18n="step2_name">Yapısal İçerik</div>
+        <p class="step-desc" data-i18n="step2_desc">Tanımlar, karşılaştırmalar, soru-cevap formatları — alıntılaması için yazıyoruz. Her içerik parçası, bir AI yanıtının kaynağı olacak şekilde kurgulanır.</p>
       </div>
       <div class="step reveal">
         <div class="step-icon">🔗</div>
-        <div class="step-name">Atıf Kazanma</div>
-        <p class="step-desc">Backlink sıralamayı etkiler. Citation ise AI yanıtını. Markanızı sektörün referans noktası haline getiririz.</p>
+        <div class="step-name" data-i18n="step3_name">Atıf Kazanma</div>
+        <p class="step-desc" data-i18n="step3_desc">Backlink sıralamayı etkiler. Citation ise AI yanıtını. Markanızı sektörün referans noktası haline getiririz.</p>
       </div>
       <div class="step reveal">
         <div class="step-icon">🧠</div>
-        <div class="step-name">Entity Optimizasyonu</div>
-        <p class="step-desc">Markanız Schema.org, Wikidata ve bilgi grafikleriyle markanız bir varlık olarak tanımlanır.</p>
+        <div class="step-name" data-i18n="step4_name">Entity Optimizasyonu</div>
+        <p class="step-desc" data-i18n="step4_desc">Markanız Schema.org, Wikidata ve bilgi grafikleriyle markanız bir varlık olarak tanımlanır.</p>
       </div>
       <div class="step reveal">
         <div class="step-icon">🎯</div>
-        <div class="step-name">Prompt Simülasyonu</div>
-        <p class="step-desc">Müşterinizin AI'a ne soracağını öngörüp, içeriğinizi tam o soruların cevabı olacak şekilde konumlandırırız.</p>
+        <div class="step-name" data-i18n="step5_name">Prompt Simülasyonu</div>
+        <p class="step-desc" data-i18n="step5_desc">Müşterinizin AI'a ne soracağını öngörüp, içeriğinizi tam o soruların cevabı olacak şekilde konumlandırırız.</p>
       </div>
       <div class="step reveal">
         <div class="step-icon">⚡</div>
-        <div class="step-name">Tazelik & İndeksleme</div>
-        <p class="step-desc">Perplexity bugünkü içeriği yarın alıntılar. Güncel, tarihli ve kaynaklı içerik akışını kesintisiz yönetiriz.</p>
+        <div class="step-name" data-i18n="step6_name">Tazelik &amp; İndeksleme</div>
+        <p class="step-desc" data-i18n="step6_desc">Perplexity bugünkü içeriği yarın alıntılar. Güncel, tarihli ve kaynaklı içerik akışını kesintisiz yönetiriz.</p>
       </div>
     </div>
   </div>
@@ -586,58 +634,58 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 <!-- PACKAGES -->
 <section id="paketler">
   <div class="inner">
-    <span class="eyebrow">// Token Paketleri</span>
-    <h2>Nerede başlamak istiyorsunuz?</h2>
-    <p class="sub">Web sitesi taraması 10 token, kişi/marka kontrolü 5 token harcar. İhtiyacınıza göre token satın alın, dilediğiniz gibi kullanın.</p>
+    <span class="eyebrow" data-i18n="pkg_eyebrow">// Token Paketleri</span>
+    <h2 data-i18n="pkg_h2">Nerede başlamak istiyorsunuz?</h2>
+    <p class="sub" data-i18n="pkg_sub">Web sitesi taraması 10 token, kişi/marka kontrolü 5 token harcar. İhtiyacınıza göre token satın alın, dilediğiniz gibi kullanın.</p>
     <div class="pkgs">
       <div class="pkg reveal">
-        <div class="pkg-tier">Başlangıç</div>
+        <div class="pkg-tier" data-i18n="pkg1_tier">Başlangıç</div>
         <div class="pkg-name">100 Token</div>
-        <div class="pkg-price">Ücretsiz raporun ardından ilk adım.<br><strong>$9,99</strong></div>
-        <ul class="pkg-feats">
+        <div class="pkg-price" data-i18n="pkg1_price">Ücretsiz raporun ardından ilk adım.<br><strong>$9,99</strong></div>
+        <ul class="pkg-feats" data-i18n-list="pkg1_feats">
           <li>≈10 web sitesi taraması</li>
           <li>veya ≈20 kişi/marka kontrolü</li>
           <li>Claude, ChatGPT, Gemini, Perplexity üzerinden gerçek zamanlı sorgu</li>
           <li>Süresiz kullanım, ay sonunda sıfırlanmaz</li>
         </ul>
-        <a href="https://app.geoni.ai/dashboard?tab=credits" class="pkg-btn">Satın Alın →</a>
+        <a href="https://app.geoni.ai/dashboard?tab=credits" class="pkg-btn" data-i18n="pkg_btn_buy">Satın Alın →</a>
       </div>
       <div class="pkg hot reveal">
         <div class="hot-badge">En Popüler</div>
-        <div class="pkg-tier">Büyüme</div>
+        <div class="pkg-tier" data-i18n="pkg2_tier">Büyüme</div>
         <div class="pkg-name">500 Token</div>
-        <div class="pkg-price">Düzenli takip ve rakip karşılaştırması için.<br><strong>$44,99</strong></div>
-        <ul class="pkg-feats">
+        <div class="pkg-price" data-i18n="pkg2_price">Düzenli takip ve rakip karşılaştırması için.<br><strong>$44,99</strong></div>
+        <ul class="pkg-feats" data-i18n-list="pkg2_feats">
           <li>≈50 web sitesi taraması</li>
           <li>veya ≈100 kişi/marka kontrolü</li>
           <li>Takip listesi ile periyodik yeniden tarama</li>
           <li>Süresiz kullanım, ay sonunda sıfırlanmaz</li>
         </ul>
-        <a href="https://app.geoni.ai/dashboard?tab=credits" class="pkg-btn">Satın Alın →</a>
+        <a href="https://app.geoni.ai/dashboard?tab=credits" class="pkg-btn" data-i18n="pkg_btn_buy">Satın Alın →</a>
       </div>
       <div class="pkg reveal">
-        <div class="pkg-tier">Ölçek</div>
+        <div class="pkg-tier" data-i18n="pkg3_tier">Ölçek</div>
         <div class="pkg-name">1000 Token</div>
-        <div class="pkg-price">Ekip ve ajanslar için en avantajlı birim fiyat.<br><strong>$79,99</strong></div>
-        <ul class="pkg-feats">
+        <div class="pkg-price" data-i18n="pkg3_price">Ekip ve ajanslar için en avantajlı birim fiyat.<br><strong>$79,99</strong></div>
+        <ul class="pkg-feats" data-i18n-list="pkg3_feats">
           <li>≈100 web sitesi taraması</li>
           <li>veya ≈200 kişi/marka kontrolü</li>
           <li>Token başına en düşük maliyet</li>
           <li>Süresiz kullanım, ay sonunda sıfırlanmaz</li>
         </ul>
-        <a href="https://app.geoni.ai/dashboard?tab=credits" class="pkg-btn">Satın Alın →</a>
+        <a href="https://app.geoni.ai/dashboard?tab=credits" class="pkg-btn" data-i18n="pkg_btn_buy">Satın Alın →</a>
       </div>
       <div class="pkg reveal">
-        <div class="pkg-tier">Kurumsal</div>
+        <div class="pkg-tier" data-i18n="pkg4_tier">Kurumsal</div>
         <div class="pkg-name">Enterprise</div>
-        <div class="pkg-price">Yüksek hacimli kullanım, çoklu marka, özel entegrasyon.<br><strong>Özel fiyat</strong></div>
-        <ul class="pkg-feats">
+        <div class="pkg-price" data-i18n="pkg4_price">Yüksek hacimli kullanım, çoklu marka, özel entegrasyon.<br><strong>Özel fiyat</strong></div>
+        <ul class="pkg-feats" data-i18n-list="pkg4_feats">
           <li>İhtiyacınıza göre özel token hacmi</li>
           <li>API entegrasyonlu dashboard</li>
           <li>Çoklu marka yönetimi</li>
           <li>Öncelikli destek</li>
         </ul>
-        <a href="mailto:mail@geoni.ai?subject=GEONI%20Enterprise" class="pkg-btn">Bize Ulaşın →</a>
+        <a href="mailto:mail@geoni.ai?subject=GEONI%20Enterprise" class="pkg-btn" data-i18n="pkg_btn_contact">Bize Ulaşın →</a>
       </div>
     </div>
   </div>
@@ -646,11 +694,11 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 <!-- CTA -->
 <div class="cta-wrap" id="iletisim">
   <div class="cta-box">
-    <h2>Her geçen gün rakibiniz bir AI yanıtına daha giriyor.<br>Ücretsiz AI Ön Raporile markanızın şu anki AI görünürlüğünü ölçelim.</h2>
-    <p>Rakibinizin hangi sorularda göründüğünü, sizin nerede kaybolduğunuzu raporlayalım.</p>
+    <h2 data-i18n="cta_h2">Her geçen gün rakibiniz bir AI yanıtına daha giriyor.<br>Ücretsiz AI Ön Raporile markanızın şu anki AI görünürlüğünü ölçelim.</h2>
+    <p data-i18n="cta_sub">Rakibinizin hangi sorularda göründüğünü, sizin nerede kaybolduğunuzu raporlayalım.</p>
     <div class="cta-btns">
-      <a href="https://app.geoni.ai" class="btn-p">Ücretsiz Ön Rapor Talep Et</a>
-      <a href="mailto:mail@geoni.ai" class="btn-g">Bize Ulaşın</a>
+      <a href="https://app.geoni.ai" class="btn-p" data-i18n="cta_btn1">Ücretsiz Ön Rapor Talep Et</a>
+      <a href="mailto:mail@geoni.ai" class="btn-g" data-i18n="cta_btn2">Bize Ulaşın</a>
       
     </div>
   </div>
@@ -658,11 +706,300 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 
 <!-- FOOTER -->
 <footer>
-  <p>© 2025 geoni — Generative Engine Optimization · Ankara, Türkiye</p>
+  <p data-i18n="footer_copy">© 2025 geoni — Generative Engine Optimization · Ankara, Türkiye</p>
   <p style="margin-top:10px;font-size:.75rem;color:var(--text-muted)">
-    Kurumsal teknoloji yatırımcısı <a href="https://linkedin.com/in/scagricakir" target="_blank" rel="noopener" style="color:var(--text-sub);text-decoration:none;border-bottom:1px solid rgba(148,163,184,.3)">Sabri Çağrı Çakır</a> tarafından yatırım almıştır.
+    <span data-i18n="footer_investor_pre">Kurumsal teknoloji yatırımcısı</span> <a href="https://linkedin.com/in/scagricakir" target="_blank" rel="noopener" style="color:var(--text-sub);text-decoration:none;border-bottom:1px solid rgba(148,163,184,.3)">Sabri Çağrı Çakır</a> <span data-i18n="footer_investor_post">tarafından yatırım almıştır.</span>
   </p>
 </footer>
+
+<script>
+// ── I18N + TEMA ──────────────────────────────────────────────────────────
+const I18N = {
+  "tr": {
+    "nav_why": "Neden GEO",
+    "nav_geo": "GEO Nedir",
+    "nav_how": "Nasıl Çalışır",
+    "nav_packages": "Paketler",
+    "nav_cta": "Ücretsiz Ön Rapor",
+    "hero_eyebrow": "// Yeni Nesil Görünürlük",
+    "hero_h1": "Rakibiniz her <span class=\"grad\">AI yanıtında</span> var. Siz yoksunuz.",
+    "hero_sub": "Arama motorları değişti. Artık kullanıcılar sonuç listesine değil, tek bir AI yanıtına bakıyor. O yanıtta yer almayan marka, müşteri için yok hükmünde. GEONI, markanızı bu yanıtların içine taşır.",
+    "hero_cta1": "Ücretsiz AI Ön Rapor Al",
+    "hero_cta2": "Nasıl Çalışır? →",
+    "chat_label": "AI Yanıt Motoru",
+    "phase_sep": "↓ Şimdi siz deneyin",
+    "demo_empty": "Şimdi kendinizi deneyin —<br>AI sizi görüyor mu?",
+    "demo_label_who": "Kişi veya Kurum",
+    "demo_ph_who": "örn: Sabri Çağrı Çakır, GEONI AI...",
+    "demo_label_topic": "Hangi Konuda",
+    "demo_ph_topic": "Faaliyet alanı... örn: yazılım, e-dönüşüm, fintech",
+    "demo_btn": "Tara →",
+    "insight1_eyebrow": "// Aramanın dönüşümü",
+    "insight1_sub": "Google trafiği gerilerken AI sorgu hacmi hızla yükseliyor",
+    "legend_google": "Google Arama Trafiği",
+    "legend_ai": "AI Sorgu Hacmi",
+    "insight2_eyebrow": "// Kayıp hesabı",
+    "insight2_sub": "Sektörünüzde kaç AI sorgusu kaçırıyorsunuz?",
+    "calc_select_default": "Sektörünüzü seçin...",
+    "calc_unit": "AI sorgusu / gün",
+    "calc_msg": "sektörünüzde günlük yapılıyor. Görünmüyorsanız<br>bunların <strong style=\"color:var(--text)\">tamamını</strong> kaçırıyorsunuz.",
+    "calc_footnote": "* Türkiye tahmini, 2025 · ~70M internet kullanıcısı baz alınmıştır",
+    "calc_placeholder": "Sektörünüzü seçtikten sonra<br>kaybı göreceksiniz.",
+    "sector_ecommerce": "E-Ticaret & Perakende",
+    "sector_tech": "Yazılım & Teknoloji",
+    "sector_health": "Sağlık & Medikal",
+    "sector_finance": "Finans & Yatırım",
+    "sector_marketing": "Pazarlama & Ajans",
+    "sector_education": "Eğitim & Akademi",
+    "sector_legal": "Hukuk & Danışmanlık",
+    "sector_realestate": "Gayrimenkul",
+    "sector_manufacturing": "Üretim & Sanayi",
+    "sector_tourism": "Turizm & Konaklama",
+    "geo_eyebrow": "// GEO Nedir?",
+    "geo_h2": "Google sizi listeliyor. AI sizi anlatıyor —<br>ya da anlatmıyor.",
+    "geo_sub": "Generative Engine Optimization; markanızın ChatGPT, Perplexity, Claude ve Gemini tarafından kaynak olarak gösterilmesi için uygulanan sistematik optimizasyon sürecidir. Sıralama yarışı bitti — şimdi yanıt içinde yer alma yarışı var.",
+    "cmp_seo_title": "SEO (Klasik)",
+    "cmp_seo_desc": "Google 10 seçenek sunar. Kullanıcı tarar, karşılaştırır, tıklar. Markanız sıralamada yoksa gözden kaçar.",
+    "cmp_geo_title": "GEO (Yeni)",
+    "cmp_geo_desc": "AI tek bir isim söyler. Tavsiye, açıklama, bağlam — hepsi o yanıtın içinde. Markanız orada değilse, müşteri için var olmamışsınız gibidir.",
+    "how_eyebrow": "// Nasıl Çalışır?",
+    "how_h2": "Nasıl çalışır?",
+    "how_sub": "AI görünürlüğü tek hamlede kazanılmaz. Her katman, markanızı bir AI yanıtına daha yaklaştırır.",
+    "step1_name": "Kaynak Otoritesi",
+    "step1_desc": "AI motorları güvendiği kaynaklardan öğrenir. Markanızı bu kaynakların dilinde var ederiz — Wikipedia, sektör yayınları, referans platformlar.",
+    "step2_name": "Yapısal İçerik",
+    "step2_desc": "Tanımlar, karşılaştırmalar, soru-cevap formatları — alıntılaması için yazıyoruz. Her içerik parçası, bir AI yanıtının kaynağı olacak şekilde kurgulanır.",
+    "step3_name": "Atıf Kazanma",
+    "step3_desc": "Backlink sıralamayı etkiler. Citation ise AI yanıtını. Markanızı sektörün referans noktası haline getiririz.",
+    "step4_name": "Entity Optimizasyonu",
+    "step4_desc": "Markanız Schema.org, Wikidata ve bilgi grafikleriyle markanız bir varlık olarak tanımlanır.",
+    "step5_name": "Prompt Simülasyonu",
+    "step5_desc": "Müşterinizin AI'a ne soracağını öngörüp, içeriğinizi tam o soruların cevabı olacak şekilde konumlandırırız.",
+    "step6_name": "Tazelik & İndeksleme",
+    "step6_desc": "Perplexity bugünkü içeriği yarın alıntılar. Güncel, tarihli ve kaynaklı içerik akışını kesintisiz yönetiriz.",
+    "pkg_eyebrow": "// Token Paketleri",
+    "pkg_h2": "Nerede başlamak istiyorsunuz?",
+    "pkg_sub": "Web sitesi taraması 10 token, kişi/marka kontrolü 5 token harcar. İhtiyacınıza göre token satın alın, dilediğiniz gibi kullanın.",
+    "pkg1_tier": "Başlangıç",
+    "pkg1_price": "Ücretsiz raporun ardından ilk adım.<br><strong>$9,99</strong>",
+    "pkg1_feats": [
+      "≈10 web sitesi taraması",
+      "veya ≈20 kişi/marka kontrolü",
+      "Claude, ChatGPT, Gemini, Perplexity üzerinden gerçek zamanlı sorgu",
+      "Süresiz kullanım, ay sonunda sıfırlanmaz"
+    ],
+    "pkg2_tier": "Büyüme",
+    "pkg2_price": "Düzenli takip ve rakip karşılaştırması için.<br><strong>$44,99</strong>",
+    "pkg2_feats": [
+      "≈50 web sitesi taraması",
+      "veya ≈100 kişi/marka kontrolü",
+      "Takip listesi ile periyodik yeniden tarama",
+      "Süresiz kullanım, ay sonunda sıfırlanmaz"
+    ],
+    "pkg3_tier": "Ölçek",
+    "pkg3_price": "Ekip ve ajanslar için en avantajlı birim fiyat.<br><strong>$79,99</strong>",
+    "pkg3_feats": [
+      "≈100 web sitesi taraması",
+      "veya ≈200 kişi/marka kontrolü",
+      "Token başına en düşük maliyet",
+      "Süresiz kullanım, ay sonunda sıfırlanmaz"
+    ],
+    "pkg4_tier": "Kurumsal",
+    "pkg4_price": "Yüksek hacimli kullanım, çoklu marka, özel entegrasyon.<br><strong>Özel fiyat</strong>",
+    "pkg4_feats": [
+      "İhtiyacınıza göre özel token hacmi",
+      "API entegrasyonlu dashboard",
+      "Çoklu marka yönetimi",
+      "Öncelikli destek"
+    ],
+    "pkg_btn_buy": "Satın Alın →",
+    "pkg_btn_contact": "Bize Ulaşın →",
+    "cta_h2": "Her geçen gün rakibiniz bir AI yanıtına daha giriyor.<br>Ücretsiz AI Ön Raporile markanızın şu anki AI görünürlüğünü ölçelim.",
+    "cta_sub": "Rakibinizin hangi sorularda göründüğünü, sizin nerede kaybolduğunuzu raporlayalım.",
+    "cta_btn1": "Ücretsiz Ön Rapor Talep Et",
+    "cta_btn2": "Bize Ulaşın",
+    "footer_copy": "© 2025 geoni — Generative Engine Optimization · Ankara, Türkiye",
+    "footer_investor_pre": "Kurumsal teknoloji yatırımcısı",
+    "footer_investor_post": "tarafından yatırım almıştır.",
+    "audit_title": "GEONI AI Asistanı",
+    "audit_subtitle": "Ücretsiz AI Görünürlük Raporu",
+    "audit_input_ph": "Yanıtınızı yazın..."
+  },
+  "en": {
+    "nav_why": "Why GEO",
+    "nav_geo": "What is GEO",
+    "nav_how": "How it works",
+    "nav_packages": "Packages",
+    "nav_cta": "Free Pre-Report",
+    "hero_eyebrow": "// Next-Gen Visibility",
+    "hero_h1": "Your competitor is in every <span class=\"grad\">AI answer</span>. You are not.",
+    "hero_sub": "Search has changed. Users no longer scan a results page — they look at a single AI answer. A brand missing from that answer doesn't exist for the customer. GEONI puts your brand inside those answers.",
+    "hero_cta1": "Get Your Free AI Pre-Report",
+    "hero_cta2": "How it works? →",
+    "chat_label": "AI Answer Engine",
+    "phase_sep": "↓ Now try it yourself",
+    "demo_empty": "Try it yourself now —<br>does AI see you?",
+    "demo_label_who": "Person or Company",
+    "demo_ph_who": "e.g. Sabri Çağrı Çakır, GEONI AI...",
+    "demo_label_topic": "On What Topic",
+    "demo_ph_topic": "Field of activity... e.g. software, e-transformation, fintech",
+    "demo_btn": "Scan →",
+    "insight1_eyebrow": "// The shift in search",
+    "insight1_sub": "Google traffic is declining while AI query volume rises fast",
+    "legend_google": "Google Search Traffic",
+    "legend_ai": "AI Query Volume",
+    "insight2_eyebrow": "// Loss calculator",
+    "insight2_sub": "How many AI queries are you missing in your sector?",
+    "calc_select_default": "Select your sector...",
+    "calc_unit": "AI queries / day",
+    "calc_msg": "happen daily in your sector. If you're not visible, you're missing <strong style=\"color:var(--text)\">all</strong> of them.",
+    "calc_footnote": "* Turkey estimate, 2025 · based on ~70M internet users",
+    "calc_placeholder": "Select your sector to<br>see what you're losing.",
+    "sector_ecommerce": "E-Commerce & Retail",
+    "sector_tech": "Software & Technology",
+    "sector_health": "Health & Medical",
+    "sector_finance": "Finance & Investment",
+    "sector_marketing": "Marketing & Agency",
+    "sector_education": "Education & Academia",
+    "sector_legal": "Legal & Consulting",
+    "sector_realestate": "Real Estate",
+    "sector_manufacturing": "Manufacturing & Industry",
+    "sector_tourism": "Tourism & Hospitality",
+    "geo_eyebrow": "// What is GEO?",
+    "geo_h2": "Google lists you. AI describes you —<br>or doesn't.",
+    "geo_sub": "Generative Engine Optimization is the systematic process of getting your brand cited by ChatGPT, Perplexity, Claude and Gemini. The ranking race is over — now it's the race to be inside the answer.",
+    "cmp_seo_title": "SEO (Classic)",
+    "cmp_seo_desc": "Google offers 10 options. The user scans, compares, clicks. If your brand isn't in the ranking, it gets overlooked.",
+    "cmp_geo_title": "GEO (New)",
+    "cmp_geo_desc": "AI names just one. Recommendation, description, context — all inside that one answer. If your brand isn't there, you don't exist for the customer.",
+    "how_eyebrow": "// How it works?",
+    "how_h2": "How it works?",
+    "how_sub": "AI visibility isn't won in one move. Every layer brings your brand one step closer to an AI answer.",
+    "step1_name": "Source Authority",
+    "step1_desc": "AI engines learn from sources they trust. We establish your brand in the language of those sources — Wikipedia, industry publications, reference platforms.",
+    "step2_name": "Structured Content",
+    "step2_desc": "Definitions, comparisons, Q&A formats — written to be quoted. Every piece of content is built to become the source of an AI answer.",
+    "step3_name": "Earning Citations",
+    "step3_desc": "Backlinks influence rankings. Citations influence AI answers. We turn your brand into the reference point of your industry.",
+    "step4_name": "Entity Optimization",
+    "step4_desc": "Your brand is defined as an entity through Schema.org, Wikidata and knowledge graphs.",
+    "step5_name": "Prompt Simulation",
+    "step5_desc": "We predict what your customers will ask AI, and position your content to be exactly the answer to those questions.",
+    "step6_name": "Freshness & Indexing",
+    "step6_desc": "Perplexity cites today's content tomorrow. We manage a continuous flow of current, dated, sourced content.",
+    "pkg_eyebrow": "// Token Packages",
+    "pkg_h2": "Where would you like to start?",
+    "pkg_sub": "A website scan uses 10 tokens, a person/brand check uses 5 tokens. Buy tokens based on your needs, use them however you like.",
+    "pkg1_tier": "Starter",
+    "pkg1_price": "The first step after your free report.<br><strong>$9.99</strong>",
+    "pkg1_feats": [
+      "≈10 website scans",
+      "or ≈20 person/brand checks",
+      "Real-time queries via Claude, ChatGPT, Gemini, Perplexity",
+      "No expiry, never resets at month-end"
+    ],
+    "pkg2_tier": "Growth",
+    "pkg2_price": "For ongoing tracking and competitor comparison.<br><strong>$44.99</strong>",
+    "pkg2_feats": [
+      "≈50 website scans",
+      "or ≈100 person/brand checks",
+      "Periodic rescans via the watchlist",
+      "No expiry, never resets at month-end"
+    ],
+    "pkg3_tier": "Scale",
+    "pkg3_price": "The best unit price for teams and agencies.<br><strong>$79.99</strong>",
+    "pkg3_feats": [
+      "≈100 website scans",
+      "or ≈200 person/brand checks",
+      "Lowest cost per token",
+      "No expiry, never resets at month-end"
+    ],
+    "pkg4_tier": "Enterprise",
+    "pkg4_price": "High-volume usage, multiple brands, custom integration.<br><strong>Custom pricing</strong>",
+    "pkg4_feats": [
+      "Custom token volume for your needs",
+      "API-integrated dashboard",
+      "Multi-brand management",
+      "Priority support"
+    ],
+    "pkg_btn_buy": "Buy Now →",
+    "pkg_btn_contact": "Contact Us →",
+    "cta_h2": "Every day, your competitor enters one more AI answer.<br>Let's measure your brand's current AI visibility with a free pre-report.",
+    "cta_sub": "We'll report which questions your competitor shows up in, and where you're missing.",
+    "cta_btn1": "Request Your Free Pre-Report",
+    "cta_btn2": "Contact Us",
+    "footer_copy": "© 2025 geoni — Generative Engine Optimization · Ankara, Turkey",
+    "footer_investor_pre": "Backed by corporate technology investor",
+    "footer_investor_post": ".",
+    "audit_title": "GEONI AI Assistant",
+    "audit_subtitle": "Free AI Visibility Report",
+    "audit_input_ph": "Type your answer..."
+  }
+};
+let CURRENT_LANG = localStorage.getItem('geoni_site_lang') || 'tr';
+
+function applyLang(lang) {
+  CURRENT_LANG = lang;
+  const dict = I18N[lang] || I18N.tr;
+  document.documentElement.lang = lang === 'en' ? 'en' : 'tr';
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (dict[key] !== undefined) el.innerHTML = dict[key];
+  });
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => {
+    const key = el.getAttribute('data-i18n-ph');
+    if (dict[key] !== undefined) el.placeholder = dict[key];
+  });
+  document.querySelectorAll('[data-i18n-opt]').forEach(el => {
+    const key = el.getAttribute('data-i18n-opt');
+    if (dict[key] !== undefined) el.textContent = dict[key];
+  });
+  document.querySelectorAll('[data-i18n-list]').forEach(el => {
+    const key = el.getAttribute('data-i18n-list');
+    const arr = dict[key];
+    if (Array.isArray(arr)) {
+      el.querySelectorAll('li').forEach((li, i) => { if (arr[i] !== undefined) li.innerHTML = arr[i]; });
+    }
+  });
+  const langBtn = document.getElementById('lang-toggle');
+  if (langBtn) langBtn.textContent = lang === 'en' ? 'EN' : 'TR';
+}
+
+function toggleLang() {
+  const next = CURRENT_LANG === 'en' ? 'tr' : 'en';
+  localStorage.setItem('geoni_site_lang', next);
+  applyLang(next);
+}
+
+const SUN_ICON = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>';
+const MOON_ICON = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+
+function applyTheme(theme) {
+  if (theme === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+  } else {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  }
+  const icon = document.getElementById('theme-icon');
+  if (icon) icon.innerHTML = theme === 'light' ? MOON_ICON : SUN_ICON;
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  const next = current === 'light' ? 'dark' : 'light';
+  localStorage.setItem('geoni_site_theme', next);
+  applyTheme(next);
+}
+
+(function initI18nTheme() {
+  const savedTheme = localStorage.getItem('geoni_site_theme');
+  const theme = savedTheme || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  applyTheme(theme);
+  applyLang(CURRENT_LANG);
+  document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+  document.getElementById('lang-toggle').addEventListener('click', toggleLang);
+})();
+</script>
 
 <script>
 // ── FAZ 1: Animasyon ────────────────────────────────────────────────────────
@@ -936,17 +1273,18 @@ if(chartWrap) chartObs.observe(chartWrap);
 
 // LOSS CALCULATOR
 const sectors = [
-  {label:'E-Ticaret & Perakende', val:10500000},
-  {label:'Yazılım & Teknoloji', val:8400000},
-  {label:'Sağlık & Medikal', val:7000000},
-  {label:'Finans & Yatırım', val:5600000},
-  {label:'Pazarlama & Ajans', val:4800000},
-  {label:'Eğitim & Akademi', val:5200000},
-  {label:'Hukuk & Danışmanlık', val:3800000},
-  {label:'Gayrimenkul', val:3200000},
-  {label:'Üretim & Sanayi', val:2800000},
-  {label:'Turizm & Konaklama', val:4200000},
+  {key:'sector_ecommerce', val:10500000},
+  {key:'sector_tech', val:8400000},
+  {key:'sector_health', val:7000000},
+  {key:'sector_finance', val:5600000},
+  {key:'sector_marketing', val:4800000},
+  {key:'sector_education', val:5200000},
+  {key:'sector_legal', val:3800000},
+  {key:'sector_realestate', val:3200000},
+  {key:'sector_manufacturing', val:2800000},
+  {key:'sector_tourism', val:4200000},
 ];
+function sectorLabel(key) { return (I18N[CURRENT_LANG] && I18N[CURRENT_LANG][key]) || I18N.tr[key] || key; }
 
 let rotateInterval = null;
 let rotateIdx = 0;
@@ -984,11 +1322,11 @@ function showCalcResult(val, label, animate) {
 
 function startRotation() {
   document.getElementById('calc-placeholder').style.display = 'none';
-  showCalcResult(sectors[0].val, sectors[0].label, true);
+  showCalcResult(sectors[0].val, sectorLabel(sectors[0].key), true);
   rotateInterval = setInterval(() => {
     if(userSelected) return;
     rotateIdx = (rotateIdx + 1) % sectors.length;
-    showCalcResult(sectors[rotateIdx].val, sectors[rotateIdx].label, true);
+    showCalcResult(sectors[rotateIdx].val, sectorLabel(sectors[rotateIdx].key), true);
     // Dropdown'u da güncelle
     document.getElementById('calc-sector').value = '';
   }, 2800);
@@ -1020,15 +1358,15 @@ document.getElementById('calc-sector').addEventListener('change', function() {
         <circle cx="36" cy="24" r=".9" fill="#F59E0B"/>
       </svg>
       <div>
-        <div class="audit-head-title">GEONI AI Asistanı</div>
-        <div class="audit-head-sub">Ücretsiz AI Görünürlük Raporu</div>
+        <div class="audit-head-title" data-i18n="audit_title">GEONI AI Asistanı</div>
+        <div class="audit-head-sub" data-i18n="audit_subtitle">Ücretsiz AI Görünürlük Raporu</div>
       </div>
     </div>
     <button class="audit-close" onclick="toggleAudit()">✕</button>
   </div>
   <div class="audit-msgs" id="audit-msgs"></div>
   <div class="audit-input-wrap" id="audit-input-wrap">
-    <input class="audit-input" id="audit-input" placeholder="Yanıtınızı yazın..." onkeydown="if(event.key==='Enter')sendAudit()">
+    <input class="audit-input" id="audit-input" placeholder="Yanıtınızı yazın..." onkeydown="if(event.key==='Enter')sendAudit()" data-i18n-ph="audit_input_ph">
     <button class="audit-send" id="audit-send" onclick="sendAudit()">→</button>
   </div>
 </div>
