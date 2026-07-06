@@ -993,7 +993,7 @@ function toggleTheme() {
 
 (function initI18nTheme() {
   const savedTheme = localStorage.getItem('geoni_site_theme');
-  const theme = savedTheme || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  const theme = savedTheme || 'light';
   applyTheme(theme);
   applyLang(CURRENT_LANG);
   document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
