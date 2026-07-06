@@ -221,6 +221,25 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 .warn-box a{color:var(--accent);text-decoration:none;font-weight:600}
 .warn-box a:hover{text-decoration:underline}
 
+/* MODE TABS (api.geoni.ai/LandingPage'den birebir tasindi) */
+.mode-tabs{display:flex;width:100%;gap:4px;background:var(--surface-2);border:1px solid var(--border-mid);border-radius:10px;padding:4px;box-sizing:border-box}
+.mode-tab{display:flex;align-items:center;justify-content:center;flex:1;gap:5px;background:none;border:none;border-radius:7px;padding:9px 8px;font-family:var(--body);font-size:.82rem;font-weight:500;color:var(--text-muted);cursor:pointer;transition:background .2s,color .2s;white-space:nowrap}
+.mode-tab:hover{color:var(--text-sub)}
+.mode-tab--active{background:var(--accent);color:#FFFFFF}
+.mode-tab--active:hover{color:#FFFFFF}
+.mode-panel{display:none;margin-top:12px}
+.mode-panel--active{display:block}
+.premium-teaser{text-align:center;padding:18px 8px}
+.premium-teaser p{color:var(--text-sub);font-size:.82rem;margin-bottom:14px;line-height:1.6}
+.premium-teaser a{display:inline-block;background:var(--accent);color:#FFFFFF;padding:9px 20px;border-radius:8px;font-size:.83rem;font-weight:600;text-decoration:none;transition:opacity .2s}
+.premium-teaser a:hover{opacity:.85}
+.web-result{margin-top:12px;padding:14px 16px;border-radius:10px;border:1px solid var(--border-mid);background:var(--surface-2)}
+.web-result__badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.74rem;padding:4px 10px;border-radius:20px;margin-bottom:8px}
+.web-result__badge--yes{background:rgba(74,222,128,.1);color:var(--good);border:1px solid rgba(74,222,128,.25)}
+.web-result__badge--no{background:rgba(248,113,113,.1);color:var(--bad);border:1px solid rgba(248,113,113,.25)}
+.web-result__desc{font-size:.82rem;color:var(--text-sub);line-height:1.6}
+.web-result__meta{font-size:.72rem;color:var(--text-muted);font-family:var(--mono);margin-top:6px}
+
 /* DEMO PHASES */
 .ai-line{padding:3px 0;font-size:.82rem;font-family:var(--mono);color:#C4CDD6;line-height:1.6}
 .ai-line-hero{padding:8px 12px;margin:6px -12px;border-radius:8px;background:rgba(129,140,248,.09);border:1px solid rgba(129,140,248,.25);color:var(--text)}
@@ -554,16 +573,33 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
       </div>
       <div id="phase2" style="display:none">
         <div class="phase-sep"><span data-i18n="phase_sep">↓ Şimdi siz deneyin</span></div>
-        <div class="chat-body" id="p2-body">
-          <div class="demo-empty" style="margin:4px auto 8px" data-i18n="demo_empty">Şimdi kendinizi deneyin —<br>AI sizi görüyor mu?</div>
-        </div>
         <div class="chat-input-area">
-          <div style="font-size:.65rem;font-family:var(--mono);color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:2px" data-i18n="demo_label_who">Kişi veya Kurum</div>
-          <input type="text" id="demo-name" class="demo-input" placeholder="örn: Sabri Çağrı Çakır, GEONI AI..." data-i18n-ph="demo_ph_who">
-          <div style="font-size:.65rem;font-family:var(--mono);color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:2px;margin-top:4px" data-i18n="demo_label_topic">Hangi Konuda</div>
-          <div class="input-row">
-            <input type="text" id="demo-topic" class="demo-input" placeholder="Faaliyet alanı... örn: yazılım, e-dönüşüm, fintech" data-i18n-ph="demo_ph_topic">
-            <button id="demo-btn" class="demo-btn" onclick="sendQuery()" data-i18n="demo_btn">Tara →</button>
+          <div class="mode-tabs">
+            <button type="button" class="mode-tab mode-tab--active" data-mode-tab="web" data-i18n="demo_tab_web">Web Sitesi</button>
+            <button type="button" class="mode-tab" data-mode-tab="person" data-i18n="demo_tab_person">Kişi</button>
+            <button type="button" class="mode-tab" data-mode-tab="brand" data-i18n="demo_tab_brand">Marka</button>
+          </div>
+
+          <div class="mode-panel mode-panel--active" id="mode-panel-web">
+            <div class="input-row" style="margin-top:10px">
+              <input type="text" id="demo-domain" class="demo-input" placeholder="ornek.com" data-i18n-ph="demo_ph_domain">
+              <button type="button" id="demo-web-btn" class="demo-btn" data-i18n="demo_btn">Tara →</button>
+            </div>
+            <div id="demo-web-result"></div>
+          </div>
+
+          <div class="mode-panel" id="mode-panel-person">
+            <div class="premium-teaser">
+              <p data-i18n="demo_teaser_person">Kişi taraması 4 farklı AI motoruna paralel sorgu gerektirir - ücretsiz hesap açıp deneyin.</p>
+              <a href="https://app.geoni.ai" data-i18n="demo_teaser_cta">Ücretsiz Hesap Aç →</a>
+            </div>
+          </div>
+
+          <div class="mode-panel" id="mode-panel-brand">
+            <div class="premium-teaser">
+              <p data-i18n="demo_teaser_brand">Marka taraması 4 farklı AI motoruna paralel sorgu gerektirir - ücretsiz hesap açıp deneyin.</p>
+              <a href="https://app.geoni.ai" data-i18n="demo_teaser_cta">Ücretsiz Hesap Aç →</a>
+            </div>
           </div>
         </div>
       </div>
@@ -782,12 +818,19 @@ const I18N = {
     "hero_cta3": "Örnek Rapor →",
     "chat_label": "AI Yanıt Motoru",
     "phase_sep": "↓ Şimdi siz deneyin",
-    "demo_empty": "Şimdi kendinizi deneyin —<br>AI sizi görüyor mu?",
-    "demo_label_who": "Kişi veya Kurum",
-    "demo_ph_who": "örn: Sabri Çağrı Çakır, GEONI AI...",
-    "demo_label_topic": "Hangi Konuda",
-    "demo_ph_topic": "Faaliyet alanı... örn: yazılım, e-dönüşüm, fintech",
+    "demo_tab_web": "Web Sitesi",
+    "demo_tab_person": "Kişi",
+    "demo_tab_brand": "Marka",
+    "demo_ph_domain": "ornek.com",
     "demo_btn": "Tara →",
+    "demo_teaser_person": "Kişi taraması 4 farklı AI motoruna paralel sorgu gerektirir - ücretsiz hesap açıp deneyin.",
+    "demo_teaser_brand": "Marka taraması 4 farklı AI motoruna paralel sorgu gerektirir - ücretsiz hesap açıp deneyin.",
+    "demo_teaser_cta": "Ücretsiz Hesap Aç →",
+    "demo_web_known": "AI bu siteyi/markayı tanıyor",
+    "demo_web_unknown": "AI bu siteyi/markayı tanımıyor",
+    "demo_web_limit": "Ücretsiz deneme hakkınızı kullandınız.",
+    "demo_web_error": "Bir şeyler ters gitti, lütfen tekrar deneyin.",
+    "demo_web_placeholder_hint": "Bir domain girip AI'ın onu tanıyıp tanımadığına bakın.",
     "insight1_eyebrow": "// Aramanın dönüşümü",
     "insight1_sub": "Google trafiği gerilerken AI sorgu hacmi hızla yükseliyor",
     "legend_google": "Google Arama Trafiği",
@@ -893,12 +936,19 @@ const I18N = {
     "hero_cta3": "Sample Report →",
     "chat_label": "AI Answer Engine",
     "phase_sep": "↓ Now try it yourself",
-    "demo_empty": "Try it yourself now —<br>does AI see you?",
-    "demo_label_who": "Person or Company",
-    "demo_ph_who": "e.g. Sabri Çağrı Çakır, GEONI AI...",
-    "demo_label_topic": "On What Topic",
-    "demo_ph_topic": "Field of activity... e.g. software, e-transformation, fintech",
+    "demo_tab_web": "Website",
+    "demo_tab_person": "Person",
+    "demo_tab_brand": "Brand",
+    "demo_ph_domain": "example.com",
     "demo_btn": "Scan →",
+    "demo_teaser_person": "A person check requires parallel queries across 4 AI engines - open a free account to try it.",
+    "demo_teaser_brand": "A brand check requires parallel queries across 4 AI engines - open a free account to try it.",
+    "demo_teaser_cta": "Create Free Account →",
+    "demo_web_known": "AI recognizes this site/brand",
+    "demo_web_unknown": "AI doesn't recognize this site/brand",
+    "demo_web_limit": "You've used your free trial queries.",
+    "demo_web_error": "Something went wrong, please try again.",
+    "demo_web_placeholder_hint": "Enter a domain and see if AI recognizes it.",
     "insight1_eyebrow": "// The shift in search",
     "insight1_sub": "Google traffic is declining while AI query volume rises fast",
     "legend_google": "Google Search Traffic",
@@ -1309,10 +1359,6 @@ function revealPhase2() {
   if (window.scrollY < window.innerHeight * 0.6) {
     p2.scrollIntoView({ behavior:'smooth', block:'nearest' });
   }
-  ['demo-name','demo-topic'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') sendQuery(); });
-  });
 }
 
 function startDemo() {
@@ -1330,123 +1376,73 @@ function startDemo() {
 
 window.addEventListener('DOMContentLoaded', () => setTimeout(startDemo, 400));
 
-// ── FAZ 2: Gerçek API sorgusu ─────────────────────────────────────────────
-let isLoading = false;
+// ── FAZ 2: Mod sekmeleri + gerçek web sitesi kontrolü ─────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.mode-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const mode = tab.getAttribute('data-mode-tab');
+      document.querySelectorAll('.mode-tab').forEach((t) => t.classList.toggle('mode-tab--active', t === tab));
+      document.querySelectorAll('.mode-panel').forEach((p) => p.classList.remove('mode-panel--active'));
+      const panel = document.getElementById(`mode-panel-${mode}`);
+      if (panel) panel.classList.add('mode-panel--active');
+    });
+  });
 
-async function sendQuery() {
-  if (isLoading) return;
-  const company = document.getElementById('demo-name').value.trim();
-  const sector = document.getElementById('demo-topic').value.trim();
-  if (!company || !sector) {
-    alert('Lütfen adınızı/kurumunuzu ve konuyu girin.');
-    return;
-  }
+  const webBtn = document.getElementById('demo-web-btn');
+  if (webBtn) webBtn.addEventListener('click', runWebCheck);
+  const domainInput = document.getElementById('demo-domain');
+  if (domainInput) domainInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') runWebCheck(); });
+});
 
-  // Geoni kontrolü
-  if (company.toLowerCase().includes('geoni')) {
-    const p2body = document.getElementById('p2-body');
-    p2body.innerHTML = '';
-    const msgDiv = document.createElement('div');
-    msgDiv.className = 'msg';
-    msgDiv.innerHTML = '<div class="avatar av-ai">AI</div><div class="bubble bubble-ai"></div>';
-    const bubble = msgDiv.querySelector('.bubble-ai');
-    bubble.style.color = '#818CF8';
-    bubble.innerHTML = '😊 Biz zaten buradayız! GEONI olarak AI motorlarındaki görünürlüğünüzü yönetiyoruz. Sizi en iyi biz anlıyoruz.';
-    p2body.appendChild(msgDiv);
-    return;
-  }
+let webCheckLoading = false;
 
-  // Sorgu limiti: 3 hak
-  const queryCount = parseInt(localStorage.getItem('geoni_query_count') || '0');
+async function runWebCheck() {
+  if (webCheckLoading) return;
+  const dict = I18N[CURRENT_LANG] || I18N.tr;
+  const domain = document.getElementById('demo-domain').value.trim();
+  const resultEl = document.getElementById('demo-web-result');
+  if (!domain) return;
+
+  // Ucretsiz deneme limiti: 3 hak (localStorage bazli)
+  const queryCount = parseInt(localStorage.getItem('geoni_web_query_count') || '0');
   if (queryCount >= 3) {
-    const p2body = document.getElementById('p2-body');
-    p2body.innerHTML = '';
-    const msgDiv = document.createElement('div');
-    msgDiv.className = 'msg';
-    msgDiv.innerHTML = '<div class="avatar av-ai">AI</div><div class="bubble bubble-ai"></div>';
-    const bubble = msgDiv.querySelector('.bubble-ai');
-    bubble.innerHTML = '⏳ 3 ücretsiz sorgu hakkınızı kullandınız.';
-    p2body.appendChild(msgDiv);
+    resultEl.innerHTML = `<div class="web-result"><div class="web-result__desc">⏳ ${dict.demo_web_limit}</div></div>`;
     return;
   }
 
-  isLoading = true;
-  const btn = document.getElementById('demo-btn');
+  webCheckLoading = true;
+  const btn = document.getElementById('demo-web-btn');
   btn.disabled = true;
+  const originalBtnText = btn.textContent;
   btn.textContent = '...';
-
-  const p2body = document.getElementById('p2-body');
-  p2body.innerHTML = '';
-
-  const userDiv = document.createElement('div');
-  userDiv.className = 'msg';
-  userDiv.innerHTML = '<div class="avatar av-u">SİZ</div><div class="bubble bubble-u"></div>';
-  userDiv.querySelector('.bubble-u').textContent = '"' + sector + '" konusunda öne çıkan isimler kimler?';
-  p2body.appendChild(userDiv);
-
-  const aiDiv = document.createElement('div');
-  aiDiv.className = 'msg';
-  aiDiv.innerHTML = '<div class="avatar av-ai">AI</div><div class="bubble bubble-ai"><div class="typing-dots"><span></span><span></span><span></span></div></div>';
-  p2body.appendChild(aiDiv);
-  p2body.scrollTop = p2body.scrollHeight;
+  resultEl.innerHTML = '<div class="web-result"><div class="typing-dots"><span></span><span></span><span></span></div></div>';
 
   try {
-    const res = await fetch('/api/chat', {
+    const res = await fetch('/api/lookup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: company, topic: sector })
+      body: JSON.stringify({ name: domain }),
     });
     const data = await res.json();
-    if (!res.ok || !data.content) {
-      const errMsg = data.error || 'API hatası';
-      throw new Error(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg));
-    }
-    const text = data.content[0].text;
-    const aiBubble = aiDiv.querySelector('.bubble-ai');
-    aiBubble.innerHTML = '';
-    const span = document.createElement('span');
-    aiBubble.appendChild(span);
-    let i = 0;
-    (function typeChar() {
-      if (i < text.length) {
-        if (text[i] === '\n') span.appendChild(document.createElement('br'));
-        else span.appendChild(document.createTextNode(text[i]));
-        i++;
-        p2body.scrollTop = p2body.scrollHeight;
-        setTimeout(typeChar, 16);
-      } else {
-        // Şirket adı yanıtta geçiyor mu?
-        const found = text.toLowerCase().includes(company.toLowerCase());
-        const warn = document.createElement('div');
-        warn.className = 'warn-box';
-        if (found) {
-          warn.style.background = 'rgba(74,222,128,.07)';
-          warn.style.borderColor = 'rgba(74,222,128,.25)';
-          warn.style.color = '#86EFAC';
-          warn.innerHTML = '✓ Markanız bu yanıtta geçiyor! GEO ile bu görünürlüğü koruyun.';
-        } else {
-          warn.innerHTML = '⚠ Markanız bu yanıtta yer almıyor.';
-        }
-        aiBubble.appendChild(warn);
-        // Sorgu sayacını artır
-        localStorage.setItem('geoni_query_count', queryCount + 1);
-        const remaining = 2 - queryCount;
-        if (remaining > 0) {
-          const note = document.createElement('div');
-          note.style.cssText = 'font-size:.7rem;color:var(--text-muted);font-family:var(--mono);margin-top:8px;text-align:right';
-          note.textContent = remaining + ' sorgu hakkınız kaldı';
-          aiBubble.appendChild(note);
-        }
-        isLoading = false;
-        btn.disabled = false;
-        btn.textContent = 'Sor →';
-      }
-    })();
-  } catch(e) {
-    aiDiv.querySelector('.bubble-ai').textContent = 'Hata: ' + (e.message || 'Bağlantı başarısız');
-    isLoading = false;
+    if (!res.ok) throw new Error(data.error || 'lookup error');
+
+    localStorage.setItem('geoni_web_query_count', queryCount + 1);
+    const badgeClass = data.known ? 'web-result__badge--yes' : 'web-result__badge--no';
+    const badgeText = data.known ? `✓ ${dict.demo_web_known}` : `✗ ${dict.demo_web_unknown}`;
+    const desc = data.description ? `<div class="web-result__desc">${data.description}</div>` : '';
+    const meta = [data.sector, data.website].filter(Boolean).join(' · ');
+    resultEl.innerHTML = `
+      <div class="web-result">
+        <span class="web-result__badge ${badgeClass}">${badgeText}</span>
+        ${desc}
+        ${meta ? `<div class="web-result__meta">${meta}</div>` : ''}
+      </div>`;
+  } catch (e) {
+    resultEl.innerHTML = `<div class="web-result"><div class="web-result__desc">${dict.demo_web_error}</div></div>`;
+  } finally {
+    webCheckLoading = false;
     btn.disabled = false;
-    btn.textContent = 'Sor →';
+    btn.textContent = originalBtnText;
   }
 }
 
