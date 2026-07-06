@@ -295,8 +295,11 @@ async def get_admin_overview() -> dict:
         return empty
 
     now = datetime.now(timezone.utc)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    week_start = (now - timedelta(days=7)).isoformat()
+    # "+00:00" from isoformat() gets read back as a literal space by PostgREST's query
+    # parser once it's sitting unescaped in a URL (RFC 3986 form-encoding), turning
+    # "...T00:00:00+00:00" into "...T00:00:00 00:00" -> 400 Bad Request. Z avoids it.
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+    week_start = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     async def count(query: str) -> int:
         try:
