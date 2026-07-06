@@ -292,6 +292,36 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 .audit-send:hover{opacity:.85}
 .audit-send:disabled{opacity:.35;cursor:not-allowed}
 @media(max-width:600px){.audit-panel{width:calc(100vw - 32px);right:16px;bottom:80px}}
+
+/* SAMPLE REPORT MODAL */
+.sample-modal-overlay{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;backdrop-filter:blur(4px);transition:opacity .2s}
+.sample-modal-overlay.hidden{display:none}
+.sample-modal{position:relative;width:100%;max-width:720px;background:var(--surface);border:1px solid var(--border-mid);border-radius:20px;box-shadow:0 40px 100px rgba(0,0,0,.5);padding:32px;margin-bottom:40px}
+.sample-modal__close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--text-muted);font-size:1.3rem;cursor:pointer;padding:6px 10px;border-radius:8px;transition:color .2s}
+.sample-modal__close:hover{color:var(--text)}
+.sample-modal__banner{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:10px;padding:12px 16px;font-size:.8rem;color:#F59E0B;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin-bottom:24px;font-family:var(--mono)}
+.sample-modal__banner a{color:var(--accent);text-decoration:none;font-weight:700}
+.sample-modal__banner a:hover{text-decoration:underline}
+.sr-head{display:flex;align-items:center;gap:16px;margin-bottom:24px}
+.sr-avatar{width:56px;height:56px;border-radius:50%;background:var(--accent-dim);border:1px solid var(--border-mid);display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:700;font-size:1.3rem;color:var(--accent);flex-shrink:0}
+.sr-name{font-family:var(--display);font-size:1.25rem;font-weight:700;color:var(--text)}
+.sr-role{font-size:.85rem;color:var(--text-sub);margin-top:2px}
+.sr-score-row{display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center;background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:20px 24px;margin-bottom:24px}
+.sr-score-num{font-family:var(--display);font-size:2.6rem;font-weight:700;color:var(--accent);line-height:1}
+.sr-score-label{font-size:.7rem;font-family:var(--mono);color:var(--text-muted);letter-spacing:.08em;text-transform:uppercase;margin-top:4px}
+.sr-models{display:flex;gap:10px;flex-wrap:wrap}
+.sr-model{display:flex;align-items:center;gap:6px;font-size:.78rem;font-family:var(--mono);padding:5px 11px;border-radius:20px;border:1px solid var(--border-mid)}
+.sr-model--yes{color:#4ade80;border-color:rgba(74,222,128,.3);background:rgba(74,222,128,.06)}
+.sr-model--no{color:#f87171;border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.06)}
+.sr-summary{color:var(--text-sub);font-size:.92rem;line-height:1.7;margin-bottom:24px}
+.sr-cols{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.sr-col h4{font-family:var(--display);font-size:.85rem;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.sr-col ul{list-style:none;display:flex;flex-direction:column;gap:9px}
+.sr-col li{font-size:.82rem;color:var(--text-sub);line-height:1.5;padding-left:16px;position:relative}
+.sr-col li::before{position:absolute;left:0}
+.sr-col--ok li::before{content:'✓';color:#4ade80}
+.sr-col--gap li::before{content:'△';color:#F59E0B}
+@media(max-width:600px){.sr-cols{grid-template-columns:1fr}.sample-modal{padding:22px}}
 </style>
 
   <!-- LLM.txt -->
@@ -464,7 +494,6 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
     </button>
     <button type="button" class="nav-toggle-btn" id="lang-toggle" title="Language" aria-label="Dil degistir">TR</button>
   </div>
-  <a href="https://app.geoni.ai" class="nav-cta" data-i18n="nav_cta">Ücretsiz Ön Rapor</a>
 </nav>
 
 <!-- HERO -->
@@ -476,8 +505,8 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
       <h1 data-i18n="hero_h1">Rakibiniz her <span class="grad">AI yanıtında</span> var. Siz yoksunuz.</h1>
       <p class="hero-sub" data-i18n="hero_sub">Arama motorları değişti. Artık kullanıcılar sonuç listesine değil, tek bir AI yanıtına bakıyor. O yanıtta yer almayan marka, müşteri için yok hükmünde. GEONI, markanızı bu yanıtların içine taşır.</p>
       <div class="hero-btns">
-        <a href="https://app.geoni.ai" class="btn-p" data-i18n="hero_cta1">Ücretsiz AI Ön Rapor Al</a>
-        <a href="#geo" class="btn-g" data-i18n="hero_cta2">Nasıl Çalışır? →</a>
+        <a href="#nasil" class="btn-g" data-i18n="hero_cta2">Nasıl Çalışır? →</a>
+        <button type="button" class="btn-g" id="sample-report-btn" data-i18n="hero_cta3">Örnek Rapor →</button>
       </div>
     </div>
 
@@ -720,12 +749,11 @@ const I18N = {
     "nav_geo": "GEO Nedir",
     "nav_how": "Nasıl Çalışır",
     "nav_packages": "Paketler",
-    "nav_cta": "Ücretsiz Ön Rapor",
     "hero_eyebrow": "// Yeni Nesil Görünürlük",
     "hero_h1": "Rakibiniz her <span class=\"grad\">AI yanıtında</span> var. Siz yoksunuz.",
     "hero_sub": "Arama motorları değişti. Artık kullanıcılar sonuç listesine değil, tek bir AI yanıtına bakıyor. O yanıtta yer almayan marka, müşteri için yok hükmünde. GEONI, markanızı bu yanıtların içine taşır.",
-    "hero_cta1": "Ücretsiz AI Ön Rapor Al",
     "hero_cta2": "Nasıl Çalışır? →",
+    "hero_cta3": "Örnek Rapor →",
     "chat_label": "AI Yanıt Motoru",
     "phase_sep": "↓ Şimdi siz deneyin",
     "demo_empty": "Şimdi kendinizi deneyin —<br>AI sizi görüyor mu?",
@@ -823,19 +851,23 @@ const I18N = {
     "footer_investor_post": "tarafından yatırım almıştır.",
     "audit_title": "GEONI AI Asistanı",
     "audit_subtitle": "Ücretsiz AI Görünürlük Raporu",
-    "audit_input_ph": "Yanıtınızı yazın..."
+    "audit_input_ph": "Yanıtınızı yazın...",
+    "sample_banner_note": "Bu bir örnek rapordur — gerçek veri değildir.",
+    "sample_banner_cta": "Kendi Sitenizi Ücretsiz Tarayın →",
+    "sample_score_label": "GEO Görünürlük Skoru",
+    "sample_col_performing": "Güçlü Olduğu Konular",
+    "sample_col_opportunity": "Fırsat Alanları"
   },
   "en": {
     "nav_why": "Why GEO",
     "nav_geo": "What is GEO",
     "nav_how": "How it works",
     "nav_packages": "Packages",
-    "nav_cta": "Free Pre-Report",
     "hero_eyebrow": "// Next-Gen Visibility",
     "hero_h1": "Your competitor is in every <span class=\"grad\">AI answer</span>. You are not.",
     "hero_sub": "Search has changed. Users no longer scan a results page — they look at a single AI answer. A brand missing from that answer doesn't exist for the customer. GEONI puts your brand inside those answers.",
-    "hero_cta1": "Get Your Free AI Pre-Report",
     "hero_cta2": "How it works? →",
+    "hero_cta3": "Sample Report →",
     "chat_label": "AI Answer Engine",
     "phase_sep": "↓ Now try it yourself",
     "demo_empty": "Try it yourself now —<br>does AI see you?",
@@ -933,7 +965,12 @@ const I18N = {
     "footer_investor_post": ".",
     "audit_title": "GEONI AI Assistant",
     "audit_subtitle": "Free AI Visibility Report",
-    "audit_input_ph": "Type your answer..."
+    "audit_input_ph": "Type your answer...",
+    "sample_banner_note": "This is a sample report — not real data.",
+    "sample_banner_cta": "Scan Your Own Site For Free →",
+    "sample_score_label": "GEO Visibility Score",
+    "sample_col_performing": "Strong Topics",
+    "sample_col_opportunity": "Opportunity Areas"
   }
 };
 let CURRENT_LANG = localStorage.getItem('geoni_site_lang') || 'tr';
@@ -999,6 +1036,136 @@ function toggleTheme() {
   document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
   document.getElementById('lang-toggle').addEventListener('click', toggleLang);
 })();
+
+// ── ORNEK RAPOR MODALI ───────────────────────────────────────────────────
+const SAMPLE_REPORTS = [
+  {
+    initials: 'EM',
+    name: 'Elon Musk',
+    role: { tr: 'CEO, Tesla & SpaceX', en: 'CEO, Tesla & SpaceX' },
+    score: 94,
+    models: { chatgpt: true, claude: true, gemini: true, perplexity: true },
+    summary: {
+      tr: 'Dört büyük AI motorunda da güçlü ve tutarlı şekilde tanınıyor. Elektrikli araç ve uzay teknolojisi sorgularında neredeyse her yanıtta ilk sırada geçiyor.',
+      en: 'Recognized strongly and consistently across all four major AI engines. Appears near the top of almost every answer for EV and space-technology queries.',
+    },
+    performing: {
+      tr: ['Elektrikli araç teknolojisi', 'Uzay taşımacılığı ve roket teknolojisi', 'Yapay zeka güvenliği tartışmaları', 'Yenilenebilir enerji girişimleri'],
+      en: ['Electric vehicle technology', 'Space transportation & rocketry', 'AI safety debates', 'Renewable energy ventures'],
+    },
+    opportunity: {
+      tr: ['Yeni girişim duyurularında ilk 48 saatte görünürlük'],
+      en: ['Visibility in the first 48 hours after new venture announcements'],
+    },
+  },
+  {
+    initials: 'BG',
+    name: 'Bill Gates',
+    role: { tr: 'Kurucu, Microsoft · Gates Foundation', en: 'Founder, Microsoft · Gates Foundation' },
+    score: 91,
+    models: { chatgpt: true, claude: true, gemini: true, perplexity: false },
+    summary: {
+      tr: 'Teknoloji ve küresel sağlık konularında üç motorda güçlü şekilde tanınıyor. Perplexity yanıtlarında daha güncel haber kaynaklarına ağırlık verildiği için görünürlük daha düşük.',
+      en: 'Strongly recognized across three engines for technology and global health topics. Perplexity weighs more recent news sources, so visibility there is lower.',
+    },
+    performing: {
+      tr: ['Yazılım ve işletim sistemi tarihi', 'Küresel sağlık ve aşı programları', 'İklim teknolojisi yatırımları'],
+      en: ['Software & operating system history', 'Global health & vaccine programs', 'Climate technology investments'],
+    },
+    opportunity: {
+      tr: ['Güncel haber/röportaj bazlı sorgularda Perplexity görünürlüğü', 'Yapay zeka politikası tartışmalarında daha güçlü konumlanma'],
+      en: ['Perplexity visibility in recent news/interview-style queries', 'Stronger positioning in AI policy debates'],
+    },
+  },
+  {
+    initials: 'AY',
+    name: { tr: 'Ayşe Yılmaz', en: 'Ayşe Yılmaz' },
+    role: { tr: 'Kurucu, butik e-ticaret markası', en: 'Founder, boutique e-commerce brand' },
+    score: 28,
+    fictional: true,
+    models: { chatgpt: false, claude: false, gemini: true, perplexity: false },
+    summary: {
+      tr: 'Sadece Gemini\'nin bir web taraması sonucunda dolaylı olarak geçiyor - diğer üç motorda hiç tanınmıyor. Rakipleri aynı sorularda düzenli olarak öneriliyor.',
+      en: "Only appears indirectly via one of Gemini's web-search results - completely unrecognized by the other three engines. Competitors are routinely recommended for the same queries.",
+    },
+    performing: {
+      tr: ['Marka adıyla doğrudan arama'],
+      en: ['Direct branded-name search'],
+    },
+    opportunity: {
+      tr: ['"En iyi butik e-ticaret markaları" gibi kategori sorgularında yokluk', 'Rakip karşılaştırma sorularında hiç anılmıyor', 'ChatGPT ve Claude\'da hiçbir bağlamda tanınmıyor', 'Ürün kategorisi bazlı öneri listelerinde yok'],
+      en: ['Absent from category queries like "best boutique e-commerce brands"', 'Never mentioned in competitor-comparison queries', 'Unrecognized by ChatGPT and Claude in any context', 'Missing from product-category recommendation lists'],
+    },
+  },
+];
+
+function renderSampleReport(r, lang) {
+  const dict = I18N[lang] || I18N.tr;
+  const name = typeof r.name === 'string' ? r.name : r.name[lang] || r.name.tr;
+  const role = r.role[lang] || r.role.tr;
+  const summary = r.summary[lang] || r.summary.tr;
+  const performing = r.performing[lang] || r.performing.tr;
+  const opportunity = r.opportunity[lang] || r.opportunity.tr;
+  const modelLabels = { chatgpt: 'ChatGPT', claude: 'Claude', gemini: 'Gemini', perplexity: 'Perplexity' };
+  const modelsHtml = Object.entries(r.models).map(([key, ok]) =>
+    `<span class="sr-model ${ok ? 'sr-model--yes' : 'sr-model--no'}">${ok ? '✓' : '✗'} ${modelLabels[key]}</span>`
+  ).join('');
+  return `
+    <div class="sr-head">
+      <div class="sr-avatar">${r.initials}</div>
+      <div>
+        <div class="sr-name">${name}</div>
+        <div class="sr-role">${role}</div>
+      </div>
+    </div>
+    <div class="sr-score-row">
+      <div>
+        <div class="sr-score-num">${r.score}</div>
+        <div class="sr-score-label">${dict.sample_score_label}</div>
+      </div>
+      <div class="sr-models">${modelsHtml}</div>
+    </div>
+    <p class="sr-summary">${summary}</p>
+    <div class="sr-cols">
+      <div class="sr-col sr-col--ok">
+        <h4>${dict.sample_col_performing}</h4>
+        <ul>${performing.map(t => `<li>${t}</li>`).join('')}</ul>
+      </div>
+      <div class="sr-col sr-col--gap">
+        <h4>${dict.sample_col_opportunity}</h4>
+        <ul>${opportunity.map(t => `<li>${t}</li>`).join('')}</ul>
+      </div>
+    </div>
+  `;
+}
+
+let currentSampleReport = null;
+
+function openSampleModal() {
+  currentSampleReport = SAMPLE_REPORTS[Math.floor(Math.random() * SAMPLE_REPORTS.length)];
+  document.getElementById('sample-modal-body').innerHTML = renderSampleReport(currentSampleReport, CURRENT_LANG);
+  document.getElementById('sample-modal-overlay').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeSampleModal() {
+  document.getElementById('sample-modal-overlay').classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+document.getElementById('sample-report-btn').addEventListener('click', openSampleModal);
+document.getElementById('sample-modal-close').addEventListener('click', closeSampleModal);
+document.getElementById('sample-modal-overlay').addEventListener('click', (e) => {
+  if (e.target.id === 'sample-modal-overlay') closeSampleModal();
+});
+
+const _origApplyLangForSample = applyLang;
+applyLang = function(lang) {
+  _origApplyLangForSample(lang);
+  if (currentSampleReport && !document.getElementById('sample-modal-overlay').classList.contains('hidden')) {
+    document.getElementById('sample-modal-body').innerHTML = renderSampleReport(currentSampleReport, lang);
+  }
+};
 </script>
 
 <script>
@@ -1351,6 +1518,16 @@ document.getElementById('calc-sector').addEventListener('change', function() {
 });
 </script>
 
+<div class="sample-modal-overlay hidden" id="sample-modal-overlay">
+  <div class="sample-modal">
+    <button type="button" class="sample-modal__close" id="sample-modal-close" aria-label="Kapat">✕</button>
+    <div class="sample-modal__banner">
+      <span data-i18n="sample_banner_note">Bu bir örnek rapordur — gerçek veri değildir.</span>
+      <a href="https://app.geoni.ai" data-i18n="sample_banner_cta">Kendi Sitenizi Ücretsiz Tarayın →</a>
+    </div>
+    <div id="sample-modal-body"></div>
+  </div>
+</div>
 
 <div class="audit-panel hidden" id="audit-panel">
   <div class="audit-head">
