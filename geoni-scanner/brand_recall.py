@@ -49,7 +49,21 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY    = os.environ.get("OPENAI_API_KEY", "")
 PERPLEXITY_API_KEY = os.environ.get("PERPLEXITY_API_KEY", "")
 GOOGLE_API_KEY     = os.environ.get("GOOGLE_API_KEY", "")
-TAVILY_API_KEY     = os.environ.get("TAVILY_API_KEY", "")
+
+# Iki Tavily hesabi arasinda donusumlu (round-robin) kullanim - her hesabin
+# kendi aylik sorgu kotasi (1000) var, esit yaslandirma icin sirayla donuyor.
+TAVILY_API_KEYS = [k for k in [os.environ.get("TAVILY_API_KEY", ""), os.environ.get("TAVILY_API_KEY_2", "")] if k]
+_tavily_rr = {"i": 0}
+
+
+def _next_tavily_key() -> tuple[str, str]:
+    """Returns (key, provider_label) - label distinguishes tavily-1/tavily-2
+    in the admin panel so the round-robin split is verifiable at a glance."""
+    if not TAVILY_API_KEYS:
+        return "", ""
+    idx = _tavily_rr["i"] % len(TAVILY_API_KEYS)
+    _tavily_rr["i"] += 1
+    return TAVILY_API_KEYS[idx], f"tavily-{idx + 1}"
 
 SCORING_VERSION = "v2-judge"
 
@@ -202,11 +216,12 @@ def _topic_relevance_score(google_results: list, name: str, topic: str) -> float
 
 async def _google_search(name: str, topic: str, max_results: int = 8, tavily_query: str = "") -> list:
     """Search via Tavily API. Returns list of {title, snippet, url} dicts."""
-    if not TAVILY_API_KEY:
+    if not TAVILY_API_KEYS:
         logger.warning("TAVILY_API_KEY not configured, skipping search")
         return []
 
     query = tavily_query or (f"{name} {topic}".strip() if topic and topic != name else name)
+    tavily_key, tavily_label = _next_tavily_key()
 
     try:
         async with httpx.AsyncClient() as client:
@@ -220,7 +235,7 @@ async def _google_search(name: str, topic: str, max_results: int = 8, tavily_que
                     "include_raw_content": False,
                 },
                 headers={
-                    "Authorization": f"Bearer {TAVILY_API_KEY}",
+                    "Authorization": f"Bearer {tavily_key}",
                     "Content-Type": "application/json",
                 },
                 timeout=15,
@@ -229,6 +244,7 @@ async def _google_search(name: str, topic: str, max_results: int = 8, tavily_que
                 logger.warning(f"Tavily {resp.status_code}: {resp.text[:200]}")
                 return []
 
+            asyncio.create_task(log_provider_call(tavily_label))
             items = resp.json().get("results", [])
             results = []
             for item in items:
