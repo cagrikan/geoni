@@ -135,7 +135,7 @@ async def deduct_credits(user_id: str, amount: int, description: str, reference_
         async with httpx.AsyncClient() as client:
             # Get current balance
             r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credit_balance",
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credit_balance,total_credits_spent",
                 headers=_headers(),
                 timeout=10,
             )
@@ -145,6 +145,7 @@ async def deduct_credits(user_id: str, amount: int, description: str, reference_
             if not data:
                 return False
             current_balance = data[0].get("credit_balance", 0)
+            current_spent = data[0].get("total_credits_spent") or 0
             if current_balance < amount:
                 logger.warning(f"Insufficient credits for user {user_id}: {current_balance} < {amount}")
                 return False
@@ -155,7 +156,7 @@ async def deduct_credits(user_id: str, amount: int, description: str, reference_
                 headers=_headers(),
                 json={
                     "credit_balance": current_balance - amount,
-                    "total_credits_spent": current_balance,  # will be updated by DB trigger ideally
+                    "total_credits_spent": current_spent + amount,
                 },
                 timeout=10,
             )
