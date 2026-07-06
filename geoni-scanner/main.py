@@ -204,7 +204,7 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
         user_id = await get_user_id_from_token(token) if token else None
         if request.private:
             if user_id:
-                await deduct_credits(user_id, 10, "web_audit_private", job_id)
+                await deduct_credits(user_id, 5, "web_audit_private", job_id)
             logger.info(f"Private audit job {job_id} completed, not saved")
         else:
             await save_audit(job_id, {"domain": request.domain, "email": request.email}, jobs_store[job_id]["result"], user_id)
@@ -278,7 +278,7 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
         user_id = await get_user_id_from_token(token) if token else None
         if request.private:
             if user_id:
-                await deduct_credits(user_id, 5, f"{request.type or 'person'}_check_private", job_id)
+                await deduct_credits(user_id, 10, f"{request.type or 'person'}_check_private", job_id)
             logger.info(f"Private brand check job {job_id} completed for '{request.name}', not saved")
         else:
             await save_brand_check(job_id, request.__dict__, brand_checks_store[job_id]["result"], user_id)

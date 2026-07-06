@@ -74,7 +74,7 @@ async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str
                 logger.info(f"Audit {job_id} saved to Supabase")
                 # Deduct credits if user is logged in
                 if user_id:
-                    await deduct_credits(user_id, 10, "web_audit", job_id)
+                    await deduct_credits(user_id, 5, "web_audit", job_id)
                 return True
             logger.warning(f"Supabase audit save failed: {r.status_code} {r.text[:200]}")
     except Exception as e:
@@ -89,7 +89,7 @@ async def save_brand_check(job_id: str, request_data: dict, result: dict, user_i
         return False
 
     entity_type = request_data.get("type", "person")
-    credits = 5
+    credits = 10
 
     payload = {
         "id": job_id,
