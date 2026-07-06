@@ -4,12 +4,11 @@ Saves audit results and brand check results to Supabase.
 Uses service role key to bypass RLS.
 """
 
+import asyncio
 import os
 import logging
 from datetime import datetime, timedelta, timezone
 import httpx
-
-from anthropic_admin import get_anthropic_cost_summary
 
 logger = logging.getLogger(__name__)
 
@@ -284,44 +283,82 @@ async def _fetch_all_auth_emails(max_pages: int = 5, per_page: int = 200) -> dic
     return emails
 
 
-async def get_admin_overview() -> dict:
-    """Aggregate stats for the admin panel overview tab."""
-    empty = {
-        "total_users": 0, "total_audits": 0, "audits_today": 0, "audits_week": 0,
-        "credits_purchased": 0, "credits_spent": 0, "provider_usage": {"today": {}, "week": {}},
-        "anthropic_cost": None,
-    }
+async def _count(query: str) -> int:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return 0
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/{query}",
+                headers={**_headers(), "Prefer": "count=exact", "Range": "0-0"},
+                timeout=10,
+            )
+            cr = r.headers.get("content-range", "")
+            total = cr.split("/")[-1] if "/" in cr else ""
+            return int(total) if total.isdigit() else 0
+    except Exception:
+        return 0
+
+
+async def get_admin_summary() -> dict:
+    """Cheapest possible admin panel numbers - the two plain counts, run
+    concurrently so this endpoint answers fast while the heavier widgets
+    (charts, external API calls) load independently on their own endpoints."""
+    total_users, total_audits = await asyncio.gather(
+        _count("profiles?select=id"),
+        _count("audits?select=id"),
+    )
+    return {"total_users": total_users, "total_audits": total_audits}
+
+
+async def get_admin_scans_daily(days: int = 14) -> dict:
+    """Daily scan counts by type, for the overview chart. Also derives
+    today/week totals from the same rows instead of firing separate counts."""
+    empty = {"days": [], "today": 0, "week": 0}
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return empty
 
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/audits?select=created_at,type&created_at=gte.{since}&order=created_at.asc&limit=5000",
+                headers=_headers(), timeout=15,
+            )
+            rows = r.json() if r.status_code == 200 else []
+    except Exception as e:
+        logger.warning(f"admin_scans_daily error: {e}")
+        return empty
+
+    buckets = {}
+    for row in rows:
+        date_key = (row.get("created_at") or "")[:10]
+        if not date_key:
+            continue
+        t = row.get("type") or "web"
+        if t not in ("web", "person", "brand"):
+            t = "web"
+        buckets.setdefault(date_key, {"web": 0, "person": 0, "brand": 0})[t] += 1
+
     now = datetime.now(timezone.utc)
-    # "+00:00" from isoformat() gets read back as a literal space by PostgREST's query
-    # parser once it's sitting unescaped in a URL (RFC 3986 form-encoding), turning
-    # "...T00:00:00+00:00" into "...T00:00:00 00:00" -> 400 Bad Request. Z avoids it.
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
-    week_start = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ordered_days = [(now - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days - 1, -1, -1)]
+    series = [{"date": d, **buckets.get(d, {"web": 0, "person": 0, "brand": 0})} for d in ordered_days]
 
-    async def count(query: str) -> int:
-        try:
-            async with httpx.AsyncClient() as client:
-                r = await client.get(
-                    f"{SUPABASE_URL}/rest/v1/{query}",
-                    headers={**_headers(), "Prefer": "count=exact", "Range": "0-0"},
-                    timeout=10,
-                )
-                cr = r.headers.get("content-range", "")
-                total = cr.split("/")[-1] if "/" in cr else ""
-                return int(total) if total.isdigit() else 0
-        except Exception:
-            return 0
+    today_key = now.strftime("%Y-%m-%d")
+    week_since_key = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+    today_total = sum(buckets.get(today_key, {}).values())
+    week_total = sum(sum(v.values()) for k, v in buckets.items() if k >= week_since_key)
 
-    total_users = await count("profiles?select=id")
-    total_audits = await count("audits?select=id")
-    audits_today = await count(f"audits?select=id&created_at=gte.{today_start}")
-    audits_week = await count(f"audits?select=id&created_at=gte.{week_start}")
+    return {"days": series, "today": today_total, "week": week_total}
 
-    credits_purchased = 0
-    credits_spent = 0
+
+async def get_admin_credits_stats(days: int = 14) -> dict:
+    """Purchased/spent totals plus a daily granted-vs-spent trend and a
+    breakdown of spend by reason (web/person/brand scan, admin adjustment)."""
+    result = {"purchased": 0, "spent": 0, "daily": [], "by_reason": {}}
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return result
+
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(
@@ -330,11 +367,55 @@ async def get_admin_overview() -> dict:
             )
             if r.status_code == 200:
                 for row in r.json():
-                    credits_purchased += row.get("total_credits_purchased") or 0
-                    credits_spent += row.get("total_credits_spent") or 0
+                    result["purchased"] += row.get("total_credits_purchased") or 0
+                    result["spent"] += row.get("total_credits_spent") or 0
     except Exception as e:
-        logger.warning(f"Credit aggregate failed: {e}")
+        logger.warning(f"admin_credits totals error: {e}")
 
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/credit_transactions?select=amount,type,description,created_at&created_at=gte.{since}&order=created_at.asc&limit=5000",
+                headers=_headers(), timeout=15,
+            )
+            rows = r.json() if r.status_code == 200 else []
+    except Exception as e:
+        logger.warning(f"admin_credits daily error: {e}")
+        rows = []
+
+    daily_buckets = {}
+    reason_totals = {}
+    for row in rows:
+        date_key = (row.get("created_at") or "")[:10]
+        amount = row.get("amount") or 0
+        if date_key:
+            b = daily_buckets.setdefault(date_key, {"granted": 0, "spent": 0})
+            if amount >= 0:
+                b["granted"] += amount
+            else:
+                b["spent"] += -amount
+        if amount < 0:
+            reason = row.get("description") or row.get("type") or "diger"
+            reason_totals[reason] = reason_totals.get(reason, 0) + (-amount)
+
+    now = datetime.now(timezone.utc)
+    ordered_days = [(now - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days - 1, -1, -1)]
+    result["daily"] = [{"date": d, **daily_buckets.get(d, {"granted": 0, "spent": 0})} for d in ordered_days]
+    result["by_reason"] = reason_totals
+    return result
+
+
+async def get_admin_provider_usage() -> dict:
+    """Call-count fallback for the 4 external AI motors (see anthropic_admin.py
+    for the one motor - Anthropic - that also has real USD cost data)."""
+    empty = {"today": {}, "week": {}}
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return empty
+
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+    week_start = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
     provider_usage = {"today": {}, "week": {}}
     try:
         async with httpx.AsyncClient() as client:
@@ -352,17 +433,7 @@ async def get_admin_overview() -> dict:
                 logger.info(f"provider_usage query failed ({r.status_code}) - table may not exist yet")
     except Exception as e:
         logger.warning(f"Provider usage aggregate failed: {e}")
-
-    return {
-        "total_users": total_users,
-        "total_audits": total_audits,
-        "audits_today": audits_today,
-        "audits_week": audits_week,
-        "credits_purchased": credits_purchased,
-        "credits_spent": credits_spent,
-        "provider_usage": provider_usage,
-        "anthropic_cost": await get_anthropic_cost_summary(),
-    }
+    return provider_usage
 
 
 async def admin_list_users(search: str = "", limit: int = 50, offset: int = 0) -> dict:

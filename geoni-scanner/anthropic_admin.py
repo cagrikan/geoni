@@ -34,6 +34,7 @@ async def get_anthropic_cost_summary() -> dict | None:
 
     total_cents = 0.0
     today_cents = 0.0
+    daily_cents = {}
 
     try:
         async with httpx.AsyncClient() as client:
@@ -54,9 +55,12 @@ async def get_anthropic_cost_summary() -> dict | None:
                 body = r.json()
                 for bucket in body.get("data", []):
                     bucket_start = bucket.get("starting_at", "")
+                    date_key = bucket_start[:10]
                     for item in bucket.get("results", []):
                         amount = float(item.get("amount") or 0)
                         total_cents += amount
+                        if date_key:
+                            daily_cents[date_key] = daily_cents.get(date_key, 0) + amount
                         if bucket_start >= today_start.strftime(fmt):
                             today_cents += amount
                 if not body.get("has_more"):
@@ -71,4 +75,5 @@ async def get_anthropic_cost_summary() -> dict | None:
     return {
         "usd_today": round(today_cents / 100, 4),
         "usd_week": round(total_cents / 100, 4),
+        "daily": [{"date": d, "usd": round(c / 100, 4)} for d, c in sorted(daily_cents.items())],
     }

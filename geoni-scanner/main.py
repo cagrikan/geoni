@@ -26,8 +26,10 @@ from mailer import send_audit_report_email
 from brand_recall import check_brand_recall, infer_brand_identity
 from db import (
     save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits,
-    is_strict_admin, get_admin_overview, admin_list_users, admin_list_audits, admin_adjust_credits, admin_set_is_admin,
+    is_strict_admin, get_admin_summary, get_admin_scans_daily, get_admin_credits_stats, get_admin_provider_usage,
+    admin_list_users, admin_list_audits, admin_adjust_credits, admin_set_is_admin,
 )
+from anthropic_admin import get_anthropic_cost_summary
 
 class AuditRequest(BaseModel):
     domain: str
@@ -463,10 +465,30 @@ async def _require_admin(http_request: Request) -> str:
         raise HTTPException(status_code=403, detail="Admin access required")
     return user_id
 
-@app.get("/api/admin/overview")
-async def admin_overview(http_request: Request):
+@app.get("/api/admin/stats/summary")
+async def admin_stats_summary(http_request: Request):
     await _require_admin(http_request)
-    return await get_admin_overview()
+    return await get_admin_summary()
+
+@app.get("/api/admin/stats/scans-daily")
+async def admin_stats_scans_daily(http_request: Request, days: int = 14):
+    await _require_admin(http_request)
+    return await get_admin_scans_daily(days=days)
+
+@app.get("/api/admin/stats/credits")
+async def admin_stats_credits(http_request: Request, days: int = 14):
+    await _require_admin(http_request)
+    return await get_admin_credits_stats(days=days)
+
+@app.get("/api/admin/stats/provider-usage")
+async def admin_stats_provider_usage(http_request: Request):
+    await _require_admin(http_request)
+    return await get_admin_provider_usage()
+
+@app.get("/api/admin/stats/anthropic-cost")
+async def admin_stats_anthropic_cost(http_request: Request):
+    await _require_admin(http_request)
+    return await get_anthropic_cost_summary() or {}
 
 @app.get("/api/admin/users")
 async def admin_users(http_request: Request, search: str = "", limit: int = 50, offset: int = 0):
