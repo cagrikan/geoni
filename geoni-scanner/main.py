@@ -30,6 +30,7 @@ from db import (
     admin_list_users, admin_list_audits, admin_adjust_credits, admin_set_is_admin,
 )
 from anthropic_admin import get_anthropic_cost_summary
+from aws_cost import get_aws_cost_summary
 
 class AuditRequest(BaseModel):
     domain: str
@@ -489,6 +490,11 @@ async def admin_stats_provider_usage(http_request: Request):
 async def admin_stats_anthropic_cost(http_request: Request):
     await _require_admin(http_request)
     return await get_anthropic_cost_summary() or {}
+
+@app.get("/api/admin/stats/aws-cost")
+async def admin_stats_aws_cost(http_request: Request):
+    await _require_admin(http_request)
+    return await asyncio.to_thread(get_aws_cost_summary) or {}
 
 @app.get("/api/admin/users")
 async def admin_users(http_request: Request, search: str = "", limit: int = 50, offset: int = 0):
