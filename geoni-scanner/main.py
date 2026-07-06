@@ -35,6 +35,7 @@ from aws_cost import get_aws_cost_summary
 from openai_admin import get_openai_cost_summary
 from tavily_admin import get_tavily_usage_summary
 from perplexity_admin import get_perplexity_cost_summary
+from gemini_admin import get_gemini_cost_summary
 
 class AuditRequest(BaseModel):
     domain: str
@@ -531,6 +532,11 @@ async def admin_stats_tavily_usage(http_request: Request):
 async def admin_stats_perplexity_cost(http_request: Request):
     await _require_admin(http_request)
     return await get_perplexity_cost_summary()
+
+@app.get("/api/admin/stats/gemini-cost")
+async def admin_stats_gemini_cost(http_request: Request):
+    await _require_admin(http_request)
+    return await get_gemini_cost_summary() or {}
 
 class TopupRequest(BaseModel):
     provider: str
