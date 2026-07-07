@@ -1110,9 +1110,13 @@ function toggleTheme() {
   const savedTheme = localStorage.getItem('geoni_site_theme');
   const theme = savedTheme || 'light';
   applyTheme(theme);
-  applyLang(CURRENT_LANG);
   document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
   document.getElementById('lang-toggle').addEventListener('click', toggleLang);
+  // applyLang burada degil DOMContentLoaded'da cagrilir - ornek rapor
+  // modali gibi sayfanin daha altinda tanimli data-i18n elementleri bu
+  // script calistiginda henuz DOM'da yok, bu yuzden ceviri atlaniyordu
+  // (ornegin EN modda bile modal banner'i hep turkce kaliyordu).
+  document.addEventListener('DOMContentLoaded', () => applyLang(CURRENT_LANG));
 })();
 
 // ── ORNEK RAPOR MODALI (api.geoni.ai/BrandCheckResultsPage ile ayni veri
