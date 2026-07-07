@@ -34,7 +34,8 @@ from db import (
     is_expert, list_ticket_types, purchase_ticket, list_user_tickets, list_expert_tickets,
     submit_ticket_evidence, admin_list_tickets, admin_assign_ticket, admin_verify_ticket,
     admin_create_ticket_type, admin_set_ticket_type_active, admin_set_is_expert, list_experts,
-    has_admin_scope, is_user_suspended, admin_get_user_detail, admin_set_user_notes,
+    has_admin_scope, is_user_suspended, admin_get_user_detail,
+    admin_get_user_audits, admin_get_user_transactions, admin_get_user_tickets, admin_set_user_notes,
     admin_set_suspended, admin_set_admin_scopes,
 )
 from anthropic_admin import get_anthropic_cost_summary
@@ -903,6 +904,21 @@ async def admin_user_detail_ep(user_id: str, http_request: Request):
     if not detail:
         raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")
     return detail
+
+@app.get("/api/admin/users/{user_id}/audits")
+async def admin_user_audits_ep(user_id: str, http_request: Request, limit: int = 8, offset: int = 0):
+    await _require_admin_scope(http_request, "users")
+    return await admin_get_user_audits(user_id, limit=limit, offset=offset)
+
+@app.get("/api/admin/users/{user_id}/transactions")
+async def admin_user_transactions_ep(user_id: str, http_request: Request, limit: int = 8, offset: int = 0):
+    await _require_admin_scope(http_request, "users")
+    return await admin_get_user_transactions(user_id, limit=limit, offset=offset)
+
+@app.get("/api/admin/users/{user_id}/tickets")
+async def admin_user_tickets_ep(user_id: str, http_request: Request, limit: int = 8, offset: int = 0):
+    await _require_admin_scope(http_request, "users")
+    return await admin_get_user_tickets(user_id, limit=limit, offset=offset)
 
 class UserNotesRequest(BaseModel):
     notes: str = ""

@@ -1217,8 +1217,10 @@ async def admin_set_admin_scopes(user_id: str, scopes: dict) -> bool:
 
 
 async def admin_get_user_detail(user_id: str) -> dict | None:
-    """Full profile + recent activity (last scans, credit transactions,
-    tickets) for the admin panel's user detail view."""
+    """Profile + expert verified/rejected counts for the admin panel's user
+    detail view. Recent scans/transactions/tickets are separate paginated
+    endpoints (admin_get_user_audits/transactions/tickets) - bundling them
+    here would mean this single call could never be paginated per-list."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return None
     try:
@@ -1230,22 +1232,6 @@ async def admin_get_user_detail(user_id: str) -> dict | None:
             if profile_r.status_code != 200 or not profile_r.json():
                 return None
             profile = profile_r.json()[0]
-
-            audits_r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/audits?user_id=eq.{user_id}&select=id,type,domain,name,score,credits_spent,status,created_at&order=created_at.desc&limit=10",
-                headers=_headers(), timeout=10,
-            )
-            transactions_r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/credit_transactions?user_id=eq.{user_id}&select=id,amount,type,description,created_at&order=created_at.desc&limit=10",
-                headers=_headers(), timeout=10,
-            )
-            tickets_r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/tickets?user_id=eq.{user_id}&select=id,ticket_type_id,status,token_cost,created_at&order=created_at.desc&limit=10",
-                headers=_headers(), timeout=10,
-            )
-            audits = audits_r.json() if audits_r.status_code == 200 else []
-            transactions = transactions_r.json() if transactions_r.status_code == 200 else []
-            tickets = tickets_r.json() if tickets_r.status_code == 200 else []
 
             expert_stats = None
             if profile.get("is_expert"):
@@ -1263,25 +1249,66 @@ async def admin_get_user_detail(user_id: str) -> dict | None:
                     return int(total) if total.isdigit() else 0
                 expert_stats = {"verified": _count_from_range(verified_r), "rejected": _count_from_range(rejected_r)}
 
-        if tickets:
-            types = await list_ticket_types(active_only=False)
-            type_by_id = {t["id"]: t["name"] for t in types}
-            for tk in tickets:
-                tk["ticket_type_name"] = type_by_id.get(tk.get("ticket_type_id"), "")
-
         emails = await _fetch_all_auth_emails()
         profile["email"] = emails.get(user_id, "")
 
         auth_user = await _fetch_auth_user(user_id)
         profile["last_sign_in_at"] = auth_user.get("last_sign_in_at") if auth_user else None
 
-        return {
-            "profile": profile, "audits": audits, "transactions": transactions,
-            "tickets": tickets, "expert_stats": expert_stats,
-        }
+        return {"profile": profile, "expert_stats": expert_stats}
     except Exception as e:
         logger.warning(f"admin_get_user_detail error: {e}")
         return None
+
+
+async def _paginated_get(url: str, headers: dict) -> tuple[list, int]:
+    """Shared helper: PostgREST count=exact + Range pagination -> (rows, total).
+    206 is the correct success status for a satisfied Range request (not 200)."""
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(url, headers=headers, timeout=10)
+            if r.status_code not in (200, 206):
+                return [], 0
+            rows = r.json()
+            cr = r.headers.get("content-range", "")
+            total_s = cr.split("/")[-1] if "/" in cr else ""
+            total = int(total_s) if total_s.isdigit() else len(rows)
+            return rows, total
+    except Exception as e:
+        logger.warning(f"_paginated_get error ({url}): {e}")
+        return [], 0
+
+
+async def admin_get_user_audits(user_id: str, limit: int = 8, offset: int = 0) -> dict:
+    rows, total = await _paginated_get(
+        f"{SUPABASE_URL}/rest/v1/audits?user_id=eq.{user_id}&select=id,type,domain,name,score,credits_spent,status,created_at"
+        f"&order=created_at.desc&limit={limit}&offset={offset}",
+        {**_headers(), "Prefer": "count=exact"},
+    )
+    return {"items": rows, "total": total}
+
+
+async def admin_get_user_transactions(user_id: str, limit: int = 8, offset: int = 0) -> dict:
+    rows, total = await _paginated_get(
+        f"{SUPABASE_URL}/rest/v1/credit_transactions?user_id=eq.{user_id}&select=id,amount,type,description,created_at"
+        f"&order=created_at.desc&limit={limit}&offset={offset}",
+        {**_headers(), "Prefer": "count=exact"},
+    )
+    return {"items": rows, "total": total}
+
+
+async def admin_get_user_tickets(user_id: str, limit: int = 8, offset: int = 0) -> dict:
+    rows, total = await _paginated_get(
+        f"{SUPABASE_URL}/rest/v1/tickets?user_id=eq.{user_id}&select=id,ticket_type_id,status,token_cost,created_at"
+        f"&order=created_at.desc&limit={limit}&offset={offset}",
+        {**_headers(), "Prefer": "count=exact"},
+    )
+    if rows:
+        types = await list_ticket_types(active_only=False)
+        type_by_id = {t["id"]: t["name"] for t in types}
+        for tk in rows:
+            tk["ticket_type_name"] = type_by_id.get(tk.get("ticket_type_id"), "")
+    return {"items": rows, "total": total}
 
 
 async def admin_set_user_notes(user_id: str, notes: str) -> bool:
