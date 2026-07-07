@@ -259,8 +259,20 @@ async def log_provider_call(provider: str) -> None:
         logger.debug(f"Provider usage log skipped: {e}")
 
 
+_auth_emails_cache = {"value": None, "fetched_at": None}
+_AUTH_EMAILS_CACHE_TTL = timedelta(minutes=5)
+
+
 async def _fetch_all_auth_emails(max_pages: int = 5, per_page: int = 200) -> dict:
-    """id -> email map via Supabase GoTrue admin API (profiles table has no email column)."""
+    """id -> email map via Supabase GoTrue admin API (profiles table has no email
+    column). This is up to 5 sequential paginated HTTP calls to Supabase - both
+    admin_list_users and admin_list_audits called this on every single request
+    (every keystroke in search, every sort click, every page turn), which is
+    what made both admin panel tabs feel slow. Emails change rarely, so a short
+    cache turns that into one real fetch every few minutes instead of every click."""
+    now = datetime.now(timezone.utc)
+    if _auth_emails_cache["value"] is not None and _auth_emails_cache["fetched_at"] and now - _auth_emails_cache["fetched_at"] < _AUTH_EMAILS_CACHE_TTL:
+        return _auth_emails_cache["value"]
     emails = {}
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return emails
@@ -281,6 +293,9 @@ async def _fetch_all_auth_emails(max_pages: int = 5, per_page: int = 200) -> dic
                     break
     except Exception as e:
         logger.warning(f"auth admin users fetch failed: {e}")
+        return _auth_emails_cache["value"] or emails
+    _auth_emails_cache["value"] = emails
+    _auth_emails_cache["fetched_at"] = now
     return emails
 
 
@@ -870,21 +885,34 @@ async def set_manual_cost(provider: str, current_cost: float, projected_cost: fl
     return False
 
 
+_profiles_cache = {"value": None, "fetched_at": None}
+_LIST_CACHE_TTL = timedelta(seconds=20)
+
+
 async def admin_list_users(search: str = "", limit: int = 50, offset: int = 0) -> dict:
-    """Merges profiles with auth emails (profiles has no email column). Search/pagination done in-process - fine at MVP scale."""
+    """Merges profiles with auth emails (profiles has no email column). Search/
+    sort/pagination done in-process - fine at MVP scale. The full profile list
+    is cached briefly so typing in the search box or flipping pages doesn't
+    re-fetch all 1000 rows from Supabase on every keystroke."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return {"users": [], "total": 0}
 
-    try:
-        async with httpx.AsyncClient() as client:
-            r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/profiles?select=id,full_name,credit_balance,total_credits_purchased,total_credits_spent,total_credits_gifted,is_admin,created_at&order=created_at.desc&limit=1000",
-                headers=_headers(), timeout=15,
-            )
-            profiles = r.json() if r.status_code == 200 else []
-    except Exception as e:
-        logger.warning(f"admin_list_users profiles fetch failed: {e}")
-        profiles = []
+    now = datetime.now(timezone.utc)
+    if _profiles_cache["value"] is not None and _profiles_cache["fetched_at"] and now - _profiles_cache["fetched_at"] < _LIST_CACHE_TTL:
+        profiles = [dict(p) for p in _profiles_cache["value"]]
+    else:
+        try:
+            async with httpx.AsyncClient() as client:
+                r = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/profiles?select=id,full_name,credit_balance,total_credits_purchased,total_credits_spent,total_credits_gifted,is_admin,created_at&order=created_at.desc&limit=1000",
+                    headers=_headers(), timeout=15,
+                )
+                profiles = r.json() if r.status_code == 200 else []
+        except Exception as e:
+            logger.warning(f"admin_list_users profiles fetch failed: {e}")
+            profiles = []
+        _profiles_cache["value"] = profiles
+        _profiles_cache["fetched_at"] = now
 
     emails = await _fetch_all_auth_emails()
     for p in profiles:
@@ -976,42 +1004,56 @@ def _audit_sort_key(a: dict, field: str):
     return a.get("created_at") or ""
 
 
+_audits_cache = {"value": None, "fetched_at": None}
+
+
 async def admin_list_audits(
     search: str = "", sort_by: str = "created_at", sort_dir: str = "desc", limit: int = 50, offset: int = 0
 ) -> dict:
     """Full cross-user audit/brand-check log for the admin panel.
     Search/sort/pagination done in-process (mirrors admin_list_users) -
     email lives in Supabase Auth, not the audits table, so it can't be
-    filtered/sorted via a plain PostgREST query anyway."""
+    filtered/sorted via a plain PostgREST query anyway. The full 2000-row
+    fetch is cached briefly (like admin_list_users) so search/sort/paging
+    don't re-fetch it on every interaction."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return {"audits": [], "total": 0}
-    try:
-        async with httpx.AsyncClient() as client:
-            r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/audits?select=id,user_id,type,domain,name,score,credits_spent,status,created_at&order=created_at.desc&limit=2000",
-                headers=_headers(),
-                timeout=15,
-            )
-            audits = r.json() if r.status_code == 200 else []
+
+    now = datetime.now(timezone.utc)
+    if _audits_cache["value"] is not None and _audits_cache["fetched_at"] and now - _audits_cache["fetched_at"] < _LIST_CACHE_TTL:
+        audits = [dict(a) for a in _audits_cache["value"]]
+    else:
+        try:
+            async with httpx.AsyncClient() as client:
+                r = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/audits?select=id,user_id,type,domain,name,score,credits_spent,status,created_at&order=created_at.desc&limit=2000",
+                    headers=_headers(),
+                    timeout=15,
+                )
+                audits = r.json() if r.status_code == 200 else []
+        except Exception as e:
+            logger.warning(f"admin_list_audits fetch failed: {e}")
+            audits = []
 
         emails = await _fetch_all_auth_emails()
         for a in audits:
             a["email"] = emails.get(a.get("user_id"), "") if a.get("user_id") else ""
 
-        if search:
-            s = search.lower()
-            audits = [
-                a for a in audits
-                if s in (a.get("email") or "").lower()
-                or s in (a.get("domain") or "").lower()
-                or s in (a.get("name") or "").lower()
-            ]
+        _audits_cache["value"] = audits
+        _audits_cache["fetched_at"] = now
+        audits = [dict(a) for a in audits]
 
-        sort_field = sort_by if sort_by in _AUDIT_SORT_FIELDS else "created_at"
-        audits.sort(key=lambda a: _audit_sort_key(a, sort_field), reverse=(sort_dir != "asc"))
+    if search:
+        s = search.lower()
+        audits = [
+            a for a in audits
+            if s in (a.get("email") or "").lower()
+            or s in (a.get("domain") or "").lower()
+            or s in (a.get("name") or "").lower()
+        ]
 
-        total = len(audits)
-        return {"audits": audits[offset:offset + limit], "total": total}
-    except Exception as e:
-        logger.warning(f"admin_list_audits error: {e}")
-        return {"audits": [], "total": 0}
+    sort_field = sort_by if sort_by in _AUDIT_SORT_FIELDS else "created_at"
+    audits.sort(key=lambda a: _audit_sort_key(a, sort_field), reverse=(sort_dir != "asc"))
+
+    total = len(audits)
+    return {"audits": audits[offset:offset + limit], "total": total}
