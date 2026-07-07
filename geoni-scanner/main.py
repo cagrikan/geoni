@@ -13,6 +13,7 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 import asyncio
 import json
+import time
 import uuid
 from datetime import datetime
 import logging
@@ -876,8 +877,13 @@ async def lemonsqueezy_webhook(http_request: Request):
 
 @app.get("/api/admin/users")
 async def admin_users(http_request: Request, search: str = "", limit: int = 50, offset: int = 0):
+    t0 = time.monotonic()
     await _require_admin_scope(http_request, "users")
-    return await admin_list_users(search=search, limit=limit, offset=offset)
+    t1 = time.monotonic()
+    result = await admin_list_users(search=search, limit=limit, offset=offset)
+    t2 = time.monotonic()
+    logger.info(f"TIMING /api/admin/users: auth_scope={t1-t0:.3f}s list_users={t2-t1:.3f}s total={t2-t0:.3f}s")
+    return result
 
 @app.post("/api/admin/users/{user_id}/credits")
 async def admin_users_credits(user_id: str, body: CreditAdjustRequest, http_request: Request):

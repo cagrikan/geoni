@@ -6,6 +6,7 @@ Uses service role key to bypass RLS.
 
 import asyncio
 import os
+import time
 import logging
 from datetime import datetime, timedelta, timezone
 import httpx
@@ -1030,8 +1031,10 @@ async def admin_list_users(search: str = "", limit: int = 50, offset: int = 0) -
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return {"users": [], "total": 0}
 
+    _t0 = time.monotonic()
     now = datetime.now(timezone.utc)
-    if _profiles_cache["value"] is not None and _profiles_cache["fetched_at"] and now - _profiles_cache["fetched_at"] < _LIST_CACHE_TTL:
+    cache_hit = _profiles_cache["value"] is not None and _profiles_cache["fetched_at"] and now - _profiles_cache["fetched_at"] < _LIST_CACHE_TTL
+    if cache_hit:
         profiles = [dict(p) for p in _profiles_cache["value"]]
     else:
         try:
@@ -1046,10 +1049,13 @@ async def admin_list_users(search: str = "", limit: int = 50, offset: int = 0) -
             profiles = []
         _profiles_cache["value"] = profiles
         _profiles_cache["fetched_at"] = now
+    _t1 = time.monotonic()
 
     emails = await _fetch_all_auth_emails()
+    _t2 = time.monotonic()
     for p in profiles:
         p["email"] = emails.get(p["id"], "")
+    logger.info(f"TIMING admin_list_users: profiles_fetch={_t1-_t0:.3f}s (cache_hit={cache_hit}) emails_fetch={_t2-_t1:.3f}s")
 
     if search:
         s = search.lower()
