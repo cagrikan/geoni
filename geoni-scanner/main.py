@@ -30,7 +30,7 @@ from db import (
     admin_list_users, admin_list_audits, admin_adjust_credits, admin_set_is_admin,
     get_manual_balances, set_manual_balance, get_manual_topups_total, list_manual_topups, add_manual_topup,
     get_credit_packages, record_purchase, get_admin_sales_stats, get_pricing_tiers, add_pricing_tier, delete_pricing_tier,
-    get_manual_cost, set_manual_cost,
+    get_manual_cost, set_manual_cost, list_campaigns, create_campaign, delete_campaign,
 )
 from anthropic_admin import get_anthropic_cost_summary
 from aws_cost import get_aws_cost_summary
@@ -630,6 +630,38 @@ async def admin_delete_pricing_tier(tier_id: str, http_request: Request):
     await _require_admin(http_request)
     if not await delete_pricing_tier(tier_id):
         raise HTTPException(status_code=400, detail="Fiyat kademesi silinemedi")
+    return {"success": True}
+
+class CampaignRequest(BaseModel):
+    slug: str
+    name: str
+    target_url: str = "https://geoni.ai"
+    utm_source: str
+    utm_medium: str = "bio"
+    utm_campaign: str = ""
+
+@app.get("/api/admin/campaigns")
+async def admin_list_campaigns(http_request: Request):
+    await _require_admin(http_request)
+    return await list_campaigns()
+
+@app.post("/api/admin/campaigns")
+async def admin_create_campaign(body: CampaignRequest, http_request: Request):
+    await _require_admin(http_request)
+    slug = body.slug.strip().lower()
+    if not slug or not slug.replace("-", "").replace("_", "").isalnum():
+        raise HTTPException(status_code=400, detail="Kısa kod sadece harf, rakam, - ve _ içerebilir")
+    result = await create_campaign(slug, body.name, body.target_url, body.utm_source, body.utm_medium, body.utm_campaign)
+    if not result["success"]:
+        detail = "Bu kısa kod zaten kullanılıyor" if result["error"] == "duplicate_slug" else "Kampanya oluşturulamadı"
+        raise HTTPException(status_code=400, detail=detail)
+    return {"success": True}
+
+@app.delete("/api/admin/campaigns/{campaign_id}")
+async def admin_delete_campaign(campaign_id: str, http_request: Request):
+    await _require_admin(http_request)
+    if not await delete_campaign(campaign_id):
+        raise HTTPException(status_code=400, detail="Kampanya silinemedi")
     return {"success": True}
 
 @app.get("/api/credit-packages")

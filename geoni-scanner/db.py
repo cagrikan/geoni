@@ -694,6 +694,68 @@ async def delete_pricing_tier(tier_id: str) -> bool:
     return False
 
 
+async def list_campaigns() -> list:
+    """Admin-managed short links (geoni.ai/r/<slug>) that redirect to a
+    target URL with baked-in UTM params - used for things like an Instagram
+    bio link, so the destination doesn't need a long query string."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return []
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/campaigns?select=*&order=created_at.desc",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code == 200:
+                return r.json()
+    except Exception as e:
+        logger.warning(f"list_campaigns error: {e}")
+    return []
+
+
+async def create_campaign(slug: str, name: str, target_url: str, utm_source: str, utm_medium: str, utm_campaign: str = "") -> dict:
+    """Returns {"success": bool, "error": str|None} - slug must be globally
+    unique (enforced by a DB constraint), so a duplicate slug fails cleanly
+    with a message the admin panel can show instead of a generic error."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return {"success": False, "error": "not configured"}
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/campaigns",
+                headers=_headers(),
+                json={
+                    "slug": slug, "name": name, "target_url": target_url,
+                    "utm_source": utm_source, "utm_medium": utm_medium,
+                    "utm_campaign": utm_campaign or None,
+                },
+                timeout=10,
+            )
+            if r.status_code in (200, 201):
+                return {"success": True, "error": None}
+            if r.status_code == 409:
+                return {"success": False, "error": "duplicate_slug"}
+            return {"success": False, "error": f"http_{r.status_code}"}
+    except Exception as e:
+        logger.warning(f"create_campaign error: {e}")
+        return {"success": False, "error": "exception"}
+
+
+async def delete_campaign(campaign_id: str) -> bool:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.delete(
+                f"{SUPABASE_URL}/rest/v1/campaigns?id=eq.{campaign_id}",
+                headers=_headers(), timeout=10,
+            )
+            return r.status_code in (200, 204)
+    except Exception as e:
+        logger.warning(f"delete_campaign error: {e}")
+    return False
+
+
 async def get_admin_provider_usage() -> dict:
     """Call-count fallback for the 4 external AI motors (see anthropic_admin.py
     for the one motor - Anthropic - that also has real USD cost data)."""
