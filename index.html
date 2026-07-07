@@ -1309,6 +1309,25 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+// geoni.ai'ye ?utm_source=... ile gelen bir ziyaretci "Ücretsiz Hesap Aç" /
+// "Satın Alın" gibi butonlarla app.geoni.ai'ye gecince, bu parametreler
+// tasınmazsa app.geoni.ai'deki captureAcquisition() hicbir sey yakalayamaz
+// ve trafik kaynagi (Instagram vb.) admin panelde hep "direct" gorunur.
+// Sayfadaki tum app.geoni.ai linklerine, sayfa yuklenirken UTM'i ekleriz.
+document.addEventListener('DOMContentLoaded', () => {
+  const params = new URLSearchParams(window.location.search);
+  const utmParams = new URLSearchParams();
+  ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'].forEach((k) => {
+    if (params.get(k)) utmParams.set(k, params.get(k));
+  });
+  if ([...utmParams].length === 0) return;
+  document.querySelectorAll('a[href^="https://app.geoni.ai"]').forEach((a) => {
+    const url = new URL(a.href);
+    utmParams.forEach((v, k) => url.searchParams.set(k, v));
+    a.href = url.toString();
+  });
+});
+
 const _origApplyLangForSample = applyLang;
 applyLang = function(lang) {
   _origApplyLangForSample(lang);
