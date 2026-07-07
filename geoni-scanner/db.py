@@ -1017,7 +1017,7 @@ async def admin_list_users(search: str = "", limit: int = 50, offset: int = 0) -
         try:
             async with httpx.AsyncClient() as client:
                 r = await client.get(
-                    f"{SUPABASE_URL}/rest/v1/profiles?select=id,full_name,credit_balance,total_credits_purchased,total_credits_spent,total_credits_gifted,is_admin,created_at&order=created_at.desc&limit=1000",
+                    f"{SUPABASE_URL}/rest/v1/profiles?select=id,full_name,credit_balance,total_credits_purchased,total_credits_spent,total_credits_gifted,is_admin,is_expert,created_at&order=created_at.desc&limit=1000",
                     headers=_headers(), timeout=15,
                 )
                 profiles = r.json() if r.status_code == 200 else []
@@ -1468,3 +1468,24 @@ async def admin_set_is_expert(user_id: str, is_expert_flag: bool) -> bool:
     except Exception as e:
         logger.warning(f"admin_set_is_expert error: {e}")
     return False
+
+
+async def list_experts() -> list:
+    """id + email for every is_expert=true profile - powers the admin
+    panel's ticket-assignment dropdown."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return []
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles?select=id,full_name&is_expert=eq.true",
+                headers=_headers(), timeout=10,
+            )
+            experts = r.json() if r.status_code == 200 else []
+    except Exception as e:
+        logger.warning(f"list_experts error: {e}")
+        return []
+    emails = await _fetch_all_auth_emails()
+    for e in experts:
+        e["email"] = emails.get(e["id"], "")
+    return experts

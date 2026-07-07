@@ -33,7 +33,7 @@ from db import (
     get_manual_cost, set_manual_cost, list_campaigns, create_campaign, delete_campaign,
     is_expert, list_ticket_types, purchase_ticket, list_user_tickets, list_expert_tickets,
     submit_ticket_evidence, admin_list_tickets, admin_assign_ticket, admin_verify_ticket,
-    admin_create_ticket_type, admin_set_ticket_type_active, admin_set_is_expert,
+    admin_create_ticket_type, admin_set_ticket_type_active, admin_set_is_expert, list_experts,
 )
 from anthropic_admin import get_anthropic_cost_summary
 from aws_cost import get_aws_cost_summary
@@ -800,6 +800,11 @@ async def admin_set_expert_flag(user_id: str, body: ExpertFlagRequest, http_requ
     if not await admin_set_is_expert(user_id, body.is_expert):
         raise HTTPException(status_code=400, detail="Güncellenemedi")
     return {"success": True}
+
+@app.get("/api/admin/experts")
+async def admin_experts(http_request: Request):
+    await _require_admin(http_request)
+    return await list_experts()
 
 @app.get("/api/credit-packages")
 async def credit_packages():
