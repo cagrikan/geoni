@@ -698,9 +698,9 @@ async def admin_users_flag(user_id: str, body: AdminFlagRequest, http_request: R
     return {"success": True}
 
 @app.get("/api/admin/audits")
-async def admin_audits(http_request: Request, limit: int = 50, offset: int = 0):
+async def admin_audits(http_request: Request, search: str = "", sort_by: str = "created_at", sort_dir: str = "desc", limit: int = 50, offset: int = 0):
     await _require_admin(http_request)
-    return await admin_list_audits(limit=limit, offset=offset)
+    return await admin_list_audits(search=search, sort_by=sort_by, sort_dir=sort_dir, limit=limit, offset=offset)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):

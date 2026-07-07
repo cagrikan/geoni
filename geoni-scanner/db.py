@@ -959,29 +959,59 @@ async def admin_set_is_admin(user_id: str, is_admin_flag: bool) -> bool:
     return False
 
 
-async def admin_list_audits(limit: int = 50, offset: int = 0) -> dict:
-    """Full cross-user audit/brand-check log for the admin panel."""
+_AUDIT_SORT_FIELDS = {"email", "type", "target", "score", "credits_spent", "created_at"}
+
+
+def _audit_sort_key(a: dict, field: str):
+    if field == "email":
+        return (a.get("email") or "").lower()
+    if field == "target":
+        return (a.get("domain") or a.get("name") or "").lower()
+    if field == "score":
+        return a.get("score") if a.get("score") is not None else -1
+    if field == "credits_spent":
+        return a.get("credits_spent") or 0
+    if field == "type":
+        return a.get("type") or ""
+    return a.get("created_at") or ""
+
+
+async def admin_list_audits(
+    search: str = "", sort_by: str = "created_at", sort_dir: str = "desc", limit: int = 50, offset: int = 0
+) -> dict:
+    """Full cross-user audit/brand-check log for the admin panel.
+    Search/sort/pagination done in-process (mirrors admin_list_users) -
+    email lives in Supabase Auth, not the audits table, so it can't be
+    filtered/sorted via a plain PostgREST query anyway."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return {"audits": [], "total": 0}
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/audits?select=id,user_id,type,domain,name,score,credits_spent,status,created_at&order=created_at.desc&limit={limit}&offset={offset}",
-                headers={**_headers(), "Prefer": "count=exact"},
+                f"{SUPABASE_URL}/rest/v1/audits?select=id,user_id,type,domain,name,score,credits_spent,status,created_at&order=created_at.desc&limit=2000",
+                headers=_headers(),
                 timeout=15,
             )
-            # PostgREST returns 206 (Partial Content), not 200, when a
-            # Prefer: count=exact request is satisfied with a Content-Range -
-            # checking only for 200 here silently discarded every real row.
-            audits = r.json() if r.status_code in (200, 206) else []
-            cr = r.headers.get("content-range", "")
-            total_s = cr.split("/")[-1] if "/" in cr else ""
-            total = int(total_s) if total_s.isdigit() else len(audits)
+            audits = r.json() if r.status_code == 200 else []
 
         emails = await _fetch_all_auth_emails()
         for a in audits:
             a["email"] = emails.get(a.get("user_id"), "") if a.get("user_id") else ""
-        return {"audits": audits, "total": total}
+
+        if search:
+            s = search.lower()
+            audits = [
+                a for a in audits
+                if s in (a.get("email") or "").lower()
+                or s in (a.get("domain") or "").lower()
+                or s in (a.get("name") or "").lower()
+            ]
+
+        sort_field = sort_by if sort_by in _AUDIT_SORT_FIELDS else "created_at"
+        audits.sort(key=lambda a: _audit_sort_key(a, sort_field), reverse=(sort_dir != "asc"))
+
+        total = len(audits)
+        return {"audits": audits[offset:offset + limit], "total": total}
     except Exception as e:
         logger.warning(f"admin_list_audits error: {e}")
         return {"audits": [], "total": 0}
