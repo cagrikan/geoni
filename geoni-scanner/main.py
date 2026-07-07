@@ -34,6 +34,8 @@ from db import (
     is_expert, list_ticket_types, purchase_ticket, list_user_tickets, list_expert_tickets,
     submit_ticket_evidence, admin_list_tickets, admin_assign_ticket, admin_verify_ticket,
     admin_create_ticket_type, admin_set_ticket_type_active, admin_set_is_expert, list_experts,
+    has_admin_scope, is_user_suspended, admin_get_user_detail, admin_set_user_notes,
+    admin_set_suspended, admin_set_admin_scopes,
 )
 from anthropic_admin import get_anthropic_cost_summary
 from aws_cost import get_aws_cost_summary
@@ -122,6 +124,12 @@ def _login_required_message(lang: str) -> str:
     if lang == "en":
         return "Please sign in to run a person/brand check."
     return "Kişi/marka taraması için lütfen giriş yapın."
+
+
+def _suspended_message(lang: str) -> str:
+    if lang == "en":
+        return "Your account has been suspended. Please contact support."
+    return "Hesabınız askıya alınmış. Lütfen destek ile iletişime geçin."
 
 
 def get_client_ip(request: Request) -> str:
@@ -398,6 +406,8 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
     user_id_rl2 = await get_user_id_from_token(token_rl2) if token_rl2 else None
     if not user_id_rl2:
         raise HTTPException(status_code=401, detail=_login_required_message(request.lang or "tr"))
+    if await is_user_suspended(user_id_rl2):
+        raise HTTPException(status_code=403, detail=_suspended_message(request.lang or "tr"))
 
     try:
         # Skip rate limit for premium/admin users
@@ -489,6 +499,16 @@ async def _require_admin(http_request: Request) -> str:
         raise HTTPException(status_code=403, detail="Admin access required")
     return user_id
 
+async def _require_admin_scope(http_request: Request, scope: str) -> str:
+    """Narrower than _require_admin: a full admin who has had a specific
+    admin_scope_<scope> flag turned off is blocked here even though
+    is_strict_admin passes - lets one admin hand another a limited area
+    (e.g. only tickets) without giving them everything."""
+    user_id = await _require_admin(http_request)
+    if not await has_admin_scope(user_id, scope):
+        raise HTTPException(status_code=403, detail=f"'{scope}' yönetim yetkisi gerekli")
+    return user_id
+
 async def _require_user(http_request: Request) -> str:
     auth_header = http_request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
@@ -497,6 +517,8 @@ async def _require_user(http_request: Request) -> str:
     user_id = await get_user_id_from_token(token)
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token")
+    if await is_user_suspended(user_id):
+        raise HTTPException(status_code=403, detail="Hesabınız askıya alınmış. Lütfen destek ile iletişime geçin.")
     return user_id
 
 async def _require_expert(http_request: Request) -> str:
@@ -661,12 +683,12 @@ class CampaignRequest(BaseModel):
 
 @app.get("/api/admin/campaigns")
 async def admin_list_campaigns(http_request: Request):
-    await _require_admin(http_request)
+    await _require_admin_scope(http_request, "campaigns")
     return await list_campaigns()
 
 @app.post("/api/admin/campaigns")
 async def admin_create_campaign(body: CampaignRequest, http_request: Request):
-    await _require_admin(http_request)
+    await _require_admin_scope(http_request, "campaigns")
     slug = body.slug.strip().lower()
     if not slug or not slug.replace("-", "").replace("_", "").isalnum():
         raise HTTPException(status_code=400, detail="Kısa kod sadece harf, rakam, - ve _ içerebilir")
@@ -678,7 +700,7 @@ async def admin_create_campaign(body: CampaignRequest, http_request: Request):
 
 @app.delete("/api/admin/campaigns/{campaign_id}")
 async def admin_delete_campaign(campaign_id: str, http_request: Request):
-    await _require_admin(http_request)
+    await _require_admin_scope(http_request, "campaigns")
     if not await delete_campaign(campaign_id):
         raise HTTPException(status_code=400, detail="Kampanya silinemedi")
     return {"success": True}
@@ -736,7 +758,7 @@ async def expert_submit_ticket(ticket_id: int, body: TicketSubmitRequest, http_r
 
 @app.get("/api/admin/tickets")
 async def admin_tickets(http_request: Request, status: str = ""):
-    await _require_admin(http_request)
+    await _require_admin_scope(http_request, "tickets")
     return await admin_list_tickets(status)
 
 class TicketAssignRequest(BaseModel):
@@ -744,7 +766,7 @@ class TicketAssignRequest(BaseModel):
 
 @app.post("/api/admin/tickets/{ticket_id}/assign")
 async def admin_assign_ticket_ep(ticket_id: int, body: TicketAssignRequest, http_request: Request):
-    await _require_admin(http_request)
+    await _require_admin_scope(http_request, "tickets")
     if not await admin_assign_ticket(ticket_id, body.expert_id):
         raise HTTPException(status_code=400, detail="Atama başarısız")
     return {"success": True}
@@ -755,14 +777,14 @@ class TicketVerifyRequest(BaseModel):
 
 @app.post("/api/admin/tickets/{ticket_id}/verify")
 async def admin_verify_ticket_ep(ticket_id: int, body: TicketVerifyRequest, http_request: Request):
-    admin_id = await _require_admin(http_request)
+    admin_id = await _require_admin_scope(http_request, "tickets")
     if not await admin_verify_ticket(ticket_id, admin_id, body.approve, body.reject_reason or ""):
         raise HTTPException(status_code=400, detail="İşlem başarısız")
     return {"success": True}
 
 @app.get("/api/admin/ticket-types")
 async def admin_ticket_types(http_request: Request):
-    await _require_admin(http_request)
+    await _require_admin_scope(http_request, "tickets")
     return await list_ticket_types(active_only=False)
 
 class TicketTypeRequest(BaseModel):
@@ -774,7 +796,7 @@ class TicketTypeRequest(BaseModel):
 
 @app.post("/api/admin/ticket-types")
 async def admin_create_ticket_type_ep(body: TicketTypeRequest, http_request: Request):
-    await _require_admin(http_request)
+    await _require_admin_scope(http_request, "tickets")
     result = await admin_create_ticket_type(body.key, body.name, body.description or "", body.token_cost, body.verification_type)
     if not result["success"]:
         detail = "Bu anahtar zaten kullanılıyor" if result["error"] == "duplicate_key" else "Bilet türü oluşturulamadı"
@@ -786,7 +808,7 @@ class TicketTypeActiveRequest(BaseModel):
 
 @app.post("/api/admin/ticket-types/{ticket_type_id}/active")
 async def admin_set_ticket_type_active_ep(ticket_type_id: int, body: TicketTypeActiveRequest, http_request: Request):
-    await _require_admin(http_request)
+    await _require_admin_scope(http_request, "tickets")
     if not await admin_set_ticket_type_active(ticket_type_id, body.is_active):
         raise HTTPException(status_code=400, detail="Güncellenemedi")
     return {"success": True}
@@ -796,14 +818,14 @@ class ExpertFlagRequest(BaseModel):
 
 @app.post("/api/admin/users/{user_id}/expert-flag")
 async def admin_set_expert_flag(user_id: str, body: ExpertFlagRequest, http_request: Request):
-    await _require_admin(http_request)
+    await _require_admin_scope(http_request, "tickets")
     if not await admin_set_is_expert(user_id, body.is_expert):
         raise HTTPException(status_code=400, detail="Güncellenemedi")
     return {"success": True}
 
 @app.get("/api/admin/experts")
 async def admin_experts(http_request: Request):
-    await _require_admin(http_request)
+    await _require_admin_scope(http_request, "tickets")
     return await list_experts()
 
 @app.get("/api/credit-packages")
@@ -854,21 +876,67 @@ async def lemonsqueezy_webhook(http_request: Request):
 
 @app.get("/api/admin/users")
 async def admin_users(http_request: Request, search: str = "", limit: int = 50, offset: int = 0):
-    await _require_admin(http_request)
+    await _require_admin_scope(http_request, "users")
     return await admin_list_users(search=search, limit=limit, offset=offset)
 
 @app.post("/api/admin/users/{user_id}/credits")
 async def admin_users_credits(user_id: str, body: CreditAdjustRequest, http_request: Request):
-    await _require_admin(http_request)
+    await _require_admin_scope(http_request, "users")
     if not await admin_adjust_credits(user_id, body.delta, body.reason):
         raise HTTPException(status_code=400, detail="Credit adjustment failed")
     return {"success": True}
 
 @app.post("/api/admin/users/{user_id}/admin-flag")
 async def admin_users_flag(user_id: str, body: AdminFlagRequest, http_request: Request):
+    # Bilerek scope'lanmamis: yetki verme/alma islemi her zaman TAM admin
+    # gerektirir - yoksa kisitli ("users" kapsamli) bir admin baskasini tam
+    # admin yapip kendi kisitlarini asabilirdi (yetki yukseltme riski).
     await _require_admin(http_request)
     if not await admin_set_is_admin(user_id, body.is_admin):
         raise HTTPException(status_code=400, detail="Update failed")
+    return {"success": True}
+
+@app.get("/api/admin/users/{user_id}/detail")
+async def admin_user_detail_ep(user_id: str, http_request: Request):
+    await _require_admin_scope(http_request, "users")
+    detail = await admin_get_user_detail(user_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")
+    return detail
+
+class UserNotesRequest(BaseModel):
+    notes: str = ""
+
+@app.post("/api/admin/users/{user_id}/notes")
+async def admin_user_notes_ep(user_id: str, body: UserNotesRequest, http_request: Request):
+    await _require_admin_scope(http_request, "users")
+    if not await admin_set_user_notes(user_id, body.notes):
+        raise HTTPException(status_code=400, detail="Not kaydedilemedi")
+    return {"success": True}
+
+class UserSuspendRequest(BaseModel):
+    suspended: bool
+
+@app.post("/api/admin/users/{user_id}/suspend")
+async def admin_user_suspend_ep(user_id: str, body: UserSuspendRequest, http_request: Request):
+    await _require_admin_scope(http_request, "users")
+    if not await admin_set_suspended(user_id, body.suspended):
+        raise HTTPException(status_code=400, detail="Güncellenemedi")
+    return {"success": True}
+
+class AdminScopesRequest(BaseModel):
+    users: Optional[bool] = None
+    tickets: Optional[bool] = None
+    campaigns: Optional[bool] = None
+
+@app.post("/api/admin/users/{user_id}/admin-scopes")
+async def admin_user_scopes_ep(user_id: str, body: AdminScopesRequest, http_request: Request):
+    # is_admin toggle'i gibi bilerek scope'lanmamis - kapsam atamasi tam
+    # admin yetkisi gerektirir.
+    await _require_admin(http_request)
+    scopes = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not await admin_set_admin_scopes(user_id, scopes):
+        raise HTTPException(status_code=400, detail="Güncellenemedi")
     return {"success": True}
 
 @app.get("/api/admin/audits")

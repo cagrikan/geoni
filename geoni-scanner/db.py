@@ -320,6 +320,26 @@ async def _fetch_all_auth_emails(max_pages: int = 5, per_page: int = 200) -> dic
     return emails
 
 
+async def _fetch_auth_user(user_id: str) -> dict | None:
+    """Single-user GoTrue admin lookup - used for last_sign_in_at on the
+    user detail card (not worth bulk-caching like the email map, since it's
+    only fetched when an admin actually opens one user's detail view)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}",
+                headers={"apikey": SUPABASE_SERVICE_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                return r.json()
+    except Exception as e:
+        logger.warning(f"_fetch_auth_user error: {e}")
+    return None
+
+
 async def _count(query: str) -> int:
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return 0
@@ -1097,6 +1117,168 @@ async def admin_set_is_admin(user_id: str, is_admin_flag: bool) -> bool:
             return r.status_code in (200, 204)
     except Exception as e:
         logger.warning(f"admin_set_is_admin error: {e}")
+    return False
+
+
+_ADMIN_SCOPE_FIELDS = {"users", "tickets", "campaigns"}
+
+
+async def has_admin_scope(user_id: str, scope: str) -> bool:
+    """Narrower than is_strict_admin: also requires the specific
+    admin_scope_<scope> flag, so a full admin can hand a limited admin
+    (e.g. just ticket operations) without giving them everything."""
+    if scope not in _ADMIN_SCOPE_FIELDS or not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
+        return False
+    field = f"admin_scope_{scope}"
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=is_admin,{field}",
+                headers=_headers(), timeout=8,
+            )
+            if r.status_code == 200 and r.json():
+                row = r.json()[0]
+                return bool(row.get("is_admin")) and bool(row.get(field))
+    except Exception as e:
+        logger.warning(f"has_admin_scope error: {e}")
+    return False
+
+
+async def admin_set_admin_scopes(user_id: str, scopes: dict) -> bool:
+    """scopes: {"users": bool, "tickets": bool, "campaigns": bool} - only
+    known fields are ever written, so an unexpected key can't add an
+    arbitrary column to the PATCH payload."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    payload = {f"admin_scope_{k}": bool(v) for k, v in scopes.items() if k in _ADMIN_SCOPE_FIELDS}
+    if not payload:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
+                headers=_headers(), json=payload, timeout=10,
+            )
+            return r.status_code in (200, 204)
+    except Exception as e:
+        logger.warning(f"admin_set_admin_scopes error: {e}")
+    return False
+
+
+async def admin_get_user_detail(user_id: str) -> dict | None:
+    """Full profile + recent activity (last scans, credit transactions,
+    tickets) for the admin panel's user detail view."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            profile_r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=*",
+                headers=_headers(), timeout=10,
+            )
+            if profile_r.status_code != 200 or not profile_r.json():
+                return None
+            profile = profile_r.json()[0]
+
+            audits_r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/audits?user_id=eq.{user_id}&select=id,type,domain,name,score,credits_spent,status,created_at&order=created_at.desc&limit=10",
+                headers=_headers(), timeout=10,
+            )
+            transactions_r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/credit_transactions?user_id=eq.{user_id}&select=id,amount,type,description,created_at&order=created_at.desc&limit=10",
+                headers=_headers(), timeout=10,
+            )
+            tickets_r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/tickets?user_id=eq.{user_id}&select=id,ticket_type_id,status,token_cost,created_at&order=created_at.desc&limit=10",
+                headers=_headers(), timeout=10,
+            )
+            audits = audits_r.json() if audits_r.status_code == 200 else []
+            transactions = transactions_r.json() if transactions_r.status_code == 200 else []
+            tickets = tickets_r.json() if tickets_r.status_code == 200 else []
+
+            expert_stats = None
+            if profile.get("is_expert"):
+                verified_r = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/tickets?assigned_expert_id=eq.{user_id}&status=eq.verified&select=id",
+                    headers={**_headers(), "Prefer": "count=exact", "Range": "0-0"}, timeout=10,
+                )
+                rejected_r = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/tickets?assigned_expert_id=eq.{user_id}&status=eq.rejected&select=id",
+                    headers={**_headers(), "Prefer": "count=exact", "Range": "0-0"}, timeout=10,
+                )
+                def _count_from_range(resp):
+                    cr = resp.headers.get("content-range", "")
+                    total = cr.split("/")[-1] if "/" in cr else ""
+                    return int(total) if total.isdigit() else 0
+                expert_stats = {"verified": _count_from_range(verified_r), "rejected": _count_from_range(rejected_r)}
+
+        if tickets:
+            types = await list_ticket_types(active_only=False)
+            type_by_id = {t["id"]: t["name"] for t in types}
+            for tk in tickets:
+                tk["ticket_type_name"] = type_by_id.get(tk.get("ticket_type_id"), "")
+
+        emails = await _fetch_all_auth_emails()
+        profile["email"] = emails.get(user_id, "")
+
+        auth_user = await _fetch_auth_user(user_id)
+        profile["last_sign_in_at"] = auth_user.get("last_sign_in_at") if auth_user else None
+
+        return {
+            "profile": profile, "audits": audits, "transactions": transactions,
+            "tickets": tickets, "expert_stats": expert_stats,
+        }
+    except Exception as e:
+        logger.warning(f"admin_get_user_detail error: {e}")
+        return None
+
+
+async def admin_set_user_notes(user_id: str, notes: str) -> bool:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
+                headers=_headers(), json={"admin_notes": notes}, timeout=10,
+            )
+            return r.status_code in (200, 204)
+    except Exception as e:
+        logger.warning(f"admin_set_user_notes error: {e}")
+    return False
+
+
+async def admin_set_suspended(user_id: str, suspended: bool) -> bool:
+    """Blocks the account from spending credits (brand-check, checkout) -
+    checked in main.py's _require_user, so it takes effect immediately on
+    every authenticated endpoint that uses it, not just new logins."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
+                headers=_headers(), json={"is_suspended": suspended}, timeout=10,
+            )
+            return r.status_code in (200, 204)
+    except Exception as e:
+        logger.warning(f"admin_set_suspended error: {e}")
+    return False
+
+
+async def is_user_suspended(user_id: str) -> bool:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=is_suspended",
+                headers=_headers(), timeout=8,
+            )
+            if r.status_code == 200 and r.json():
+                return bool(r.json()[0].get("is_suspended", False))
+    except Exception as e:
+        logger.warning(f"is_user_suspended error: {e}")
     return False
 
 
