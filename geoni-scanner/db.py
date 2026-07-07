@@ -1037,7 +1037,7 @@ async def admin_list_users(search: str = "", limit: int = 50, offset: int = 0) -
         try:
             async with httpx.AsyncClient() as client:
                 r = await client.get(
-                    f"{SUPABASE_URL}/rest/v1/profiles?select=id,full_name,credit_balance,total_credits_purchased,total_credits_spent,total_credits_gifted,is_admin,is_expert,created_at&order=created_at.desc&limit=1000",
+                    f"{SUPABASE_URL}/rest/v1/profiles?select=id,full_name,credit_balance,total_credits_purchased,total_credits_spent,total_credits_gifted,is_admin,is_expert,is_suspended,created_at&order=created_at.desc&limit=1000",
                     headers=_headers(), timeout=15,
                 )
                 profiles = r.json() if r.status_code == 200 else []
