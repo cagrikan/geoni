@@ -1339,13 +1339,30 @@ applyLang = function(lang) {
 
 <script>
 // ── FAZ 1: Animasyon ────────────────────────────────────────────────────────
-const QUERY = "Türkiye'de GEO ajansı önerir misin?";
-const LINES = [
-  { name:"• BrightEdge",  sub:" — AI destekli içerik görünürlüğü", hero:false },
-  { name:"• Conductor",   sub:" — Enterprise SEO/GEO platformu",   hero:false },
-  { name:"• GEONI ✓",     sub:" — AI motorlarda marka yönetimi",   hero:true  },
-  { name:"• Searchmetrics",sub:" — Arama performans analizi",      hero:false }
-];
+// CURRENT_LANG'e gore secilir - once bu sabit ve turkce idi, bu yuzden
+// ingilizce sayfada bile Turkiye'ye ozgu turkce bir soru/senaryo
+// gosteriliyordu. Artik her dil icin ayri, o dile uygun (Turkiye'ye ozel
+// olmayan, global) bir senaryo var.
+const DEMO_SCENARIOS = {
+  tr: {
+    query: "Türkiye'de GEO ajansı önerir misin?",
+    lines: [
+      { name:"• BrightEdge",  sub:" — AI destekli içerik görünürlüğü", hero:false },
+      { name:"• Conductor",   sub:" — Enterprise SEO/GEO platformu",   hero:false },
+      { name:"• GEONI ✓",     sub:" — AI motorlarda marka yönetimi",   hero:true  },
+      { name:"• Searchmetrics",sub:" — Arama performans analizi",      hero:false }
+    ]
+  },
+  en: {
+    query: "Can you recommend a GEO agency?",
+    lines: [
+      { name:"• BrightEdge",  sub:" — AI-powered content visibility", hero:false },
+      { name:"• Conductor",   sub:" — Enterprise SEO/GEO platform",   hero:false },
+      { name:"• GEONI ✓",     sub:" — Brand management across AI engines", hero:true  },
+      { name:"• Searchmetrics",sub:" — Search performance analytics", hero:false }
+    ]
+  }
+};
 
 function typeInto(el, text, speed, cb) {
   let i = 0;
@@ -1358,8 +1375,9 @@ function typeInto(el, text, speed, cb) {
 }
 
 function showLine(idx) {
-  if (idx >= LINES.length) { setTimeout(revealPhase2, 600); return; }
-  const L = LINES[idx];
+  const lines = (DEMO_SCENARIOS[CURRENT_LANG] || DEMO_SCENARIOS.tr).lines;
+  if (idx >= lines.length) { setTimeout(revealPhase2, 600); return; }
+  const L = lines[idx];
   const ai = document.getElementById('p1-ai');
   const row = document.createElement('div');
   row.className = L.hero ? 'ai-line ai-line-hero' : 'ai-line';
@@ -1390,7 +1408,8 @@ function revealPhase2() {
 
 function startDemo() {
   const userEl = document.getElementById('p1-user');
-  typeInto(userEl, QUERY, 42, () => {
+  const query = (DEMO_SCENARIOS[CURRENT_LANG] || DEMO_SCENARIOS.tr).query;
+  typeInto(userEl, query, 42, () => {
     setTimeout(() => {
       const aiRow = document.getElementById('p1-ai-row');
       const aiBubble = document.getElementById('p1-ai');
