@@ -182,10 +182,22 @@ async def deduct_credits(user_id: str, amount: int, description: str, reference_
     return False
 
 
+_token_cache: dict[str, tuple[str | None, float]] = {}
+_TOKEN_CACHE_TTL = 30.0  # seconds
+
+
 async def get_user_id_from_token(token: str) -> str | None:
-    """Validate Supabase JWT token and return user ID."""
+    """Validate Supabase JWT token and return user ID. The admin panel opens
+    with a burst of ~10-15 parallel requests (one per widget), each calling
+    this with the SAME token - without caching, that's 10-15 concurrent hits
+    to Supabase's /auth/v1/user, which under load turned single-digit-ms
+    checks into multi-second ones (contention, not raw latency). A short
+    cache collapses the burst into one real validation."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not token:
         return None
+    cached = _token_cache.get(token)
+    if cached and time.monotonic() - cached[1] < _TOKEN_CACHE_TTL:
+        return cached[0]
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(
@@ -197,7 +209,9 @@ async def get_user_id_from_token(token: str) -> str | None:
                 timeout=10,
             )
             if r.status_code == 200:
-                return r.json().get("id")
+                user_id = r.json().get("id")
+                _token_cache[token] = (user_id, time.monotonic())
+                return user_id
     except Exception as e:
         logger.warning(f"Token validation error: {e}")
     return None
@@ -223,10 +237,19 @@ async def check_is_premium(user_id: str) -> bool:
     return False
 
 
+_is_admin_cache: dict[str, tuple[bool, float]] = {}
+
+
 async def is_strict_admin(user_id: str) -> bool:
-    """Strict is_admin check (unlike check_is_premium, does NOT pass for paying non-admin users). Used to gate the admin panel."""
+    """Strict is_admin check (unlike check_is_premium, does NOT pass for paying
+    non-admin users). Used to gate the admin panel - cached briefly for the
+    same reason as get_user_id_from_token (admin panel load fires this many
+    times concurrently for the same user)."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
         return False
+    cached = _is_admin_cache.get(user_id)
+    if cached and time.monotonic() - cached[1] < _TOKEN_CACHE_TTL:
+        return cached[0]
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(
@@ -237,7 +260,9 @@ async def is_strict_admin(user_id: str) -> bool:
             if r.status_code == 200:
                 data = r.json()
                 if data:
-                    return bool(data[0].get('is_admin', False))
+                    result = bool(data[0].get('is_admin', False))
+                    _is_admin_cache[user_id] = (result, time.monotonic())
+                    return result
     except Exception as e:
         logger.warning(f"Admin check failed: {e}")
     return False
@@ -1031,10 +1056,8 @@ async def admin_list_users(search: str = "", limit: int = 50, offset: int = 0) -
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return {"users": [], "total": 0}
 
-    _t0 = time.monotonic()
     now = datetime.now(timezone.utc)
-    cache_hit = _profiles_cache["value"] is not None and _profiles_cache["fetched_at"] and now - _profiles_cache["fetched_at"] < _LIST_CACHE_TTL
-    if cache_hit:
+    if _profiles_cache["value"] is not None and _profiles_cache["fetched_at"] and now - _profiles_cache["fetched_at"] < _LIST_CACHE_TTL:
         profiles = [dict(p) for p in _profiles_cache["value"]]
     else:
         try:
@@ -1049,13 +1072,10 @@ async def admin_list_users(search: str = "", limit: int = 50, offset: int = 0) -
             profiles = []
         _profiles_cache["value"] = profiles
         _profiles_cache["fetched_at"] = now
-    _t1 = time.monotonic()
 
     emails = await _fetch_all_auth_emails()
-    _t2 = time.monotonic()
     for p in profiles:
         p["email"] = emails.get(p["id"], "")
-    logger.info(f"TIMING admin_list_users: profiles_fetch={_t1-_t0:.3f}s (cache_hit={cache_hit}) emails_fetch={_t2-_t1:.3f}s")
 
     if search:
         s = search.lower()
@@ -1129,12 +1149,21 @@ async def admin_set_is_admin(user_id: str, is_admin_flag: bool) -> bool:
 _ADMIN_SCOPE_FIELDS = {"users", "tickets", "campaigns"}
 
 
+_admin_scope_cache: dict[str, tuple[bool, float]] = {}
+
+
 async def has_admin_scope(user_id: str, scope: str) -> bool:
     """Narrower than is_strict_admin: also requires the specific
     admin_scope_<scope> flag, so a full admin can hand a limited admin
-    (e.g. just ticket operations) without giving them everything."""
+    (e.g. just ticket operations) without giving them everything. Cached
+    briefly like is_strict_admin - a tab with several widgets fires this
+    concurrently for the same user+scope."""
     if scope not in _ADMIN_SCOPE_FIELDS or not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
         return False
+    cache_key = f"{user_id}:{scope}"
+    cached = _admin_scope_cache.get(cache_key)
+    if cached and time.monotonic() - cached[1] < _TOKEN_CACHE_TTL:
+        return cached[0]
     field = f"admin_scope_{scope}"
     try:
         async with httpx.AsyncClient() as client:
@@ -1144,7 +1173,9 @@ async def has_admin_scope(user_id: str, scope: str) -> bool:
             )
             if r.status_code == 200 and r.json():
                 row = r.json()[0]
-                return bool(row.get("is_admin")) and bool(row.get(field))
+                result = bool(row.get("is_admin")) and bool(row.get(field))
+                _admin_scope_cache[cache_key] = (result, time.monotonic())
+                return result
     except Exception as e:
         logger.warning(f"has_admin_scope error: {e}")
     return False
