@@ -31,6 +31,9 @@ from db import (
     get_manual_balances, set_manual_balance, get_manual_topups_total, list_manual_topups, add_manual_topup,
     get_credit_packages, record_purchase, get_admin_sales_stats, get_pricing_tiers, add_pricing_tier, delete_pricing_tier,
     get_manual_cost, set_manual_cost, list_campaigns, create_campaign, delete_campaign,
+    is_expert, list_ticket_types, purchase_ticket, list_user_tickets, list_expert_tickets,
+    submit_ticket_evidence, admin_list_tickets, admin_assign_ticket, admin_verify_ticket,
+    admin_create_ticket_type, admin_set_ticket_type_active, admin_set_is_expert,
 )
 from anthropic_admin import get_anthropic_cost_summary
 from aws_cost import get_aws_cost_summary
@@ -486,6 +489,22 @@ async def _require_admin(http_request: Request) -> str:
         raise HTTPException(status_code=403, detail="Admin access required")
     return user_id
 
+async def _require_user(http_request: Request) -> str:
+    auth_header = http_request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    user_id = await get_user_id_from_token(token)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return user_id
+
+async def _require_expert(http_request: Request) -> str:
+    user_id = await _require_user(http_request)
+    if not await is_expert(user_id):
+        raise HTTPException(status_code=403, detail="Expert access required")
+    return user_id
+
 @app.get("/api/admin/stats/summary")
 async def admin_stats_summary(http_request: Request):
     await _require_admin(http_request)
@@ -662,6 +681,124 @@ async def admin_delete_campaign(campaign_id: str, http_request: Request):
     await _require_admin(http_request)
     if not await delete_campaign(campaign_id):
         raise HTTPException(status_code=400, detail="Kampanya silinemedi")
+    return {"success": True}
+
+# ── Bilet (ticket) sistemi ──────────────────────────────────────────────
+# Tarama sonuclarindaki eksiklikleri (sema, entity, icerik vb.) token ile
+# satin alinabilen somut is emirlerine cevirir. Akis: musteri satin alir
+# (token dusulur) -> admin bir uzmana atar -> uzman kanit/link ile teslim
+# eder -> admin dogrular.
+
+@app.get("/api/ticket-types")
+async def ticket_types():
+    return await list_ticket_types(active_only=True)
+
+class TicketPurchaseRequest(BaseModel):
+    ticket_type_id: int
+    audit_id: Optional[str] = None
+    target: Optional[str] = ""
+
+@app.post("/api/tickets")
+async def create_ticket(body: TicketPurchaseRequest, http_request: Request):
+    user_id = await _require_user(http_request)
+    result = await purchase_ticket(user_id, body.ticket_type_id, body.audit_id, body.target or "")
+    if not result["success"]:
+        messages = {
+            "invalid_ticket_type": "Geçersiz bilet türü",
+            "insufficient_balance": "Yetersiz token bakiyesi",
+            "user_not_found": "Kullanıcı bulunamadı",
+        }
+        raise HTTPException(status_code=400, detail=messages.get(result["error"], "Bilet satın alınamadı"))
+    return {"success": True}
+
+@app.get("/api/tickets")
+async def my_tickets(http_request: Request):
+    user_id = await _require_user(http_request)
+    return await list_user_tickets(user_id)
+
+@app.get("/api/expert/tickets")
+async def expert_tickets(http_request: Request):
+    expert_id = await _require_expert(http_request)
+    return await list_expert_tickets(expert_id)
+
+class TicketSubmitRequest(BaseModel):
+    evidence_url: str
+    evidence_note: Optional[str] = ""
+
+@app.post("/api/expert/tickets/{ticket_id}/submit")
+async def expert_submit_ticket(ticket_id: int, body: TicketSubmitRequest, http_request: Request):
+    expert_id = await _require_expert(http_request)
+    result = await submit_ticket_evidence(ticket_id, expert_id, body.evidence_url, body.evidence_note or "")
+    if not result["success"]:
+        messages = {"not_found": "Bilet bulunamadı", "not_assigned": "Bu bilet size atanmamış", "invalid_status": "Bilet bu durumda teslim edilemez"}
+        raise HTTPException(status_code=400, detail=messages.get(result["error"], "Teslim edilemedi"))
+    return {"success": True}
+
+@app.get("/api/admin/tickets")
+async def admin_tickets(http_request: Request, status: str = ""):
+    await _require_admin(http_request)
+    return await admin_list_tickets(status)
+
+class TicketAssignRequest(BaseModel):
+    expert_id: str
+
+@app.post("/api/admin/tickets/{ticket_id}/assign")
+async def admin_assign_ticket_ep(ticket_id: int, body: TicketAssignRequest, http_request: Request):
+    await _require_admin(http_request)
+    if not await admin_assign_ticket(ticket_id, body.expert_id):
+        raise HTTPException(status_code=400, detail="Atama başarısız")
+    return {"success": True}
+
+class TicketVerifyRequest(BaseModel):
+    approve: bool
+    reject_reason: Optional[str] = ""
+
+@app.post("/api/admin/tickets/{ticket_id}/verify")
+async def admin_verify_ticket_ep(ticket_id: int, body: TicketVerifyRequest, http_request: Request):
+    admin_id = await _require_admin(http_request)
+    if not await admin_verify_ticket(ticket_id, admin_id, body.approve, body.reject_reason or ""):
+        raise HTTPException(status_code=400, detail="İşlem başarısız")
+    return {"success": True}
+
+@app.get("/api/admin/ticket-types")
+async def admin_ticket_types(http_request: Request):
+    await _require_admin(http_request)
+    return await list_ticket_types(active_only=False)
+
+class TicketTypeRequest(BaseModel):
+    key: str
+    name: str
+    description: Optional[str] = ""
+    token_cost: int
+    verification_type: str = "manual"
+
+@app.post("/api/admin/ticket-types")
+async def admin_create_ticket_type_ep(body: TicketTypeRequest, http_request: Request):
+    await _require_admin(http_request)
+    result = await admin_create_ticket_type(body.key, body.name, body.description or "", body.token_cost, body.verification_type)
+    if not result["success"]:
+        detail = "Bu anahtar zaten kullanılıyor" if result["error"] == "duplicate_key" else "Bilet türü oluşturulamadı"
+        raise HTTPException(status_code=400, detail=detail)
+    return {"success": True}
+
+class TicketTypeActiveRequest(BaseModel):
+    is_active: bool
+
+@app.post("/api/admin/ticket-types/{ticket_type_id}/active")
+async def admin_set_ticket_type_active_ep(ticket_type_id: int, body: TicketTypeActiveRequest, http_request: Request):
+    await _require_admin(http_request)
+    if not await admin_set_ticket_type_active(ticket_type_id, body.is_active):
+        raise HTTPException(status_code=400, detail="Güncellenemedi")
+    return {"success": True}
+
+class ExpertFlagRequest(BaseModel):
+    is_expert: bool
+
+@app.post("/api/admin/users/{user_id}/expert-flag")
+async def admin_set_expert_flag(user_id: str, body: ExpertFlagRequest, http_request: Request):
+    await _require_admin(http_request)
+    if not await admin_set_is_expert(user_id, body.is_expert):
+        raise HTTPException(status_code=400, detail="Güncellenemedi")
     return {"success": True}
 
 @app.get("/api/credit-packages")

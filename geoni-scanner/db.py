@@ -242,6 +242,27 @@ async def is_strict_admin(user_id: str) -> bool:
     return False
 
 
+async def is_expert(user_id: str) -> bool:
+    """Gates the expert ticket panel - separate from is_admin, since ticket
+    experts shouldn't automatically get full admin panel access."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=is_expert",
+                headers=_headers(),
+                timeout=8,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                if data:
+                    return bool(data[0].get('is_expert', False))
+    except Exception as e:
+        logger.warning(f"Expert check failed: {e}")
+    return False
+
+
 async def log_provider_call(provider: str) -> None:
     """Fire-and-forget usage counter for external AI provider calls (admin panel 'motor kullanimi' tab).
     Requires the provider_usage table (see admin panel migration) - silently no-ops if missing."""
@@ -1149,3 +1170,301 @@ async def admin_list_audits(
 
     total = len(audits)
     return {"audits": audits[offset:offset + limit], "total": total}
+
+
+# ── Bilet (ticket) sistemi ────────────────────────────────────────────────
+# Tarama motorunun bulduğu eksiklikleri (şema, entity, içerik vb.) somut,
+# token ile satın alınabilen düzeltme işlerine çevirir. Bir bilet: musteri
+# satin alir (token dusulur) -> admin bir uzmana atar -> uzman kanit/link ile
+# teslim eder -> admin dogrular. Musteriye/uzmana ozel gorunum icin
+# ticket_type adi ve alici/uzman e-postasi ayri sorgularla eklenir (ticket'lar
+# tablosu FK'lari sadece id tutuyor, e-posta Supabase Auth'ta ayri yasiyor).
+
+async def list_ticket_types(active_only: bool = True) -> list:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return []
+    try:
+        async with httpx.AsyncClient() as client:
+            url = f"{SUPABASE_URL}/rest/v1/ticket_types?select=*&order=token_cost.asc"
+            if active_only:
+                url += "&is_active=eq.true"
+            r = await client.get(url, headers=_headers(), timeout=10)
+            if r.status_code == 200:
+                return r.json()
+    except Exception as e:
+        logger.warning(f"list_ticket_types error: {e}")
+    return []
+
+
+async def _get_ticket_type(ticket_type_id: int) -> dict | None:
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/ticket_types?id=eq.{ticket_type_id}&select=*",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code == 200 and r.json():
+                return r.json()[0]
+    except Exception as e:
+        logger.warning(f"_get_ticket_type error: {e}")
+    return None
+
+
+async def purchase_ticket(user_id: str, ticket_type_id: int, audit_id: str | None = None, target: str = "") -> dict:
+    """Deducts token_cost from the buyer's balance and creates the ticket -
+    both steps must succeed together, so balance is checked and the profile
+    patched before the ticket row is inserted (best-effort atomicity without
+    a DB transaction, matching the rest of this file's pattern)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return {"success": False, "error": "not_configured"}
+    ticket_type = await _get_ticket_type(ticket_type_id)
+    if not ticket_type or not ticket_type.get("is_active"):
+        return {"success": False, "error": "invalid_ticket_type"}
+    cost = ticket_type["token_cost"]
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credit_balance,total_credits_spent",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code != 200 or not r.json():
+                return {"success": False, "error": "user_not_found"}
+            row = r.json()[0]
+            balance = row.get("credit_balance", 0)
+            if balance < cost:
+                return {"success": False, "error": "insufficient_balance"}
+
+            patch_r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
+                headers=_headers(),
+                json={"credit_balance": balance - cost, "total_credits_spent": (row.get("total_credits_spent") or 0) + cost},
+                timeout=10,
+            )
+            if patch_r.status_code not in (200, 204):
+                return {"success": False, "error": "balance_update_failed"}
+
+            await client.post(
+                f"{SUPABASE_URL}/rest/v1/credit_transactions",
+                headers=_headers(),
+                json={
+                    "user_id": user_id, "amount": -cost, "type": "ticket_purchase",
+                    "description": f"Bilet satın alma: {ticket_type['name']}",
+                },
+                timeout=10,
+            )
+
+            ticket_r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/tickets",
+                headers=_headers(),
+                json={
+                    "user_id": user_id, "audit_id": audit_id, "ticket_type_id": ticket_type_id,
+                    "target": target or None, "token_cost": cost,
+                },
+                timeout=10,
+            )
+            if ticket_r.status_code not in (200, 201):
+                return {"success": False, "error": "ticket_create_failed"}
+            return {"success": True, "error": None}
+    except Exception as e:
+        logger.warning(f"purchase_ticket error: {e}")
+        return {"success": False, "error": "exception"}
+
+
+async def _enrich_tickets(tickets: list) -> list:
+    """Adds ticket_type_name, user_email, expert_email to each row -
+    ticket_type is a simple join, but user/expert emails live in Supabase
+    Auth (profiles has no email column), so they're merged in from the
+    already-cached _fetch_all_auth_emails()."""
+    if not tickets:
+        return tickets
+    types = await list_ticket_types(active_only=False)
+    type_by_id = {t["id"]: t for t in types}
+    emails = await _fetch_all_auth_emails()
+    for t in tickets:
+        tt = type_by_id.get(t.get("ticket_type_id"), {})
+        t["ticket_type_name"] = tt.get("name", "")
+        t["ticket_type_key"] = tt.get("key", "")
+        t["user_email"] = emails.get(t.get("user_id"), "")
+        t["expert_email"] = emails.get(t.get("assigned_expert_id"), "") if t.get("assigned_expert_id") else ""
+    return tickets
+
+
+async def list_user_tickets(user_id: str) -> list:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return []
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/tickets?user_id=eq.{user_id}&select=*&order=created_at.desc",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code == 200:
+                return await _enrich_tickets(r.json())
+    except Exception as e:
+        logger.warning(f"list_user_tickets error: {e}")
+    return []
+
+
+async def list_expert_tickets(expert_id: str) -> list:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return []
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/tickets?assigned_expert_id=eq.{expert_id}&select=*&order=created_at.desc",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code == 200:
+                return await _enrich_tickets(r.json())
+    except Exception as e:
+        logger.warning(f"list_expert_tickets error: {e}")
+    return []
+
+
+async def submit_ticket_evidence(ticket_id: int, expert_id: str, evidence_url: str, evidence_note: str = "") -> dict:
+    """Only the expert this ticket is actually assigned to may submit -
+    checked here rather than trusted from the request, since the endpoint
+    takes the ticket_id from the URL and the expert's identity from their
+    own auth token, not from client-supplied data."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return {"success": False, "error": "not_configured"}
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}&select=assigned_expert_id,status",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code != 200 or not r.json():
+                return {"success": False, "error": "not_found"}
+            row = r.json()[0]
+            if row.get("assigned_expert_id") != expert_id:
+                return {"success": False, "error": "not_assigned"}
+            if row.get("status") not in ("assigned", "in_progress"):
+                return {"success": False, "error": "invalid_status"}
+
+            patch_r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}",
+                headers=_headers(),
+                json={
+                    "status": "submitted", "evidence_url": evidence_url, "evidence_note": evidence_note,
+                    "submitted_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                },
+                timeout=10,
+            )
+            return {"success": patch_r.status_code in (200, 204), "error": None}
+    except Exception as e:
+        logger.warning(f"submit_ticket_evidence error: {e}")
+        return {"success": False, "error": "exception"}
+
+
+async def admin_list_tickets(status: str = "") -> list:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return []
+    try:
+        async with httpx.AsyncClient() as client:
+            url = f"{SUPABASE_URL}/rest/v1/tickets?select=*&order=created_at.desc&limit=500"
+            if status:
+                url += f"&status=eq.{status}"
+            r = await client.get(url, headers=_headers(), timeout=15)
+            if r.status_code == 200:
+                return await _enrich_tickets(r.json())
+    except Exception as e:
+        logger.warning(f"admin_list_tickets error: {e}")
+    return []
+
+
+async def admin_assign_ticket(ticket_id: int, expert_id: str) -> bool:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}",
+                headers=_headers(),
+                json={
+                    "assigned_expert_id": expert_id, "status": "assigned",
+                    "assigned_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                },
+                timeout=10,
+            )
+            return r.status_code in (200, 204)
+    except Exception as e:
+        logger.warning(f"admin_assign_ticket error: {e}")
+    return False
+
+
+async def admin_verify_ticket(ticket_id: int, admin_id: str, approve: bool, reject_reason: str = "") -> bool:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            payload = {
+                "status": "verified" if approve else "rejected",
+                "verified_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "verified_by": admin_id,
+            }
+            if not approve:
+                payload["reject_reason"] = reject_reason
+            r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}",
+                headers=_headers(), json=payload, timeout=10,
+            )
+            return r.status_code in (200, 204)
+    except Exception as e:
+        logger.warning(f"admin_verify_ticket error: {e}")
+    return False
+
+
+async def admin_create_ticket_type(key: str, name: str, description: str, token_cost: int, verification_type: str = "manual") -> dict:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return {"success": False, "error": "not_configured"}
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/ticket_types",
+                headers=_headers(),
+                json={
+                    "key": key, "name": name, "description": description,
+                    "token_cost": token_cost, "verification_type": verification_type,
+                },
+                timeout=10,
+            )
+            if r.status_code in (200, 201):
+                return {"success": True, "error": None}
+            if r.status_code == 409:
+                return {"success": False, "error": "duplicate_key"}
+            return {"success": False, "error": f"http_{r.status_code}"}
+    except Exception as e:
+        logger.warning(f"admin_create_ticket_type error: {e}")
+        return {"success": False, "error": "exception"}
+
+
+async def admin_set_ticket_type_active(ticket_type_id: int, is_active: bool) -> bool:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/ticket_types?id=eq.{ticket_type_id}",
+                headers=_headers(), json={"is_active": is_active}, timeout=10,
+            )
+            return r.status_code in (200, 204)
+    except Exception as e:
+        logger.warning(f"admin_set_ticket_type_active error: {e}")
+    return False
+
+
+async def admin_set_is_expert(user_id: str, is_expert_flag: bool) -> bool:
+    """Grant or revoke the expert panel access for a user."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
+                headers=_headers(), json={"is_expert": is_expert_flag}, timeout=10,
+            )
+            return r.status_code in (200, 204)
+    except Exception as e:
+        logger.warning(f"admin_set_is_expert error: {e}")
+    return False
