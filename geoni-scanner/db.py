@@ -825,6 +825,51 @@ async def add_manual_topup(provider: str, amount: float, note: str = "") -> bool
     return False
 
 
+async def get_manual_cost(provider: str) -> dict | None:
+    """Latest manually-logged cost snapshot for a provider that has no real
+    cost API (e.g. Supabase - its Management API only exposes request
+    counts, not dollar billing). Unlike manual_topups (which accumulates),
+    this is a single current/projected snapshot the admin re-enters
+    periodically from the provider's own billing dashboard."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/manual_costs"
+                f"?select=*&provider=eq.{provider}&order=created_at.desc&limit=1",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code == 200 and r.json():
+                return r.json()[0]
+            if r.status_code != 200:
+                logger.info(f"manual_costs query failed ({r.status_code}) - table may not exist yet")
+    except Exception as e:
+        logger.warning(f"get_manual_cost error: {e}")
+    return None
+
+
+async def set_manual_cost(provider: str, current_cost: float, projected_cost: float = None,
+                           cycle_start: str = None, cycle_end: str = None, note: str = "") -> bool:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/manual_costs",
+                headers=_headers(),
+                json={
+                    "provider": provider, "current_cost": current_cost, "projected_cost": projected_cost,
+                    "cycle_start": cycle_start, "cycle_end": cycle_end, "note": note,
+                },
+                timeout=10,
+            )
+            return r.status_code in (200, 201)
+    except Exception as e:
+        logger.warning(f"set_manual_cost error: {e}")
+    return False
+
+
 async def admin_list_users(search: str = "", limit: int = 50, offset: int = 0) -> dict:
     """Merges profiles with auth emails (profiles has no email column). Search/pagination done in-process - fine at MVP scale."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:

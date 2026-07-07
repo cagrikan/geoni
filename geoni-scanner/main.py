@@ -30,6 +30,7 @@ from db import (
     admin_list_users, admin_list_audits, admin_adjust_credits, admin_set_is_admin,
     get_manual_balances, set_manual_balance, get_manual_topups_total, list_manual_topups, add_manual_topup,
     get_credit_packages, record_purchase, get_admin_sales_stats, get_pricing_tiers, add_pricing_tier, delete_pricing_tier,
+    get_manual_cost, set_manual_cost,
 )
 from anthropic_admin import get_anthropic_cost_summary
 from aws_cost import get_aws_cost_summary
@@ -568,6 +569,30 @@ async def admin_add_topup(body: TopupRequest, http_request: Request):
     await _require_admin(http_request)
     if not await add_manual_topup(body.provider, body.amount, body.note):
         raise HTTPException(status_code=400, detail="Top-up kaydedilemedi")
+    return {"success": True}
+
+class ManualCostRequest(BaseModel):
+    provider: str
+    current_cost: float
+    projected_cost: Optional[float] = None
+    cycle_start: Optional[str] = None
+    cycle_end: Optional[str] = None
+    note: Optional[str] = ""
+
+@app.get("/api/admin/stats/manual-cost")
+async def admin_manual_cost(http_request: Request, provider: str):
+    await _require_admin(http_request)
+    return await get_manual_cost(provider) or {}
+
+@app.post("/api/admin/stats/manual-cost")
+async def admin_set_manual_cost(body: ManualCostRequest, http_request: Request):
+    await _require_admin(http_request)
+    ok = await set_manual_cost(
+        body.provider, body.current_cost, body.projected_cost,
+        body.cycle_start, body.cycle_end, body.note,
+    )
+    if not ok:
+        raise HTTPException(status_code=400, detail="Maliyet kaydedilemedi")
     return {"success": True}
 
 @app.get("/api/admin/stats/sales")
