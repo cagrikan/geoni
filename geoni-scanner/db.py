@@ -557,9 +557,15 @@ async def record_purchase(user_id: str, credits: int, amount_paid: float, curren
 
 async def get_admin_sales_stats(days: int = 14) -> dict:
     """Real revenue (from actual Lemon Squeezy purchases), broken down by
-    channel (web/ios/android) and by signup traffic source (utm_source),
+    channel (web/ios/android), by signup traffic source (utm_source, i.e.
+    how many people SIGNED UP from each source), and by traffic source's
+    actual REVENUE (i.e. of the people who bought, which source brought
+    them - the number that actually answers "is this channel worth it"),
     plus a list of recent purchases for the Satış tab."""
-    result = {"revenue_by_channel": {}, "revenue_total": 0, "currency": "TRY", "by_source": {}, "recent": [], "daily": []}
+    result = {
+        "revenue_by_channel": {}, "revenue_total": 0, "currency": "TRY",
+        "by_source": {}, "revenue_by_source": {}, "recent": [], "daily": [],
+    }
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return result
 
@@ -609,6 +615,30 @@ async def get_admin_sales_stats(days: int = 14) -> dict:
         source = p.get("utm_source") or "direct"
         by_source[source] = by_source.get(source, 0) + 1
     result["by_source"] = by_source
+
+    # Revenue by traffic source: for each buyer in this window, look up their
+    # (own signup-time) utm_source regardless of when they signed up - a
+    # purchase this week can come from someone who signed up via Instagram
+    # last month, and that's exactly the number worth seeing.
+    buyer_ids = sorted({p["user_id"] for p in purchases if p.get("user_id")})
+    if buyer_ids:
+        try:
+            ids_filter = ",".join(buyer_ids)
+            async with httpx.AsyncClient() as client:
+                r = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/profiles?select=id,utm_source&id=in.({ids_filter})",
+                    headers=_headers(), timeout=15,
+                )
+                buyer_profiles = r.json() if r.status_code == 200 else []
+        except Exception as e:
+            logger.warning(f"get_admin_sales_stats buyer sources error: {e}")
+            buyer_profiles = []
+        source_by_user = {bp["id"]: (bp.get("utm_source") or "direct") for bp in buyer_profiles}
+        revenue_by_source = {}
+        for p in purchases:
+            source = source_by_user.get(p.get("user_id"), "direct")
+            revenue_by_source[source] = revenue_by_source.get(source, 0) + float(p.get("amount_paid") or 0)
+        result["revenue_by_source"] = {k: round(v, 2) for k, v in revenue_by_source.items()}
 
     return result
 
