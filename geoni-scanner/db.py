@@ -9,6 +9,7 @@ import os
 import time
 import logging
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse, parse_qs
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -1768,3 +1769,104 @@ async def list_experts() -> list:
     for e in experts:
         e["email"] = emails.get(e["id"], "")
     return experts
+
+
+async def get_ticket_role(ticket_id: int, user_id: str) -> tuple[str | None, dict | None]:
+    """Returns (role, ticket_row) where role is 'customer' (bought it),
+    'expert' (assigned to it), 'admin' (has the tickets scope), or None if
+    the caller has no business seeing this ticket at all. is_strict_admin
+    and has_admin_scope are checked here rather than trusted from the
+    caller, since a ticket's messages can contain real customer/expert
+    conversation - access must be verified per-ticket, not just per-role."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return None, None
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}&select=*",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code != 200 or not r.json():
+                return None, None
+            ticket = r.json()[0]
+    except Exception as e:
+        logger.warning(f"get_ticket_role error: {e}")
+        return None, None
+
+    if ticket.get("user_id") == user_id:
+        return "customer", ticket
+    if ticket.get("assigned_expert_id") == user_id:
+        return "expert", ticket
+    if await has_admin_scope(user_id, "tickets"):
+        return "admin", ticket
+    return None, ticket
+
+
+async def list_ticket_messages(ticket_id: int) -> list:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return []
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/ticket_messages?ticket_id=eq.{ticket_id}&select=*&order=created_at.asc",
+                headers=_headers(), timeout=10,
+            )
+            messages = r.json() if r.status_code == 200 else []
+    except Exception as e:
+        logger.warning(f"list_ticket_messages error: {e}")
+        return []
+    emails = await _fetch_all_auth_emails()
+    for m in messages:
+        m["author_email"] = emails.get(m.get("author_id"), "")
+    return messages
+
+
+async def add_ticket_message(ticket_id: int, author_id: str, author_role: str, body: str = "", attachment_url: str = "", attachment_name: str = "") -> bool:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    if not body and not attachment_url:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/ticket_messages",
+                headers=_headers(),
+                json={
+                    "ticket_id": ticket_id, "author_id": author_id, "author_role": author_role,
+                    "body": body or None, "attachment_url": attachment_url or None, "attachment_name": attachment_name or None,
+                },
+                timeout=10,
+            )
+            return r.status_code in (200, 201)
+    except Exception as e:
+        logger.warning(f"add_ticket_message error: {e}")
+    return False
+
+
+async def create_ticket_upload_url(ticket_id: int, filename: str) -> dict | None:
+    """Signed upload URL scoped to this ticket's own folder in the
+    ticket-attachments bucket. Returns path+token so the frontend can use
+    supabase-js's own storage.from(...).uploadToSignedUrl() rather than us
+    guessing the raw HTTP verb/headers Storage expects - our backend never
+    handles the file bytes either way. The path is namespaced by ticket_id
+    so one ticket's uploads can't collide with or overwrite another's."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return None
+    safe_name = "".join(c for c in filename if c.isalnum() or c in "._-") or "file"
+    path = f"{ticket_id}/{int(datetime.now(timezone.utc).timestamp() * 1000)}_{safe_name}"
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                f"{SUPABASE_URL}/storage/v1/object/upload/sign/ticket-attachments/{path}",
+                headers=_headers(), json={"expiresIn": 300}, timeout=10,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                token = parse_qs(urlparse(data.get("url", "")).query).get("token", [""])[0]
+                return {
+                    "path": path, "token": token,
+                    "public_url": f"{SUPABASE_URL}/storage/v1/object/public/ticket-attachments/{path}",
+                }
+    except Exception as e:
+        logger.warning(f"create_ticket_upload_url error: {e}")
+    return None

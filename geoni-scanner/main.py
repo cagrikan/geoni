@@ -37,6 +37,7 @@ from db import (
     has_admin_scope, is_user_suspended, admin_get_user_detail,
     admin_get_user_audits, admin_get_user_transactions, admin_get_user_tickets, admin_set_user_notes,
     admin_set_suspended, admin_set_admin_scopes,
+    get_ticket_role, list_ticket_messages, add_ticket_message, create_ticket_upload_url,
 )
 from anthropic_admin import get_anthropic_cost_summary
 from aws_cost import get_aws_cost_summary
@@ -756,6 +757,49 @@ async def expert_submit_ticket(ticket_id: int, body: TicketSubmitRequest, http_r
         messages = {"not_found": "Bilet bulunamadı", "not_assigned": "Bu bilet size atanmamış", "invalid_status": "Bilet bu durumda teslim edilemez"}
         raise HTTPException(status_code=400, detail=messages.get(result["error"], "Teslim edilemedi"))
     return {"success": True}
+
+# ── Bilet mesajlasma (musteri/uzman/admin ayni thread'i gorur) ──────────
+# Erisim, biletin kendisine gore hesaplaniyor (musteriyse user_id, uzmansa
+# assigned_expert_id, degilse admin+tickets scope) - ayrica /api/tickets
+# ve /api/expert/tickets altinda ayri set yerine TEK bir endpoint seti.
+
+async def _require_ticket_access(ticket_id: int, http_request: Request) -> tuple[str, str]:
+    user_id = await _require_user(http_request)
+    role, ticket = await get_ticket_role(ticket_id, user_id)
+    if not role:
+        raise HTTPException(status_code=404 if not ticket else 403, detail="Bu bilete erişiminiz yok")
+    return user_id, role
+
+@app.get("/api/tickets/{ticket_id}/messages")
+async def ticket_messages_ep(ticket_id: int, http_request: Request):
+    await _require_ticket_access(ticket_id, http_request)
+    return await list_ticket_messages(ticket_id)
+
+class TicketMessageRequest(BaseModel):
+    body: Optional[str] = ""
+    attachment_url: Optional[str] = ""
+    attachment_name: Optional[str] = ""
+
+@app.post("/api/tickets/{ticket_id}/messages")
+async def ticket_messages_create_ep(ticket_id: int, body: TicketMessageRequest, http_request: Request):
+    user_id, role = await _require_ticket_access(ticket_id, http_request)
+    if not body.body and not body.attachment_url:
+        raise HTTPException(status_code=400, detail="Mesaj veya ek gerekli")
+    ok = await add_ticket_message(ticket_id, user_id, role, body.body or "", body.attachment_url or "", body.attachment_name or "")
+    if not ok:
+        raise HTTPException(status_code=400, detail="Mesaj gönderilemedi")
+    return {"success": True}
+
+class TicketUploadUrlRequest(BaseModel):
+    filename: str
+
+@app.post("/api/tickets/{ticket_id}/upload-url")
+async def ticket_upload_url_ep(ticket_id: int, body: TicketUploadUrlRequest, http_request: Request):
+    await _require_ticket_access(ticket_id, http_request)
+    result = await create_ticket_upload_url(ticket_id, body.filename)
+    if not result:
+        raise HTTPException(status_code=400, detail="Yükleme linki oluşturulamadı")
+    return result
 
 @app.get("/api/admin/tickets")
 async def admin_tickets(http_request: Request, status: str = ""):
