@@ -1048,7 +1048,18 @@ _profiles_cache = {"value": None, "fetched_at": None}
 _LIST_CACHE_TTL = timedelta(seconds=20)
 
 
-async def admin_list_users(search: str = "", limit: int = 50, offset: int = 0) -> dict:
+_USER_SORT_FIELDS = {"email", "credit_balance", "total_credits_purchased", "total_credits_spent", "total_credits_gifted", "created_at"}
+
+
+def _user_sort_key(p: dict, field: str):
+    if field == "email":
+        return (p.get("email") or "").lower()
+    if field == "created_at":
+        return p.get("created_at") or ""
+    return p.get(field) or 0
+
+
+async def admin_list_users(search: str = "", sort_by: str = "created_at", sort_dir: str = "desc", limit: int = 50, offset: int = 0) -> dict:
     """Merges profiles with auth emails (profiles has no email column). Search/
     sort/pagination done in-process - fine at MVP scale. The full profile list
     is cached briefly so typing in the search box or flipping pages doesn't
@@ -1080,6 +1091,9 @@ async def admin_list_users(search: str = "", limit: int = 50, offset: int = 0) -
     if search:
         s = search.lower()
         profiles = [p for p in profiles if s in (p.get("email") or "").lower() or s in (p.get("full_name") or "").lower()]
+
+    sort_field = sort_by if sort_by in _USER_SORT_FIELDS else "created_at"
+    profiles.sort(key=lambda p: _user_sort_key(p, sort_field), reverse=(sort_dir != "asc"))
 
     total = len(profiles)
     return {"users": profiles[offset:offset + limit], "total": total}

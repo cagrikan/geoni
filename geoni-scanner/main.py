@@ -875,9 +875,9 @@ async def lemonsqueezy_webhook(http_request: Request):
     return {"success": ok}
 
 @app.get("/api/admin/users")
-async def admin_users(http_request: Request, search: str = "", limit: int = 50, offset: int = 0):
+async def admin_users(http_request: Request, search: str = "", sort_by: str = "created_at", sort_dir: str = "desc", limit: int = 50, offset: int = 0):
     await _require_admin_scope(http_request, "users")
-    return await admin_list_users(search=search, limit=limit, offset=offset)
+    return await admin_list_users(search=search, sort_by=sort_by, sort_dir=sort_dir, limit=limit, offset=offset)
 
 @app.post("/api/admin/users/{user_id}/credits")
 async def admin_users_credits(user_id: str, body: CreditAdjustRequest, http_request: Request):
