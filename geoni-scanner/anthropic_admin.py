@@ -127,6 +127,12 @@ async def get_anthropic_cost_summary() -> dict | None:
     usd_week = sum(c for d, c in month_cents.items() if d >= week_start_key) / 100
     usd_month = sum(month_cents.values()) / 100
 
+    # usd_all_time can lag usd_month by up to _ALL_TIME_CACHE_TTL (6h) since
+    # they're cached on different schedules - never let the slower-refreshing
+    # figure display as smaller than the faster one, since all-time must by
+    # definition include the current month.
+    usd_all_time = max(usd_all_time, usd_month)
+
     result = {
         "usd_today": round(usd_today, 4),
         "usd_week": round(usd_week, 4),
