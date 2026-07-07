@@ -493,10 +493,15 @@ async def _require_admin(http_request: Request) -> str:
     token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
     if not token:
         raise HTTPException(status_code=401, detail="Authentication required")
+    _ta = time.monotonic()
     user_id = await get_user_id_from_token(token)
+    _tb = time.monotonic()
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token")
-    if not await is_strict_admin(user_id):
+    is_admin_ok = await is_strict_admin(user_id)
+    _tc = time.monotonic()
+    logger.info(f"TIMING _require_admin: get_user_id_from_token={_tb-_ta:.3f}s is_strict_admin={_tc-_tb:.3f}s")
+    if not is_admin_ok:
         raise HTTPException(status_code=403, detail="Admin access required")
     return user_id
 
@@ -505,8 +510,13 @@ async def _require_admin_scope(http_request: Request, scope: str) -> str:
     admin_scope_<scope> flag turned off is blocked here even though
     is_strict_admin passes - lets one admin hand another a limited area
     (e.g. only tickets) without giving them everything."""
+    _ts0 = time.monotonic()
     user_id = await _require_admin(http_request)
-    if not await has_admin_scope(user_id, scope):
+    _ts1 = time.monotonic()
+    scope_ok = await has_admin_scope(user_id, scope)
+    _ts2 = time.monotonic()
+    logger.info(f"TIMING _require_admin_scope: require_admin={_ts1-_ts0:.3f}s has_admin_scope={_ts2-_ts1:.3f}s")
+    if not scope_ok:
         raise HTTPException(status_code=403, detail=f"'{scope}' yönetim yetkisi gerekli")
     return user_id
 
