@@ -970,7 +970,10 @@ async def admin_list_audits(limit: int = 50, offset: int = 0) -> dict:
                 headers={**_headers(), "Prefer": "count=exact"},
                 timeout=15,
             )
-            audits = r.json() if r.status_code == 200 else []
+            # PostgREST returns 206 (Partial Content), not 200, when a
+            # Prefer: count=exact request is satisfied with a Content-Range -
+            # checking only for 200 here silently discarded every real row.
+            audits = r.json() if r.status_code in (200, 206) else []
             cr = r.headers.get("content-range", "")
             total_s = cr.split("/")[-1] if "/" in cr else ""
             total = int(total_s) if total_s.isdigit() else len(audits)
