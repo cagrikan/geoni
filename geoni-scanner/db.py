@@ -1550,11 +1550,44 @@ async def purchase_ticket(user_id: str, ticket_type_id: int, audit_id: str | Non
         return {"success": False, "error": "exception"}
 
 
-async def _enrich_tickets(tickets: list) -> list:
+async def _get_unread_ticket_ids(ticket_ids: list, viewer_id: str) -> set:
+    if not ticket_ids:
+        return set()
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/get_tickets_unread",
+                headers=_headers(), json={"p_ticket_ids": ticket_ids, "p_user_id": viewer_id}, timeout=10,
+            )
+            if r.status_code == 200:
+                return {row["ticket_id"] for row in r.json()}
+    except Exception as e:
+        logger.warning(f"_get_unread_ticket_ids error: {e}")
+    return set()
+
+
+async def mark_ticket_read(ticket_id: int, user_id: str) -> None:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                f"{SUPABASE_URL}/rest/v1/ticket_message_reads",
+                headers={**_headers(), "Prefer": "resolution=merge-duplicates"},
+                json={"ticket_id": ticket_id, "user_id": user_id, "last_read_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")},
+                timeout=10,
+            )
+    except Exception as e:
+        logger.warning(f"mark_ticket_read error: {e}")
+
+
+async def _enrich_tickets(tickets: list, viewer_id: str = "") -> list:
     """Adds ticket_type_name, user_email, expert_email to each row -
     ticket_type is a simple join, but user/expert emails live in Supabase
     Auth (profiles has no email column), so they're merged in from the
-    already-cached _fetch_all_auth_emails()."""
+    already-cached _fetch_all_auth_emails(). When viewer_id is given, also
+    adds has_unread (a message from someone else, posted after the
+    viewer's own last_read_at for that ticket)."""
     if not tickets:
         return tickets
     types = await list_ticket_types(active_only=False)
@@ -1566,6 +1599,10 @@ async def _enrich_tickets(tickets: list) -> list:
         t["ticket_type_key"] = tt.get("key", "")
         t["user_email"] = emails.get(t.get("user_id"), "")
         t["expert_email"] = emails.get(t.get("assigned_expert_id"), "") if t.get("assigned_expert_id") else ""
+    if viewer_id:
+        unread_ids = await _get_unread_ticket_ids([t["id"] for t in tickets], viewer_id)
+        for t in tickets:
+            t["has_unread"] = t["id"] in unread_ids
     return tickets
 
 
@@ -1579,7 +1616,7 @@ async def list_user_tickets(user_id: str) -> list:
                 headers=_headers(), timeout=10,
             )
             if r.status_code == 200:
-                return await _enrich_tickets(r.json())
+                return await _enrich_tickets(r.json(), user_id)
     except Exception as e:
         logger.warning(f"list_user_tickets error: {e}")
     return []
@@ -1595,7 +1632,7 @@ async def list_expert_tickets(expert_id: str) -> list:
                 headers=_headers(), timeout=10,
             )
             if r.status_code == 200:
-                return await _enrich_tickets(r.json())
+                return await _enrich_tickets(r.json(), expert_id)
     except Exception as e:
         logger.warning(f"list_expert_tickets error: {e}")
     return []
@@ -1631,13 +1668,23 @@ async def submit_ticket_evidence(ticket_id: int, expert_id: str, evidence_url: s
                 },
                 timeout=10,
             )
-            return {"success": patch_r.status_code in (200, 204), "error": None}
+            success = patch_r.status_code in (200, 204)
+            if success:
+                # Kanit ayrica konusma akisina da mesaj olarak eklenir -
+                # boylece musteri Biletlerim'i actiginda kaniti gormek icin
+                # ayri bir alan/UI'a bakmasi gerekmez, tek yerde gorur.
+                await add_ticket_message(
+                    ticket_id, expert_id, "expert",
+                    body=evidence_note or "İşlem tamamlandı, kanıt eklendi.",
+                    attachment_url=evidence_url,
+                )
+            return {"success": success, "error": None}
     except Exception as e:
         logger.warning(f"submit_ticket_evidence error: {e}")
         return {"success": False, "error": "exception"}
 
 
-async def admin_list_tickets(status: str = "") -> list:
+async def admin_list_tickets(status: str = "", admin_id: str = "") -> list:
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return []
     try:
@@ -1647,7 +1694,7 @@ async def admin_list_tickets(status: str = "") -> list:
                 url += f"&status=eq.{status}"
             r = await client.get(url, headers=_headers(), timeout=15)
             if r.status_code == 200:
-                return await _enrich_tickets(r.json())
+                return await _enrich_tickets(r.json(), admin_id)
     except Exception as e:
         logger.warning(f"admin_list_tickets error: {e}")
     return []

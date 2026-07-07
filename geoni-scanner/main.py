@@ -37,7 +37,7 @@ from db import (
     has_admin_scope, is_user_suspended, admin_get_user_detail,
     admin_get_user_audits, admin_get_user_transactions, admin_get_user_tickets, admin_set_user_notes,
     admin_set_suspended, admin_set_admin_scopes,
-    get_ticket_role, list_ticket_messages, add_ticket_message, create_ticket_upload_url,
+    get_ticket_role, list_ticket_messages, add_ticket_message, create_ticket_upload_url, mark_ticket_read,
 )
 from anthropic_admin import get_anthropic_cost_summary
 from aws_cost import get_aws_cost_summary
@@ -772,8 +772,10 @@ async def _require_ticket_access(ticket_id: int, http_request: Request) -> tuple
 
 @app.get("/api/tickets/{ticket_id}/messages")
 async def ticket_messages_ep(ticket_id: int, http_request: Request):
-    await _require_ticket_access(ticket_id, http_request)
-    return await list_ticket_messages(ticket_id)
+    user_id, _role = await _require_ticket_access(ticket_id, http_request)
+    messages = await list_ticket_messages(ticket_id)
+    await mark_ticket_read(ticket_id, user_id)
+    return messages
 
 class TicketMessageRequest(BaseModel):
     body: Optional[str] = ""
@@ -803,8 +805,8 @@ async def ticket_upload_url_ep(ticket_id: int, body: TicketUploadUrlRequest, htt
 
 @app.get("/api/admin/tickets")
 async def admin_tickets(http_request: Request, status: str = ""):
-    await _require_admin_scope(http_request, "tickets")
-    return await admin_list_tickets(status)
+    admin_id = await _require_admin_scope(http_request, "tickets")
+    return await admin_list_tickets(status, admin_id)
 
 class TicketAssignRequest(BaseModel):
     expert_id: str
