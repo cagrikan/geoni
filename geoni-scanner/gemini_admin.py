@@ -98,15 +98,18 @@ async def _run_query(sql: str, params: list | None = None) -> list[dict]:
 
 
 async def _get_table_name() -> str | None:
-    """The billing export table name is auto-generated
-    (gcp_billing_export_v1_<BILLING_ACCOUNT_ID>) - discovered via
-    INFORMATION_SCHEMA instead of hardcoding the billing account ID."""
+    """The billing export table name is auto-generated - either
+    gcp_billing_export_v1_<ID> (standard usage cost) or
+    gcp_billing_export_resource_v1_<ID> (detailed/resource-level usage
+    cost, which is what this project's export turned out to be) -
+    discovered via INFORMATION_SCHEMA instead of hardcoding either the
+    billing account ID or which export type was chosen."""
     now = datetime.now(timezone.utc)
     if _table_cache["name"] and _table_cache["fetched_at"] and now - _table_cache["fetched_at"] < _TABLE_CACHE_TTL:
         return _table_cache["name"]
     rows = await _run_query(
         f"SELECT table_name FROM `{GCP_PROJECT_ID}.{BQ_DATASET}`.INFORMATION_SCHEMA.TABLES "
-        f"WHERE table_name LIKE 'gcp_billing_export_v1_%' LIMIT 1"
+        f"WHERE table_name LIKE 'gcp_billing_export%v1_%' LIMIT 1"
     )
     if not rows:
         logger.warning("GCP billing export table not found yet in BigQuery dataset")
