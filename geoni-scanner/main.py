@@ -27,7 +27,7 @@ from brand_recall import check_brand_recall, infer_brand_identity
 from db import (
     save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits,
     is_strict_admin, get_admin_summary, get_admin_scans_daily, get_admin_credits_stats, get_admin_provider_usage,
-    admin_list_users, admin_list_audits, admin_adjust_credits, admin_set_is_admin,
+    admin_list_users, admin_list_audits, admin_get_audit, admin_adjust_credits, admin_set_is_admin,
     get_manual_balances, set_manual_balance, get_manual_topups_total, list_manual_topups, add_manual_topup,
     get_credit_packages, record_purchase, get_admin_sales_stats, get_pricing_tiers, add_pricing_tier, delete_pricing_tier,
     get_manual_cost, set_manual_cost, list_campaigns, create_campaign, delete_campaign,
@@ -943,6 +943,14 @@ async def admin_user_scopes_ep(user_id: str, body: AdminScopesRequest, http_requ
 async def admin_audits(http_request: Request, search: str = "", sort_by: str = "created_at", sort_dir: str = "desc", limit: int = 50, offset: int = 0):
     await _require_admin(http_request)
     return await admin_list_audits(search=search, sort_by=sort_by, sort_dir=sort_dir, limit=limit, offset=offset)
+
+@app.get("/api/admin/audits/{audit_id}")
+async def admin_audit_detail(audit_id: str, http_request: Request):
+    await _require_admin(http_request)
+    audit = await admin_get_audit(audit_id)
+    if not audit:
+        raise HTTPException(status_code=404, detail="Tarama bulunamadı")
+    return audit
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):

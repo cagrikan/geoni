@@ -1353,6 +1353,25 @@ def _audit_sort_key(a: dict, field: str):
 _audits_cache = {"value": None, "fetched_at": None}
 
 
+async def admin_get_audit(audit_id: str) -> dict | None:
+    """Full row (including result_json) for one audit - the list endpoints
+    deliberately omit result_json (too heavy to send for every row), so the
+    admin panel's "view this scan" click fetches it on demand."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/audits?id=eq.{audit_id}&select=*",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code == 200 and r.json():
+                return r.json()[0]
+    except Exception as e:
+        logger.warning(f"admin_get_audit error: {e}")
+    return None
+
+
 async def admin_list_audits(
     search: str = "", sort_by: str = "created_at", sort_dir: str = "desc", limit: int = 50, offset: int = 0
 ) -> dict:
