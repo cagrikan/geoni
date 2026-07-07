@@ -38,6 +38,7 @@ from openai_admin import get_openai_cost_summary
 from tavily_admin import get_tavily_usage_summary
 from perplexity_admin import get_perplexity_cost_summary
 from gemini_admin import get_gemini_cost_summary
+from total_cost_admin import get_admin_total_cost_summary
 from lemonsqueezy import verify_webhook_signature, create_checkout, parse_order_webhook
 
 class AuditRequest(BaseModel):
@@ -594,6 +595,11 @@ async def admin_set_manual_cost(body: ManualCostRequest, http_request: Request):
     if not ok:
         raise HTTPException(status_code=400, detail="Maliyet kaydedilemedi")
     return {"success": True}
+
+@app.get("/api/admin/stats/total-cost")
+async def admin_total_cost(http_request: Request):
+    await _require_admin(http_request)
+    return await get_admin_total_cost_summary()
 
 @app.get("/api/admin/stats/sales")
 async def admin_sales_stats(http_request: Request, days: int = 14):

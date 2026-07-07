@@ -80,3 +80,39 @@ def get_aws_cost_summary() -> dict | None:
     _cache["data"] = result
     _cache["fetched_at"] = now
     return result
+
+
+_monthly_cache = {"data": None, "fetched_at": None}
+
+
+def get_aws_monthly_breakdown() -> dict[str, float] | None:
+    """USD cost grouped by calendar month (YYYY-MM) over the last 4 months,
+    via Cost Explorer's own MONTHLY granularity (one call, not a per-day
+    walk). Cached like the daily summary."""
+    now = datetime.now(timezone.utc)
+    if _monthly_cache["data"] is not None and _monthly_cache["fetched_at"] and now - _monthly_cache["fetched_at"] < CACHE_TTL:
+        return _monthly_cache["data"]
+
+    start = (now.replace(day=1) - timedelta(days=90)).replace(day=1).strftime("%Y-%m-%d")
+    end = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+
+    try:
+        client = boto3.client("ce", region_name="us-east-1")
+        resp = client.get_cost_and_usage(
+            TimePeriod={"Start": start, "End": end},
+            Granularity="MONTHLY",
+            Metrics=["UnblendedCost"],
+        )
+    except Exception as e:
+        logger.warning(f"AWS Cost Explorer monthly fetch failed: {e}")
+        return None
+
+    monthly = {}
+    for period in resp.get("ResultsByTime", []):
+        month_key = period["TimePeriod"]["Start"][:7]
+        amount = float(period["Total"]["UnblendedCost"]["Amount"])
+        monthly[month_key] = round(amount, 2)
+
+    _monthly_cache["data"] = monthly
+    _monthly_cache["fetched_at"] = now
+    return monthly

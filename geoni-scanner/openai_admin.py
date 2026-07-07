@@ -33,6 +33,7 @@ ALL_TIME_LOOKBACK_DAYS = 120
 # cache it for a while so every admin panel load doesn't re-walk the full
 # history. Past months don't change, so a long TTL is safe.
 _all_time_cache = {"value": None, "fetched_at": None}
+_all_time_daily_cache = {"value": None, "fetched_at": None}
 _ALL_TIME_CACHE_TTL = timedelta(hours=6)
 
 # The month-to-date fetch has no such natural cache - repeated admin panel
@@ -128,6 +129,8 @@ async def get_openai_cost_summary() -> dict | None:
             usd_all_time = sum(all_time_daily.values())
             _all_time_cache["value"] = usd_all_time
             _all_time_cache["fetched_at"] = now
+            _all_time_daily_cache["value"] = all_time_daily
+            _all_time_daily_cache["fetched_at"] = now
 
     today_key = now.strftime("%Y-%m-%d")
     week_start_key = (now - timedelta(days=7)).strftime("%Y-%m-%d")
@@ -147,3 +150,26 @@ async def get_openai_cost_summary() -> dict | None:
         _summary_cache["value"] = result
         _summary_cache["fetched_at"] = now
     return result
+
+
+async def get_openai_monthly_breakdown() -> dict[str, float] | None:
+    """USD cost grouped by calendar month (YYYY-MM), reusing the same
+    ALL_TIME_LOOKBACK_DAYS cached daily data as usd_all_time."""
+    if not OPENAI_ADMIN_KEY:
+        return None
+    now = datetime.now(timezone.utc)
+    if _all_time_daily_cache["value"] is not None and _all_time_daily_cache["fetched_at"] and now - _all_time_daily_cache["fetched_at"] < _ALL_TIME_CACHE_TTL:
+        daily = _all_time_daily_cache["value"]
+    else:
+        daily = await _fetch_daily_costs(now - timedelta(days=ALL_TIME_LOOKBACK_DAYS), now)
+        if daily is None:
+            return None
+        _all_time_daily_cache["value"] = daily
+        _all_time_daily_cache["fetched_at"] = now
+        _all_time_cache["value"] = sum(daily.values())
+        _all_time_cache["fetched_at"] = now
+    monthly = {}
+    for date_key, amount in daily.items():
+        month_key = date_key[:7]
+        monthly[month_key] = monthly.get(month_key, 0) + amount
+    return {k: round(v, 4) for k, v in monthly.items()}

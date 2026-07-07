@@ -174,3 +174,27 @@ async def get_gemini_cost_summary() -> dict | None:
     _summary_cache["value"] = result
     _summary_cache["fetched_at"] = now
     return result
+
+
+_monthly_cache = {"value": None, "fetched_at": None}
+_MONTHLY_CACHE_TTL = timedelta(hours=6)
+
+
+async def get_gemini_monthly_breakdown() -> dict[str, float] | None:
+    """TRY cost grouped by calendar month (YYYY-MM) over ALL_TIME_LOOKBACK_DAYS.
+    Cached separately (longer TTL) from the 15-min summary cache since
+    BigQuery queries aren't free."""
+    if not GCP_BILLING_SA_KEY:
+        return None
+    now = datetime.now(timezone.utc)
+    if _monthly_cache["value"] is not None and _monthly_cache["fetched_at"] and now - _monthly_cache["fetched_at"] < _MONTHLY_CACHE_TTL:
+        return _monthly_cache["value"]
+    daily = await _fetch_daily_cost(now - timedelta(days=ALL_TIME_LOOKBACK_DAYS), now)
+    monthly = {}
+    for date_key, amount in daily.items():
+        month_key = date_key[:7]
+        monthly[month_key] = monthly.get(month_key, 0) + amount
+    result = {k: round(v, 4) for k, v in monthly.items()}
+    _monthly_cache["value"] = result
+    _monthly_cache["fetched_at"] = now
+    return result

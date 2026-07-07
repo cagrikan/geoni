@@ -68,3 +68,14 @@ async def get_perplexity_cost_summary() -> dict:
         "estimated": True,
         "as_of": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
+
+
+async def get_perplexity_monthly_breakdown() -> dict[str, float]:
+    """USD cost grouped by calendar month (YYYY-MM) over ALL_TIME_LOOKBACK_DAYS."""
+    now = datetime.now(timezone.utc)
+    daily = await get_perplexity_cost_daily(now - timedelta(days=ALL_TIME_LOOKBACK_DAYS), now)
+    monthly = {}
+    for date_key, amount in daily.items():
+        month_key = date_key[:7]
+        monthly[month_key] = monthly.get(month_key, 0) + amount
+    return {k: round(v, 4) for k, v in monthly.items()}
