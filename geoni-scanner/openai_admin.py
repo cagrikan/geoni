@@ -32,7 +32,6 @@ ALL_TIME_LOOKBACK_DAYS = 120
 # All-time spend can span hundreds of daily buckets (many paginated calls) -
 # cache it for a while so every admin panel load doesn't re-walk the full
 # history. Past months don't change, so a long TTL is safe.
-_all_time_cache = {"value": None, "fetched_at": None}
 _all_time_daily_cache = {"value": None, "fetched_at": None}
 _ALL_TIME_CACHE_TTL = timedelta(hours=6)
 
@@ -92,6 +91,32 @@ async def _fetch_daily_costs(start: datetime, end: datetime) -> dict | None:
     return daily
 
 
+async def _get_all_time_daily(now: datetime, fresh_month_daily: dict) -> tuple[dict, bool]:
+    """Returns (daily USD dict covering ALL_TIME_LOOKBACK_DAYS, is_fresh).
+
+    The 120-day fetch is cached for hours (cheap on OpenAI's rate limit),
+    but that means it can lag behind the always-fresh month-to-date fetch by
+    up to _ALL_TIME_CACHE_TTL. Rather than just clamping the resulting sum
+    (which would silently understate real historical spend), we overlay the
+    fresh month_daily on top of the cached dict before returning it, so the
+    days that changed since the cache was built are correct and only the
+    genuinely-unchanged older days are served from cache."""
+    is_fresh = True
+    if _all_time_daily_cache["value"] is not None and _all_time_daily_cache["fetched_at"] and now - _all_time_daily_cache["fetched_at"] < _ALL_TIME_CACHE_TTL:
+        daily = dict(_all_time_daily_cache["value"])
+    else:
+        fetched = await _fetch_daily_costs(now - timedelta(days=ALL_TIME_LOOKBACK_DAYS), now)
+        if fetched is None:
+            daily = dict(_all_time_daily_cache["value"] or {})
+            is_fresh = _all_time_daily_cache["value"] is not None
+        else:
+            daily = fetched
+            _all_time_daily_cache["value"] = fetched
+            _all_time_daily_cache["fetched_at"] = now
+    daily.update(fresh_month_daily)  # always-fresh data wins over the cached snapshot
+    return daily, is_fresh
+
+
 async def get_openai_cost_summary() -> dict | None:
     """Real USD spend today/last-7-days/month-to-date (for the chart) plus
     all-time spend (for the remaining-balance estimate). Returns None if no
@@ -113,36 +138,14 @@ async def get_openai_cost_summary() -> dict | None:
         # touch fetched_at, so the next call retries immediately).
         return _summary_cache["value"]
 
-    all_time_is_fresh = True
-    if _all_time_cache["value"] is not None and _all_time_cache["fetched_at"] and now - _all_time_cache["fetched_at"] < _ALL_TIME_CACHE_TTL:
-        usd_all_time = _all_time_cache["value"]
-    else:
-        all_time_daily = await _fetch_daily_costs(now - timedelta(days=ALL_TIME_LOOKBACK_DAYS), now)
-        if all_time_daily is None:
-            # Fetch failed - fall back to the last known value if we have one,
-            # but if we don't (e.g. right after a restart), showing 0 here is
-            # a stopgap that must NOT get locked into the summary cache below,
-            # or a transient failure becomes a persistent wrong $0.00.
-            usd_all_time = _all_time_cache["value"] or 0.0
-            all_time_is_fresh = _all_time_cache["value"] is not None
-        else:
-            usd_all_time = sum(all_time_daily.values())
-            _all_time_cache["value"] = usd_all_time
-            _all_time_cache["fetched_at"] = now
-            _all_time_daily_cache["value"] = all_time_daily
-            _all_time_daily_cache["fetched_at"] = now
+    all_time_daily, all_time_is_fresh = await _get_all_time_daily(now, month_daily)
+    usd_all_time = sum(all_time_daily.values())
 
     today_key = now.strftime("%Y-%m-%d")
     week_start_key = (now - timedelta(days=7)).strftime("%Y-%m-%d")
     usd_today = month_daily.get(today_key, 0)
     usd_week = sum(v for k, v in month_daily.items() if k >= week_start_key)
     usd_month = sum(month_daily.values())
-
-    # usd_all_time can lag usd_month by up to _ALL_TIME_CACHE_TTL (6h) since
-    # they're cached on different schedules - never let the slower-refreshing
-    # figure display as smaller than the faster one, since all-time must by
-    # definition include the current month.
-    usd_all_time = max(usd_all_time, usd_month)
 
     result = {
         "usd_today": round(usd_today, 4),
@@ -160,20 +163,18 @@ async def get_openai_cost_summary() -> dict | None:
 
 async def get_openai_monthly_breakdown() -> dict[str, float] | None:
     """USD cost grouped by calendar month (YYYY-MM), reusing the same
-    ALL_TIME_LOOKBACK_DAYS cached daily data as usd_all_time."""
+    ALL_TIME_LOOKBACK_DAYS cached daily data as usd_all_time (with the
+    current month kept fresh)."""
     if not OPENAI_ADMIN_KEY:
         return None
     now = datetime.now(timezone.utc)
-    if _all_time_daily_cache["value"] is not None and _all_time_daily_cache["fetched_at"] and now - _all_time_daily_cache["fetched_at"] < _ALL_TIME_CACHE_TTL:
-        daily = _all_time_daily_cache["value"]
-    else:
-        daily = await _fetch_daily_costs(now - timedelta(days=ALL_TIME_LOOKBACK_DAYS), now)
-        if daily is None:
-            return None
-        _all_time_daily_cache["value"] = daily
-        _all_time_daily_cache["fetched_at"] = now
-        _all_time_cache["value"] = sum(daily.values())
-        _all_time_cache["fetched_at"] = now
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_daily = await _fetch_daily_costs(month_start, now)
+    if month_daily is None:
+        month_daily = {}
+    daily, is_fresh = await _get_all_time_daily(now, month_daily)
+    if not is_fresh and not daily:
+        return None
     monthly = {}
     for date_key, amount in daily.items():
         month_key = date_key[:7]

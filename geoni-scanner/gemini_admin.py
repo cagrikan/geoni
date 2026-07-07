@@ -165,7 +165,6 @@ async def get_gemini_cost_summary() -> dict | None:
     usd_today = month_daily.get(today_key, 0)
     usd_week = sum(v for k, v in month_daily.items() if k >= week_start_key)
     usd_month = sum(month_daily.values())
-    usd_all_time = max(usd_all_time, usd_month)
 
     result = {
         "usd_today": round(usd_today, 4),

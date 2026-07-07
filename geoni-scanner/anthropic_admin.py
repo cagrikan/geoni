@@ -28,7 +28,6 @@ FMT = "%Y-%m-%dT%H:%M:%SZ"
 # 120 days is few enough pages to be reliable while still covering realistic
 # GEONI-era usage. Cached so every admin panel load doesn't re-walk it.
 ALL_TIME_LOOKBACK_DAYS = 120
-_all_time_cache = {"value": None, "fetched_at": None}
 _all_time_daily_cache = {"value": None, "fetched_at": None}
 _ALL_TIME_CACHE_TTL = timedelta(hours=6)
 
@@ -84,6 +83,32 @@ async def _fetch_daily_cents(start: datetime, end: datetime) -> dict | None:
     return daily_cents
 
 
+async def _get_all_time_daily(now: datetime, fresh_month_cents: dict) -> tuple[dict, bool]:
+    """Returns (daily_cents dict covering ALL_TIME_LOOKBACK_DAYS, is_fresh).
+
+    The 120-day fetch is cached for hours (cheap on Anthropic's rate limit),
+    but that means it can lag behind the always-fresh month-to-date fetch by
+    up to _ALL_TIME_CACHE_TTL. Rather than just clamping the resulting sum
+    (which would silently understate real historical spend), we overlay the
+    fresh month_cents on top of the cached dict before returning it, so the
+    days that changed since the cache was built are correct and only the
+    genuinely-unchanged older days are served from cache."""
+    is_fresh = True
+    if _all_time_daily_cache["value"] is not None and _all_time_daily_cache["fetched_at"] and now - _all_time_daily_cache["fetched_at"] < _ALL_TIME_CACHE_TTL:
+        daily = dict(_all_time_daily_cache["value"])
+    else:
+        fetched = await _fetch_daily_cents(now - timedelta(days=ALL_TIME_LOOKBACK_DAYS), now)
+        if fetched is None:
+            daily = dict(_all_time_daily_cache["value"] or {})
+            is_fresh = _all_time_daily_cache["value"] is not None
+        else:
+            daily = fetched
+            _all_time_daily_cache["value"] = fetched
+            _all_time_daily_cache["fetched_at"] = now
+    daily.update(fresh_month_cents)  # always-fresh data wins over the cached snapshot
+    return daily, is_fresh
+
+
 async def get_anthropic_cost_summary() -> dict | None:
     """Real USD cost today/last-7-days/month-to-date (for the chart) plus
     all-time spend (for the remaining-balance estimate).
@@ -106,32 +131,14 @@ async def get_anthropic_cost_summary() -> dict | None:
         # waiting out the full TTL).
         return _summary_cache["value"]
 
-    all_time_is_fresh = True
-    if _all_time_cache["value"] is not None and _all_time_cache["fetched_at"] and now - _all_time_cache["fetched_at"] < _ALL_TIME_CACHE_TTL:
-        usd_all_time = _all_time_cache["value"]
-    else:
-        all_time_cents = await _fetch_daily_cents(now - timedelta(days=ALL_TIME_LOOKBACK_DAYS), now)
-        if all_time_cents is None:
-            usd_all_time = _all_time_cache["value"] or 0.0
-            all_time_is_fresh = _all_time_cache["value"] is not None
-        else:
-            usd_all_time = sum(all_time_cents.values()) / 100
-            _all_time_cache["value"] = usd_all_time
-            _all_time_cache["fetched_at"] = now
-            _all_time_daily_cache["value"] = all_time_cents
-            _all_time_daily_cache["fetched_at"] = now
+    all_time_daily, all_time_is_fresh = await _get_all_time_daily(now, month_cents)
+    usd_all_time = sum(all_time_daily.values()) / 100
 
     today_key = now.strftime("%Y-%m-%d")
     week_start_key = (now - timedelta(days=7)).strftime("%Y-%m-%d")
     usd_today = month_cents.get(today_key, 0) / 100
     usd_week = sum(c for d, c in month_cents.items() if d >= week_start_key) / 100
     usd_month = sum(month_cents.values()) / 100
-
-    # usd_all_time can lag usd_month by up to _ALL_TIME_CACHE_TTL (6h) since
-    # they're cached on different schedules - never let the slower-refreshing
-    # figure display as smaller than the faster one, since all-time must by
-    # definition include the current month.
-    usd_all_time = max(usd_all_time, usd_month)
 
     result = {
         "usd_today": round(usd_today, 4),
@@ -150,20 +157,18 @@ async def get_anthropic_cost_summary() -> dict | None:
 async def get_anthropic_monthly_breakdown() -> dict[str, float] | None:
     """USD cost grouped by calendar month (YYYY-MM), covering the same
     ALL_TIME_LOOKBACK_DAYS window already fetched for usd_all_time - reuses
-    that cached daily data instead of an extra paginated API call."""
+    that cached daily data (with the current month kept fresh) instead of
+    an extra full paginated API call."""
     if not ANTHROPIC_ADMIN_KEY:
         return None
     now = datetime.now(timezone.utc)
-    if _all_time_daily_cache["value"] is not None and _all_time_daily_cache["fetched_at"] and now - _all_time_daily_cache["fetched_at"] < _ALL_TIME_CACHE_TTL:
-        daily_cents = _all_time_daily_cache["value"]
-    else:
-        daily_cents = await _fetch_daily_cents(now - timedelta(days=ALL_TIME_LOOKBACK_DAYS), now)
-        if daily_cents is None:
-            return None
-        _all_time_daily_cache["value"] = daily_cents
-        _all_time_daily_cache["fetched_at"] = now
-        _all_time_cache["value"] = sum(daily_cents.values()) / 100
-        _all_time_cache["fetched_at"] = now
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_cents = await _fetch_daily_cents(month_start, now)
+    if month_cents is None:
+        month_cents = {}
+    daily_cents, is_fresh = await _get_all_time_daily(now, month_cents)
+    if not is_fresh and not daily_cents:
+        return None
     monthly = {}
     for date_key, cents in daily_cents.items():
         month_key = date_key[:7]
