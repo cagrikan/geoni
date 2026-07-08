@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="llm" href="https://geoni.ai/llm.txt" type="text/plain">
+<link rel="llms" href="https://geoni.ai/llms.txt" type="text/plain">
 
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -243,6 +244,12 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 .web-result__desc{font-size:.875rem;color:var(--text-sub);line-height:1.6}
 .web-result__meta{font-size:.75rem;color:var(--text-muted);font-family:var(--mono);margin-top:6px}
 .web-result__models{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.web-result__recog{display:flex;align-items:center;gap:10px;margin:10px 0 4px}
+.web-result__recog-label{font-size:.75rem;color:var(--text-sub);text-transform:uppercase;letter-spacing:.05em;flex-shrink:0}
+.web-result__recog-bar{flex:1;height:4px;border-radius:999px;background:var(--surface-2);overflow:hidden}
+.web-result__recog-bar i{display:block;height:100%;border-radius:999px;transition:width .5s ease}
+.web-result__recog-count{font-family:var(--mono);font-size:.8125rem;font-weight:600;font-variant-numeric:tabular-nums;flex-shrink:0}
+.web-result__cta{margin-top:12px}
 .web-result__model{font-family:var(--mono);font-size:.75rem;padding:3px 9px;border-radius:999px;border:1px solid var(--border-mid)}
 .web-result__model--yes{color:var(--good);border-color:rgba(63,185,80,.3);background:rgba(63,185,80,.06)}
 .web-result__model--no{color:var(--bad);border-color:rgba(248,81,73,.3);background:rgba(248,81,73,.06)}
@@ -836,6 +843,8 @@ const I18N = {
     "demo_web_known": "AI bu siteyi/markayı tanıyor",
     "demo_web_unknown": "AI bu siteyi/markayı tanımıyor",
     "demo_web_limit": "Ücretsiz deneme hakkınızı kullandınız.",
+    "demo_web_recognition": "AI Tanınırlık",
+    "demo_web_score_cta": "Tam AI Görünürlük Skorunu ve eksik listesini gör →",
     "demo_web_limit_cta": "Giriş Yap →",
     "demo_web_error": "Bir şeyler ters gitti, lütfen tekrar deneyin.",
     "demo_web_placeholder_hint": "Bir domain girip AI'ın onu tanıyıp tanımadığına bakın.",
@@ -955,6 +964,8 @@ const I18N = {
     "demo_web_known": "AI recognizes this site/brand",
     "demo_web_unknown": "AI doesn't recognize this site/brand",
     "demo_web_limit": "You've used your free trial queries.",
+    "demo_web_recognition": "AI Recognition",
+    "demo_web_score_cta": "See your full AI Visibility Score and gap list →",
     "demo_web_limit_cta": "Log In →",
     "demo_web_error": "Something went wrong, please try again.",
     "demo_web_placeholder_hint": "Enter a domain and see if AI recognizes it.",
@@ -1125,7 +1136,7 @@ function toggleTheme() {
 // performing_topics/opportunity_topics) ──────────────────────────────────
 const SAMPLE_LABELS = {
   tr: {
-    title: 'AI Görünürlük Raporu', queried: 'SORGULANAN', scoreLabel: 'GEO Skoru',
+    title: 'AI Görünürlük Raporu', queried: 'SORGULANAN', scoreLabel: 'AI Görünürlük Skoru',
     claude: 'Claude', chatgpt: 'ChatGPT', gemini: 'Gemini', perplexity: 'Perplexity',
     yanit_kalitesi: 'Yanıt Kalitesi', konu_uyumu: 'Konu Uyumu',
     recognizingModels: 'Tanıyan Model', webResults: 'Web Sonucu',
@@ -1135,7 +1146,7 @@ const SAMPLE_LABELS = {
     strongTopics: 'Güçlü Olduğu Konular', opportunities: 'Fırsat Alanları',
   },
   en: {
-    title: 'AI Visibility Report', queried: 'QUERIED', scoreLabel: 'GEO Score',
+    title: 'AI Visibility Report', queried: 'QUERIED', scoreLabel: 'AI Visibility Score',
     claude: 'Claude', chatgpt: 'ChatGPT', gemini: 'Gemini', perplexity: 'Perplexity',
     yanit_kalitesi: 'Response Quality', konu_uyumu: 'Topic Relevance',
     recognizingModels: 'Recognizing Models', webResults: 'Web Results',
@@ -1486,16 +1497,33 @@ async function runWebCheck() {
     const badgeText = data.known ? `✓ ${dict.demo_web_known}` : `✗ ${dict.demo_web_unknown}`;
     const desc = data.description ? `<div class="web-result__desc">${data.description}</div>` : '';
     const meta = [data.sector, data.website].filter(Boolean).join(' · ');
-    const modelLabels = { claude: 'Claude', chatgpt: 'ChatGPT', gemini: 'Gemini', tavily: 'Tavily' };
-    const modelsHtml = Object.entries(data.models || {}).map(([key, m]) =>
+    // "tavily" ic servis adi kullaniciya gosterilmez - urundeki adiyla "Web"
+    const modelLabels = { claude: 'Claude', chatgpt: 'ChatGPT', gemini: 'Gemini', tavily: 'Web' };
+    const modelEntries = Object.entries(data.models || {});
+    const modelsHtml = modelEntries.map(([key, m]) =>
       `<span class="web-result__model ${m.known ? 'web-result__model--yes' : 'web-result__model--no'}">${m.known ? '✓' : '✗'} ${modelLabels[key] || key}</span>`
     ).join('');
+    // Taninirlik cubugu: kac kaynak taniyor - urundeki skor esikleriyle ayni
+    // oranlar (>=%65 iyi, >=%40 orta, alti zayif). Sahte 0-100 skor UYDURULMAZ;
+    // gercek GEO Skoru app'te hesaplanir, buradan CTA ile yonlendirilir.
+    const knownCount = modelEntries.filter(([, m]) => m.known).length;
+    const totalCount = modelEntries.length;
+    const ratio = totalCount ? knownCount / totalCount : 0;
+    const barColor = ratio >= .65 ? 'var(--good)' : ratio >= .4 ? 'var(--warn)' : 'var(--bad)';
+    const recogHtml = totalCount ? `
+      <div class="web-result__recog">
+        <span class="web-result__recog-label">${dict.demo_web_recognition}</span>
+        <span class="web-result__recog-bar"><i style="width:${Math.round(ratio * 100)}%;background:${barColor}"></i></span>
+        <span class="web-result__recog-count" style="color:${barColor}">${knownCount}/${totalCount}</span>
+      </div>` : '';
     resultEl.innerHTML = `
       <div class="web-result">
         <span class="web-result__badge ${badgeClass}">${badgeText}</span>
+        ${recogHtml}
         ${modelsHtml ? `<div class="web-result__models">${modelsHtml}</div>` : ''}
         ${desc}
         ${meta ? `<div class="web-result__meta">${meta}</div>` : ''}
+        <a href="https://app.geoni.ai/login" class="premium-teaser-btn web-result__cta">${dict.demo_web_score_cta}</a>
       </div>`;
   } catch (e) {
     resultEl.innerHTML = `<div class="web-result"><div class="web-result__desc">${dict.demo_web_error}</div></div>`;

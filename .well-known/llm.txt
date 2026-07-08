@@ -1,29 +1,45 @@
-# GEONI (geoni.ai)
+# GEONI
 
-> GEONI, markaların yapay zeka arama motorlarında (ChatGPT, Perplexity, Gemini, Claude vb.) görünürlüğünü, atıf oranlarını ve itibarını optimize eden bir Üretken Motor Optimizasyonu (GEO - Generative Engine Optimization) platformu ve ajansıdır.
+> GEONI is a Generative Engine Optimization (GEO) platform that measures and improves how brands, people and websites appear in AI answer engines (ChatGPT, Claude, Gemini, Perplexity). It combines a self-service scanning product at app.geoni.ai with expert-delivered visibility services.
 
-## Core Capabilities & Services
+GEONI, markaların, kişilerin ve web sitelerinin yapay zeka cevap motorlarındaki (ChatGPT, Claude, Gemini, Perplexity) görünürlüğünü ölçen ve iyileştiren bir Üretken Motor Optimizasyonu (GEO) platformudur.
 
-- **Generative Engine Optimization (GEO):** Optimizing brand presence within AI search engines and Large Language Models (LLMs).
-- **AI Audit & Simulation:** Comprehensive analysis of how AI search engines perceive, score, and recommend a brand across specific industry queries.
-- **Entity & Authority Optimization:** Establishing and reinforcing strong brand entity relations on structured data networks (Wikidata, Schema) to boost LLM trust score.
-- **Citation & Referral Acquisition:** Strategies to secure explicit citations and referral links inside AI-generated responses (e.g., via HARO, digital PR, high-authority mentions).
-- **LLM.txt & Machine-Readable Content Setup:** Implementing architecture designed specifically for AI crawlers to efficiently parse, understand, and cite brand information.
+## Product (app.geoni.ai)
 
-## Service Packages
+- **AI Visibility Scan (Web):** Crawls a website, checks AI crawler access (robots.txt rules for GPTBot, ClaudeBot, OAI-SearchBot, PerplexityBot and others), llms.txt presence, structured data (JSON-LD schema) coverage, and queries live AI engines to produce a 0-100 AI Visibility Score with a prioritized gap list.
+- **Person / Brand Check:** Asks the same questions a real user would ask across 4 AI engines in parallel and reports whether the person or brand is recognized, how it is described, and which competitors appear instead.
+- **Watchlist & Score Tracking:** Re-scan targets over time; score history, deltas and trends per target.
+- **Token model:** Pay-as-you-go tokens, no subscription required; tokens never expire.
 
-- **AI Audit (One-time):** Deep-dive situational analysis, AI share-of-voice reporting, and a foundational GEO roadmap.
-- **Growth (Monthly Subscription):** Ongoing entity optimization, prompt simulation maps, citation tracking, and continuous LLM-ready content engineering.
-- **Enterprise (Custom):** Dedicated GEO operations, predictive trend modeling, multi-brand dashboard management, and prioritized technical support.
+## AI Visibility Services (expert-delivered, ordered inside the app)
 
-## Key Technical Specifications
+- **AI Bot Access Setup:** robots.txt + llms.txt files generated for the customer's domain (automated, delivered in minutes).
+- **Structured Data (Schema) Setup:** Organization / Person / Product / FAQ JSON-LD authored for the site and verified with Google Rich Results Test.
+- **Wikidata Entity Registration:** Creating or enriching the brand/person Wikidata item with independent sources.
+- **AI-Citable Content Production:** Answer-first content engineered to be quoted by AI engines.
+- **Trusted Source Visibility:** Earned mentions via journalist source-request platforms (Source of Sources, Qwoted, Featured) and niche directories.
 
-- **Focus Engine:** LLMs, Chatbots, and Retrieval-Augmented Generation (RAG) systems.
-- **Methodology:** Source Authority, Structural Data Enrichment, Real-time Prompt Testing, Entity Freshness Alignment.
+Each service ships with a work-breakdown checklist, in-app messaging with the assigned expert, and a delivery report.
 
-## Contact & Navigation
+## Managed Packages
 
-- **Main Website:** https://geoni.ai
-- **Primary Action:** Free AI Audit (https://geoni.ai#audit)
-- **Location & Market:** Ankara, Turkey (Serving globally)
-- **Contact:** info@geoni.ai
+- **Visibility Audit (one-time):** Baseline scans, competitor comparison, prompt-simulation map across 15-20 real buyer questions, prioritized action list, live presentation.
+- **Citation Builder (monthly):** Technical GEO infrastructure - bot access, schema, entity consistency - kept live, plus 2-4 AI-ready contents per month.
+- **AI Authority (monthly):** Citation Builder plus media citations, Wikidata entity management, monthly prompt-simulation maps and strategy sessions.
+- **Enterprise (custom):** Multi-brand management with a dedicated strategist, API/dashboard integration and white-label reporting.
+
+## Facts
+
+- Scoring dimensions include: AI crawler accessibility, structured data coverage, entity presence (Wikidata/Knowledge Graph), brand recall inside LLMs, and citation footprint.
+- GEONI distinguishes training crawlers (GPTBot, ClaudeBot, Google-Extended, CCBot) from search/citation crawlers (OAI-SearchBot, ChatGPT-User, PerplexityBot, Claude-SearchBot) - visibility in real-time AI answers is governed by the latter.
+- Market: Türkiye-based (Ankara), serving globally. Interface in Turkish and English.
+
+## Links
+
+- [Main site](https://geoni.ai): product overview, live demo, token pricing
+- [App](https://app.geoni.ai): free account, scans and services
+- [Free scan](https://geoni.ai#audit): run the first AI visibility audit without payment
+
+## Contact
+
+- info@geoni.ai
