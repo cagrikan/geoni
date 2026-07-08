@@ -32,12 +32,13 @@ from db import (
     get_credit_packages, record_purchase, get_admin_sales_stats, get_pricing_tiers, add_pricing_tier, delete_pricing_tier,
     get_manual_cost, set_manual_cost, list_campaigns, create_campaign, delete_campaign,
     is_expert, list_ticket_types, purchase_ticket, list_user_tickets, list_expert_tickets,
-    submit_ticket_evidence, admin_list_tickets, admin_assign_ticket, admin_verify_ticket,
+    submit_ticket_evidence, start_ticket_work, admin_list_tickets, admin_assign_ticket, admin_verify_ticket,
     admin_create_ticket_type, admin_set_ticket_type_active, admin_set_is_expert, list_experts,
     has_admin_scope, is_user_suspended, admin_get_user_detail,
     admin_get_user_audits, admin_get_user_transactions, admin_get_user_tickets, admin_set_user_notes,
     admin_set_suspended, admin_set_admin_scopes,
     get_ticket_role, list_ticket_messages, add_ticket_message, create_ticket_upload_url, mark_ticket_read,
+    list_ticket_tasks, toggle_ticket_task,
 )
 from anthropic_admin import get_anthropic_cost_summary
 from aws_cost import get_aws_cost_summary
@@ -47,6 +48,7 @@ from perplexity_admin import get_perplexity_cost_summary
 from gemini_admin import get_gemini_cost_summary
 from total_cost_admin import get_admin_total_cost_summary
 from lemonsqueezy import verify_webhook_signature, create_checkout, parse_order_webhook
+from ticket_automation import fulfill_llms_robots_ticket
 
 class AuditRequest(BaseModel):
     domain: str
@@ -201,6 +203,13 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
             "llms_txt": indexing_status.get("llms_txt", False),
             "top_topics": topics["performing_topics"],
             "opportunities": topics["opportunity_topics"],
+            # llms.txt otomasyonu (bilet sistemi) icin sayfa ozeti - sadece
+            # baslik+aciklamasi olan sayfalar, ilk 20 - ham crawl_result'un
+            # tamami degil, uzun taramalarda result_json'u sismesin diye.
+            "pages": [
+                {"url": p.get("url"), "title": p.get("title"), "meta_description": p.get("meta_description")}
+                for p in crawl_result.get("pages", []) if p.get("title")
+            ][:20],
             "brand_recall": {
                 "checked": brand_recall_result.get("checked", False),
                 "recognized": brand_recall_result.get("recognized", False),
@@ -733,6 +742,10 @@ async def create_ticket(body: TicketPurchaseRequest, http_request: Request):
             "user_not_found": "Kullanıcı bulunamadı",
         }
         raise HTTPException(status_code=400, detail=messages.get(result["error"], "Bilet satın alınamadı"))
+    if result.get("ticket_type_key") == "llms_robots" and result.get("ticket_id") and body.target:
+        # Tek insan-uzman gerektirmeyen hizmet - satin alinir alinmaz
+        # otomatik teslim edilir (admin hala 'submitted'i onaylamali).
+        await fulfill_llms_robots_ticket(result["ticket_id"], body.target)
     return {"success": True}
 
 @app.get("/api/tickets")
@@ -756,6 +769,15 @@ async def expert_submit_ticket(ticket_id: int, body: TicketSubmitRequest, http_r
     if not result["success"]:
         messages = {"not_found": "Bilet bulunamadı", "not_assigned": "Bu bilet size atanmamış", "invalid_status": "Bilet bu durumda teslim edilemez"}
         raise HTTPException(status_code=400, detail=messages.get(result["error"], "Teslim edilemedi"))
+    return {"success": True}
+
+@app.post("/api/expert/tickets/{ticket_id}/start")
+async def expert_start_ticket(ticket_id: int, http_request: Request):
+    expert_id = await _require_expert(http_request)
+    result = await start_ticket_work(ticket_id, expert_id)
+    if not result["success"]:
+        messages = {"not_found": "Bilet bulunamadı", "not_assigned": "Bu bilet size atanmamış", "invalid_status": "Bilet bu durumda başlatılamaz"}
+        raise HTTPException(status_code=400, detail=messages.get(result["error"], "Başlatılamadı"))
     return {"success": True}
 
 # ── Bilet mesajlasma (musteri/uzman/admin ayni thread'i gorur) ──────────
@@ -802,6 +824,30 @@ async def ticket_upload_url_ep(ticket_id: int, body: TicketUploadUrlRequest, htt
     if not result:
         raise HTTPException(status_code=400, detail="Yükleme linki oluşturulamadı")
     return result
+
+@app.get("/api/tickets/{ticket_id}/tasks")
+async def ticket_tasks_ep(ticket_id: int, http_request: Request):
+    _user_id, role = await _require_ticket_access(ticket_id, http_request)
+    tasks = await list_ticket_tasks(ticket_id)
+    if role == "customer":
+        # how_to musteriye ozel degil, uzmana yol gostermek icin - musteri
+        # gorunumunde hic gonderilmiyor (sadece UI'da gizlemek yetmez).
+        for t in tasks:
+            t.pop("how_to", None)
+    return tasks
+
+class TicketTaskToggleRequest(BaseModel):
+    done: bool
+
+@app.post("/api/tickets/{ticket_id}/tasks/{task_id}/toggle")
+async def ticket_task_toggle_ep(ticket_id: int, task_id: int, body: TicketTaskToggleRequest, http_request: Request):
+    _user_id, role = await _require_ticket_access(ticket_id, http_request)
+    if role not in ("expert", "admin"):
+        raise HTTPException(status_code=403, detail="Sadece uzman/admin işaretleyebilir")
+    ok = await toggle_ticket_task(task_id, ticket_id, body.done)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Güncellenemedi")
+    return {"success": True}
 
 @app.get("/api/admin/tickets")
 async def admin_tickets(http_request: Request, status: str = ""):

@@ -1400,6 +1400,27 @@ async def admin_get_audit(audit_id: str) -> dict | None:
     return None
 
 
+async def get_latest_web_audit_by_domain(domain: str) -> dict | None:
+    """En son TAMAMLANMIS 'web' taramasi - llms_robots bilet otomasyonu
+    icin marka/konu/sayfa verisini buradan cekiyoruz. Eski taramalarda
+    'pages' alani olmayabilir (bu alan sonradan eklendi) - cagiran taraf
+    bunu graceful fallback ile ele almali."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/audits?domain=eq.{domain}&type=eq.web&status=eq.complete"
+                f"&select=*&order=created_at.desc&limit=1",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code == 200 and r.json():
+                return r.json()[0]
+    except Exception as e:
+        logger.warning(f"get_latest_web_audit_by_domain error: {e}")
+    return None
+
+
 async def admin_list_audits(
     search: str = "", sort_by: str = "created_at", sort_dir: str = "desc", limit: int = 50, offset: int = 0
 ) -> dict:
@@ -1490,6 +1511,35 @@ async def _get_ticket_type(ticket_type_id: int) -> dict | None:
     return None
 
 
+async def get_ticket_type_by_key(key: str) -> dict | None:
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/ticket_types?key=eq.{key}&select=*",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code == 200 and r.json():
+                return r.json()[0]
+    except Exception as e:
+        logger.warning(f"get_ticket_type_by_key error: {e}")
+    return None
+
+
+async def mark_ticket_submitted(ticket_id: int) -> bool:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}",
+                headers=_headers(), json={"status": "submitted"}, timeout=10,
+            )
+            return r.status_code in (200, 204)
+    except Exception as e:
+        logger.warning(f"mark_ticket_submitted error: {e}")
+        return False
+
+
 async def purchase_ticket(user_id: str, ticket_type_id: int, audit_id: str | None = None, target: str = "") -> dict:
     """Deducts token_cost from the buyer's balance and creates the ticket -
     both steps must succeed together, so balance is checked and the profile
@@ -1535,19 +1585,75 @@ async def purchase_ticket(user_id: str, ticket_type_id: int, audit_id: str | Non
 
             ticket_r = await client.post(
                 f"{SUPABASE_URL}/rest/v1/tickets",
-                headers=_headers(),
+                headers={**_headers(), "Prefer": "return=representation"},
                 json={
                     "user_id": user_id, "audit_id": audit_id, "ticket_type_id": ticket_type_id,
                     "target": target or None, "token_cost": cost,
                 },
                 timeout=10,
             )
-            if ticket_r.status_code not in (200, 201):
+            if ticket_r.status_code not in (200, 201) or not ticket_r.json():
                 return {"success": False, "error": "ticket_create_failed"}
-            return {"success": True, "error": None}
+            new_ticket = ticket_r.json()[0]
+            await _clone_ticket_tasks(client, new_ticket["id"], ticket_type_id)
+            return {"success": True, "error": None, "ticket_id": new_ticket["id"], "ticket_type_key": ticket_type.get("key")}
     except Exception as e:
         logger.warning(f"purchase_ticket error: {e}")
         return {"success": False, "error": "exception"}
+
+
+async def _clone_ticket_tasks(client: httpx.AsyncClient, ticket_id: int, ticket_type_id: int) -> None:
+    """Copies the standard checklist template onto this specific ticket at
+    purchase time - a snapshot, not a live reference, so later edits to the
+    template (or a new template version) never change tickets already sold."""
+    try:
+        r = await client.get(
+            f"{SUPABASE_URL}/rest/v1/ticket_type_tasks?ticket_type_id=eq.{ticket_type_id}&select=title,sort_order,how_to&order=sort_order.asc",
+            headers=_headers(), timeout=10,
+        )
+        templates = r.json() if r.status_code == 200 else []
+        if not templates:
+            return
+        rows = [{"ticket_id": ticket_id, "title": t["title"], "sort_order": t["sort_order"], "how_to": t.get("how_to")} for t in templates]
+        await client.post(f"{SUPABASE_URL}/rest/v1/ticket_tasks", headers=_headers(), json=rows, timeout=10)
+    except Exception as e:
+        logger.warning(f"_clone_ticket_tasks error: {e}")
+
+
+async def list_ticket_tasks(ticket_id: int) -> list:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return []
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/ticket_tasks?ticket_id=eq.{ticket_id}&select=*&order=sort_order.asc",
+                headers=_headers(), timeout=10,
+            )
+            return r.json() if r.status_code == 200 else []
+    except Exception as e:
+        logger.warning(f"list_ticket_tasks error: {e}")
+        return []
+
+
+async def toggle_ticket_task(task_id: int, ticket_id: int, done: bool) -> bool:
+    """ticket_id is required (not just task_id from the URL) so a caller
+    with access to ticket A can't toggle a task belonging to ticket B by
+    guessing task ids - the endpoint already checked access to ticket_id,
+    this scopes the actual write to match."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/ticket_tasks?id=eq.{task_id}&ticket_id=eq.{ticket_id}",
+                headers=_headers(),
+                json={"is_done": done, "done_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if done else None},
+                timeout=10,
+            )
+            return r.status_code in (200, 204)
+    except Exception as e:
+        logger.warning(f"toggle_ticket_task error: {e}")
+        return False
 
 
 async def _get_unread_ticket_ids(ticket_ids: list, viewer_id: str) -> set:
@@ -1597,6 +1703,7 @@ async def _enrich_tickets(tickets: list, viewer_id: str = "") -> list:
         tt = type_by_id.get(t.get("ticket_type_id"), {})
         t["ticket_type_name"] = tt.get("name", "")
         t["ticket_type_key"] = tt.get("key", "")
+        t["delivery_template"] = tt.get("delivery_template", "")
         t["user_email"] = emails.get(t.get("user_id"), "")
         t["expert_email"] = emails.get(t.get("assigned_expert_id"), "") if t.get("assigned_expert_id") else ""
     if viewer_id:
@@ -1616,7 +1723,10 @@ async def list_user_tickets(user_id: str) -> list:
                 headers=_headers(), timeout=10,
             )
             if r.status_code == 200:
-                return await _enrich_tickets(r.json(), user_id)
+                tickets = await _enrich_tickets(r.json(), user_id)
+                for t in tickets:
+                    t.pop("delivery_template", None)
+                return tickets
     except Exception as e:
         logger.warning(f"list_user_tickets error: {e}")
     return []
@@ -1636,6 +1746,34 @@ async def list_expert_tickets(expert_id: str) -> list:
     except Exception as e:
         logger.warning(f"list_expert_tickets error: {e}")
     return []
+
+
+async def start_ticket_work(ticket_id: int, expert_id: str) -> dict:
+    """assigned -> in_progress. Musteri/admin de bu gecisi gorup uzmanin
+    ise gercekten basladigini anlar - eskiden bu durum hic kullanilmiyordu."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return {"success": False, "error": "not_configured"}
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}&select=assigned_expert_id,status",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code != 200 or not r.json():
+                return {"success": False, "error": "not_found"}
+            row = r.json()[0]
+            if row.get("assigned_expert_id") != expert_id:
+                return {"success": False, "error": "not_assigned"}
+            if row.get("status") != "assigned":
+                return {"success": False, "error": "invalid_status"}
+            patch_r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}",
+                headers=_headers(), json={"status": "in_progress"}, timeout=10,
+            )
+            return {"success": patch_r.status_code in (200, 204), "error": None}
+    except Exception as e:
+        logger.warning(f"start_ticket_work error: {e}")
+        return {"success": False, "error": "exception"}
 
 
 async def submit_ticket_evidence(ticket_id: int, expert_id: str, evidence_url: str, evidence_note: str = "") -> dict:
@@ -1720,23 +1858,85 @@ async def admin_assign_ticket(ticket_id: int, expert_id: str) -> bool:
     return False
 
 
+async def _build_delivery_report(ticket_id: int) -> str:
+    """Türkçe İş Teslim Raporu - onaylanan bir bilette, checklist'in
+    tamamlanma durumu + sureyi kalici bir kayit olarak konusma akisina
+    ekler (musteri de gorur, ayri bir alan aramasi gerekmez)."""
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}&select=*",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code != 200 or not r.json():
+                return ""
+            ticket = r.json()[0]
+        types = await list_ticket_types(active_only=False)
+        tt = next((t for t in types if t["id"] == ticket.get("ticket_type_id")), {})
+        tasks = await list_ticket_tasks(ticket_id)
+        emails = await _fetch_all_auth_emails()
+        expert_email = emails.get(ticket.get("assigned_expert_id"), "—") if ticket.get("assigned_expert_id") else "—"
+
+        opened = ticket.get("created_at", "")
+        closed = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        try:
+            opened_dt = datetime.fromisoformat(opened.replace("Z", "+00:00"))
+            closed_dt = datetime.now(timezone.utc)
+            delta = closed_dt - opened_dt
+            hours = delta.total_seconds() / 3600
+            duration = f"{delta.days} gün {int(hours % 24)} saat" if delta.days else f"{hours:.1f} saat"
+        except Exception:
+            duration = "—"
+
+        lines = [
+            "## İş Teslim Raporu",
+            f"**Hizmet:** {tt.get('name', '—')}",
+            f"**Hedef:** {ticket.get('target') or '—'}",
+            f"**Açılış:** {opened[:16].replace('T', ' ')}",
+            f"**Tamamlanma:** {closed[:16].replace('T', ' ')}",
+            f"**Toplam süre:** {duration}",
+            f"**Uzman:** {expert_email}",
+        ]
+        if tasks:
+            lines.append("\n**Tamamlanan iş kırılımı:**")
+            for tsk in tasks:
+                mark = "✓" if tsk.get("is_done") else "—"
+                lines.append(f"- [{mark}] {tsk['title']}")
+        return "\n".join(lines)
+    except Exception as e:
+        logger.warning(f"_build_delivery_report error: {e}")
+        return ""
+
+
 async def admin_verify_ticket(ticket_id: int, admin_id: str, approve: bool, reject_reason: str = "") -> bool:
+    """Onaylanirsa 'verified'e gecer + Is Teslim Raporu threade eklenir.
+    Reddedilirse 'rejected' TERMINAL bir durum degil - 'assigned'a geri
+    doner ki uzman gerekcesini gorup duzeltip tekrar teslim edebilsin
+    (eskiden reddedilen bir bilet sonsuza kadar kilitli kaliyordu)."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return False
     try:
         async with httpx.AsyncClient() as client:
-            payload = {
-                "status": "verified" if approve else "rejected",
-                "verified_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "verified_by": admin_id,
-            }
-            if not approve:
-                payload["reject_reason"] = reject_reason
+            if approve:
+                payload = {
+                    "status": "verified",
+                    "verified_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "verified_by": admin_id,
+                }
+            else:
+                payload = {"status": "assigned", "reject_reason": reject_reason}
             r = await client.patch(
                 f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}",
                 headers=_headers(), json=payload, timeout=10,
             )
-            return r.status_code in (200, 204)
+            success = r.status_code in (200, 204)
+            if success and approve:
+                report = await _build_delivery_report(ticket_id)
+                if report:
+                    await add_ticket_message(ticket_id, None, "system", body=report)
+            elif success and reject_reason:
+                await add_ticket_message(ticket_id, admin_id, "admin", body=f"Teslim düzeltme için geri gönderildi:\n{reject_reason}")
+            return success
     except Exception as e:
         logger.warning(f"admin_verify_ticket error: {e}")
     return False
@@ -1868,7 +2068,7 @@ async def list_ticket_messages(ticket_id: int) -> list:
     return messages
 
 
-async def add_ticket_message(ticket_id: int, author_id: str, author_role: str, body: str = "", attachment_url: str = "", attachment_name: str = "") -> bool:
+async def add_ticket_message(ticket_id: int, author_id: str | None, author_role: str, body: str = "", attachment_url: str = "", attachment_name: str = "") -> bool:
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return False
     if not body and not attachment_url:
