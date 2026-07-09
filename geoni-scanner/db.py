@@ -1715,6 +1715,28 @@ async def _enrich_tickets(tickets: list, viewer_id: str = "") -> list:
         t["delivery_template"] = tt.get("delivery_template", "")
         t["user_email"] = emails.get(t.get("user_id"), "")
         t["expert_email"] = emails.get(t.get("assigned_expert_id"), "") if t.get("assigned_expert_id") else ""
+    # Kirilim ilerlemesi TOPLU: eskiden her kanban karti kendi /tasks
+    # istegini atiyordu (N bilet = N yetki-kontrollu istek) - panonun gec
+    # acilmasinin ana nedeni. Simdi tek PostgREST cagrisiyla geliyor.
+    try:
+        ids = ",".join(str(t["id"]) for t in tickets)
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/ticket_tasks?ticket_id=in.({ids})&select=ticket_id,is_done",
+                headers=_headers(), timeout=10,
+            )
+            rows = r.json() if r.status_code in (200, 206) else []
+        agg = {}
+        for row in rows:
+            a = agg.setdefault(row["ticket_id"], [0, 0])
+            a[1] += 1
+            if row["is_done"]:
+                a[0] += 1
+        for t in tickets:
+            done, total = agg.get(t["id"], (0, 0))
+            t["tasks_done"], t["tasks_total"] = done, total
+    except Exception as e:
+        logger.warning(f"_enrich_tickets task progress error: {e}")
     if viewer_id:
         unread_ids = await _get_unread_ticket_ids([t["id"] for t in tickets], viewer_id)
         for t in tickets:

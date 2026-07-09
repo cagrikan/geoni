@@ -802,7 +802,8 @@ async def _require_ticket_access(ticket_id: int, http_request: Request) -> tuple
 async def ticket_messages_ep(ticket_id: int, http_request: Request):
     user_id, _role = await _require_ticket_access(ticket_id, http_request)
     messages = await list_ticket_messages(ticket_id)
-    await mark_ticket_read(ticket_id, user_id)
+    # Okundu isareti yaniti bekletmesin - mesajlar aninda insin
+    asyncio.create_task(mark_ticket_read(ticket_id, user_id))
     return messages
 
 class TicketMessageRequest(BaseModel):
