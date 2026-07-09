@@ -14,7 +14,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
-FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "GEONI <rapor@geoni.ai>")
+FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "GEONI <mail@geoni.ai>")
 
 SCORE_COLOR = {
     "good": "#4ade80",
