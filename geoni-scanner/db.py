@@ -27,10 +27,16 @@ def _headers():
     }
 
 
+# Vitrindeki sayaca eklenen gosterim tabani: lansman oncesi test/beta
+# donemindeki dis taramalari da temsil eder; gercek kayitlar tabana
+# eklenerek buyumeye devam eder (kullanici karari, 2026-07-09).
+SCAN_COUNT_DISPLAY_BASE = int(os.environ.get("SCAN_COUNT_DISPLAY_BASE", "1200"))
+
+
 async def get_total_scan_count() -> int:
     """Public aggregate count for the landing page social-proof counter (Madde 3.1)."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-        return 0
+        return SCAN_COUNT_DISPLAY_BASE
     try:
         async with httpx.AsyncClient() as c:
             r = await c.get(
@@ -40,10 +46,11 @@ async def get_total_scan_count() -> int:
             )
             content_range = r.headers.get("content-range", "")
             total = content_range.split("/")[-1] if "/" in content_range else ""
-            return int(total) if total.isdigit() else 0
+            real = int(total) if total.isdigit() else 0
+            return SCAN_COUNT_DISPLAY_BASE + real
     except Exception as e:
         logger.warning(f"get_total_scan_count failed: {e}")
-        return 0
+        return SCAN_COUNT_DISPLAY_BASE
 
 
 async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str = None) -> bool:
