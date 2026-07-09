@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="GEONI Gizlilik Politikası — hangi verileri topladığımız, nasıl kullandığımız ve KVKK kapsamındaki haklarınız.">
+<title>Gizlilik Politikası — GEONI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+/* Tasarim sistemi v2 - geoni.ai / app.geoni.ai ile ayni token seti */
+:root{
+  --bg:#0A0B10;
+  --surface:#10121A;
+  --border:rgba(255,255,255,.07);
+  --border-mid:rgba(255,255,255,.13);
+  --accent:#7C86F5;
+  --text:#EDEFF5;
+  --text-sub:#9BA3B5;
+  --text-muted:#697083;
+  --body:'Inter',sans-serif;
+}
+:root[data-theme="light"]{
+  --bg:#F7F8FA;
+  --surface:#FFFFFF;
+  --border:rgba(22,24,29,.08);
+  --border-mid:rgba(22,24,29,.16);
+  --accent:#5B63E8;
+  --text:#16181D;
+  --text-sub:#4D5464;
+  --text-muted:#8A90A0;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#F7F8FA;
+    --surface:#FFFFFF;
+    --border:rgba(22,24,29,.08);
+    --border-mid:rgba(22,24,29,.16);
+    --accent:#5B63E8;
+    --text:#16181D;
+    --text-sub:#4D5464;
+    --text-muted:#8A90A0;
+  }
+}
+body{background:var(--bg);color:var(--text);font-family:var(--body);line-height:1.7;-webkit-font-smoothing:antialiased}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid var(--border)}
+.topbar a{color:var(--text);text-decoration:none;font-weight:700;font-size:1rem;letter-spacing:.04em}
+.topbar a:hover{color:var(--accent)}
+.topbar .back{font-weight:500;font-size:.875rem;color:var(--text-sub);letter-spacing:0}
+.topbar .back:hover{color:var(--accent)}
+main{max-width:720px;margin:0 auto;padding:56px 24px 96px}
+.eyebrow{font-size:.75rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+h1{font-size:1.75rem;font-weight:700;line-height:1.25;margin-bottom:8px}
+.updated{font-size:.8125rem;color:var(--text-muted);margin-bottom:40px}
+h2{font-size:1.25rem;font-weight:600;margin:40px 0 12px}
+p{font-size:.875rem;color:var(--text-sub);margin-bottom:12px}
+ul{margin:0 0 12px 20px}
+li{font-size:.875rem;color:var(--text-sub);margin-bottom:6px}
+li strong,p strong{color:var(--text);font-weight:600}
+a{color:var(--accent)}
+.note{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:.8125rem;color:var(--text-sub);margin:16px 0}
+footer{max-width:720px;margin:0 auto;padding:24px;border-top:1px solid var(--border);font-size:.8125rem;color:var(--text-muted);display:flex;flex-wrap:wrap;gap:16px}
+footer a{color:var(--text-muted);text-decoration:none}
+footer a:hover{color:var(--accent)}
+</style>
+<script>
+(function(){
+  var t = localStorage.getItem('geoni_site_theme');
+  if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="/">GEONI</a>
+  <a class="back" href="/">← Ana sayfa</a>
+</div>
+
+<main>
+  <div class="eyebrow">Yasal</div>
+  <h1>Gizlilik Politikası</h1>
+  <div class="updated">Son güncelleme: 9 Temmuz 2026</div>
+
+  <p>Bu Gizlilik Politikası, GEONI ("biz") tarafından <a href="https://geoni.ai">geoni.ai</a> ve <a href="https://app.geoni.ai">app.geoni.ai</a> üzerinden sunulan hizmetlerde kişisel verilerinizin nasıl toplandığını, kullanıldığını ve korunduğunu açıklar. Hizmetlerimizi kullanarak bu politikayı kabul etmiş olursunuz.</p>
+
+  <h2>1. Veri Sorumlusu</h2>
+  <p>Veri sorumlusu, Ankara / Türkiye merkezli GEONI'dir. Gizlilikle ilgili tüm talepleriniz için <a href="mailto:mail@geoni.ai">mail@geoni.ai</a> adresinden bize ulaşabilirsiniz.</p>
+
+  <h2>2. Topladığımız Veriler</h2>
+  <ul>
+    <li><strong>Hesap bilgileri:</strong> Google ile giriş yaptığınızda ad, e-posta adresi ve profil bilgisi.</li>
+    <li><strong>Tarama verileri:</strong> Taranmasını istediğiniz marka adı, alan adı ve tarama sonucunda üretilen rapor içerikleri.</li>
+    <li><strong>Hizmet verileri:</strong> Satın aldığınız hizmet biletlerindeki mesajlar, ek dosyalar ve teslim kayıtları.</li>
+    <li><strong>Ödeme bilgileri:</strong> Ödemeler ödeme sağlayıcımız üzerinden işlenir; kredi kartı bilgileriniz GEONI sunucularında saklanmaz. Bize yalnızca işlem tutarı, tarih ve paket bilgisi iletilir.</li>
+    <li><strong>Teknik veriler:</strong> Oturum ve tercih bilgileri (dil, tema) ile hizmetin çalışması için gereken temel günlük kayıtları.</li>
+  </ul>
+
+  <h2>3. Verileri Kullanma Amaçlarımız</h2>
+  <ul>
+    <li>AI görünürlük taramalarını çalıştırmak ve raporları oluşturmak,</li>
+    <li>Satın aldığınız uzman hizmetlerini yürütmek ve teslim etmek,</li>
+    <li>Bilet ve hizmet bildirimlerini e-posta ile iletmek (gönderen: mail@geoni.ai),</li>
+    <li>Destek taleplerinizi yanıtlamak,</li>
+    <li>Hizmetin güvenliğini sağlamak ve kötüye kullanımı önlemek,</li>
+    <li>Yasal yükümlülüklerimizi yerine getirmek.</li>
+  </ul>
+  <p>Kişisel verileriniz hiçbir koşulda üçüncü taraflara <strong>satılmaz</strong> veya pazarlama amacıyla paylaşılmaz.</p>
+
+  <h2>4. Çerezler ve Yerel Depolama</h2>
+  <p>Sitemiz, oturumunuzu sürdürmek ve dil/tema tercihlerinizi hatırlamak için tarayıcınızın yerel depolamasını (localStorage) kullanır. Reklam veya üçüncü taraf takip çerezi kullanılmaz.</p>
+
+  <h2>5. Altyapı ve Üçüncü Taraf Hizmetler</h2>
+  <p>Verileriniz, hizmetin çalışması için gerekli olduğu ölçüde aşağıdaki hizmet sağlayıcıların altyapısında işlenir ve saklanır:</p>
+  <ul>
+    <li><strong>Google:</strong> Kimlik doğrulama (Google ile giriş).</li>
+    <li><strong>Supabase:</strong> Veritabanı, kimlik doğrulama ve dosya depolama.</li>
+    <li><strong>Amazon Web Services (Frankfurt, AB):</strong> Tarama motorunun çalıştığı sunucular.</li>
+    <li><strong>Vercel:</strong> Web sitesi ve uygulama barındırma.</li>
+    <li><strong>Ödeme sağlayıcısı:</strong> Ödeme işlemleri ve faturalandırma.</li>
+  </ul>
+
+  <h2>6. Saklama Süresi</h2>
+  <p>Hesap ve hizmet verileriniz, hesabınız aktif olduğu sürece saklanır. Hesabınızın ve verilerinizin silinmesini istediğinizde <a href="mailto:mail@geoni.ai">mail@geoni.ai</a> adresine yazmanız yeterlidir; yasal saklama yükümlülükleri saklı kalmak kaydıyla verileriniz makul süre içinde silinir.</p>
+
+  <h2>7. KVKK Kapsamındaki Haklarınız</h2>
+  <p>6698 sayılı Kişisel Verilerin Korunması Kanunu'nun 11. maddesi kapsamında; verilerinizin işlenip işlenmediğini öğrenme, işlenmişse bilgi talep etme, düzeltilmesini veya silinmesini isteme, aktarıldığı üçüncü tarafları öğrenme ve zarara uğramanız hâlinde giderilmesini talep etme haklarına sahipsiniz.</p>
+  <div class="note">Bu haklarınızı kullanmak için <a href="mailto:mail@geoni.ai">mail@geoni.ai</a> adresine başvurabilirsiniz. Başvurunuz en geç 30 gün içinde yanıtlanır.</div>
+
+  <h2>8. Değişiklikler</h2>
+  <p>Bu politikada yapılacak değişiklikler bu sayfada yayımlanır ve "Son güncelleme" tarihi güncellenir. Önemli değişikliklerde kayıtlı e-posta adresinize bildirim gönderilir.</p>
+
+  <h2>9. İletişim</h2>
+  <p>Sorularınız için: <a href="mailto:mail@geoni.ai">mail@geoni.ai</a></p>
+</main>
+
+<footer>
+  <span>© 2026 GEONI</span>
+  <a href="/privacy">Gizlilik Politikası</a>
+  <a href="/terms">Kullanım Şartları</a>
+  <a href="mailto:mail@geoni.ai">mail@geoni.ai</a>
+</footer>
+
+</body>
+</html>

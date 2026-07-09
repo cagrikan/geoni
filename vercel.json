@@ -2,6 +2,8 @@
   "version": 2,
   "rewrites": [
     { "source": "/r/:slug", "destination": "/api/r/:slug" },
+    { "source": "/privacy", "destination": "/privacy.html" },
+    { "source": "/terms", "destination": "/terms.html" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }

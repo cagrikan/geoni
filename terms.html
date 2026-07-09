@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="GEONI Kullanım Şartları — hizmet kapsamı, token paketleri, uzman hizmetleri ve tarafların hak ve yükümlülükleri.">
+<title>Kullanım Şartları — GEONI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+/* Tasarim sistemi v2 - geoni.ai / app.geoni.ai ile ayni token seti */
+:root{
+  --bg:#0A0B10;
+  --surface:#10121A;
+  --border:rgba(255,255,255,.07);
+  --border-mid:rgba(255,255,255,.13);
+  --accent:#7C86F5;
+  --text:#EDEFF5;
+  --text-sub:#9BA3B5;
+  --text-muted:#697083;
+  --body:'Inter',sans-serif;
+}
+:root[data-theme="light"]{
+  --bg:#F7F8FA;
+  --surface:#FFFFFF;
+  --border:rgba(22,24,29,.08);
+  --border-mid:rgba(22,24,29,.16);
+  --accent:#5B63E8;
+  --text:#16181D;
+  --text-sub:#4D5464;
+  --text-muted:#8A90A0;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#F7F8FA;
+    --surface:#FFFFFF;
+    --border:rgba(22,24,29,.08);
+    --border-mid:rgba(22,24,29,.16);
+    --accent:#5B63E8;
+    --text:#16181D;
+    --text-sub:#4D5464;
+    --text-muted:#8A90A0;
+  }
+}
+body{background:var(--bg);color:var(--text);font-family:var(--body);line-height:1.7;-webkit-font-smoothing:antialiased}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid var(--border)}
+.topbar a{color:var(--text);text-decoration:none;font-weight:700;font-size:1rem;letter-spacing:.04em}
+.topbar a:hover{color:var(--accent)}
+.topbar .back{font-weight:500;font-size:.875rem;color:var(--text-sub);letter-spacing:0}
+.topbar .back:hover{color:var(--accent)}
+main{max-width:720px;margin:0 auto;padding:56px 24px 96px}
+.eyebrow{font-size:.75rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+h1{font-size:1.75rem;font-weight:700;line-height:1.25;margin-bottom:8px}
+.updated{font-size:.8125rem;color:var(--text-muted);margin-bottom:40px}
+h2{font-size:1.25rem;font-weight:600;margin:40px 0 12px}
+p{font-size:.875rem;color:var(--text-sub);margin-bottom:12px}
+ul{margin:0 0 12px 20px}
+li{font-size:.875rem;color:var(--text-sub);margin-bottom:6px}
+li strong,p strong{color:var(--text);font-weight:600}
+a{color:var(--accent)}
+.note{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:.8125rem;color:var(--text-sub);margin:16px 0}
+footer{max-width:720px;margin:0 auto;padding:24px;border-top:1px solid var(--border);font-size:.8125rem;color:var(--text-muted);display:flex;flex-wrap:wrap;gap:16px}
+footer a{color:var(--text-muted);text-decoration:none}
+footer a:hover{color:var(--accent)}
+</style>
+<script>
+(function(){
+  var t = localStorage.getItem('geoni_site_theme');
+  if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="/">GEONI</a>
+  <a class="back" href="/">← Ana sayfa</a>
+</div>
+
+<main>
+  <div class="eyebrow">Yasal</div>
+  <h1>Kullanım Şartları</h1>
+  <div class="updated">Son güncelleme: 9 Temmuz 2026</div>
+
+  <p>Bu Kullanım Şartları, GEONI ("biz") tarafından <a href="https://geoni.ai">geoni.ai</a> ve <a href="https://app.geoni.ai">app.geoni.ai</a> üzerinden sunulan hizmetlerin kullanımını düzenler. Hizmetlerimize erişerek veya hesap oluşturarak bu şartları kabul etmiş olursunuz.</p>
+
+  <h2>1. Hizmetin Kapsamı</h2>
+  <p>GEONI, markaların yapay zekâ arama motorlarındaki (ChatGPT, Perplexity, Gemini vb.) görünürlüğünü ölçen ve iyileştiren bir platformdur. Hizmetler şunları içerir:</p>
+  <ul>
+    <li><strong>AI görünürlük taraması:</strong> Marka veya alan adı için otomatik analiz ve puanlama raporu.</li>
+    <li><strong>Token paketleri:</strong> Tarama ve uzman hizmetlerinde harcanmak üzere satın alınan kullanım kredileri.</li>
+    <li><strong>Uzman hizmetleri:</strong> Şema kurulumu, AI botlarına erişim izni, Wikidata kaydı, içerik üretimi ve kaynaklarda görünürlük gibi bilet üzerinden yürütülen işler.</li>
+  </ul>
+
+  <h2>2. Hesap</h2>
+  <p>Hizmetleri kullanmak için Google hesabınızla giriş yapmanız gerekir. Hesabınız altında gerçekleşen tüm etkinliklerden siz sorumlusunuz. Hesabınızın yetkisiz kullanıldığını fark ederseniz derhâl <a href="mailto:mail@geoni.ai">mail@geoni.ai</a> adresine bildirin.</p>
+
+  <h2>3. Tokenlar ve Ödeme</h2>
+  <ul>
+    <li>Token paketleri, ödeme sağlayıcımız üzerinden tek seferlik satın alınır; abonelik ve otomatik yenileme yoktur.</li>
+    <li>Tokenlar, tarama ve uzman hizmetlerinde ilan edilen bedeller karşılığında harcanır.</li>
+    <li>Tokenların nakde çevrilmesi veya üçüncü kişilere devri mümkün değildir.</li>
+    <li>İade talepleri <a href="mailto:mail@geoni.ai">mail@geoni.ai</a> üzerinden alınır ve kullanılmamış bakiye esas alınarak değerlendirilir.</li>
+  </ul>
+
+  <h2>4. Uzman Hizmetleri ve Teslim</h2>
+  <ul>
+    <li>Satın alınan her hizmet için bir iş bileti açılır; işin adımları, mesajlaşma ve teslim bu bilet üzerinden yürütülür.</li>
+    <li>Teslim edilen iş, GEONI tarafından kontrol edildikten sonra tamamlandı olarak işaretlenir ve bilete bir İş Teslim Raporu eklenir.</li>
+    <li><strong>İtiraz hakkı:</strong> Teslim edilen işin eksik veya hatalı olduğunu düşünüyorsanız, bilet üzerinden itiraz edebilirsiniz. İtirazınız incelenir ve iş gerekirse yeniden ele alınır.</li>
+    <li>Sitenize eklenmesi gereken dosya veya kodlar size talimatlarıyla birlikte teslim edilir; sitenize erişim bilgilerinizi uzmanlarla paylaşmanız gerekmez ve önerilmez.</li>
+  </ul>
+
+  <h2>5. Kullanım Kuralları</h2>
+  <ul>
+    <li>Yalnızca sahibi olduğunuz veya taratmaya yetkili olduğunuz marka ve alan adlarını taratabilirsiniz.</li>
+    <li>Hizmeti yasa dışı, yanıltıcı veya üçüncü kişilerin haklarını ihlal eden amaçlarla kullanamazsınız.</li>
+    <li>Platformun güvenliğini zayıflatmaya, tersine mühendislik yapmaya veya otomatik araçlarla aşırı yük oluşturmaya çalışamazsınız.</li>
+  </ul>
+
+  <h2>6. Fikri Mülkiyet</h2>
+  <p>Platform, yazılım, tasarım ve marka dâhil tüm hakları GEONI'ye aittir. Sizin için üretilen raporları ve teslim edilen içerikleri kendi işinizde serbestçe kullanabilirsiniz.</p>
+
+  <h2>7. Sorumluluk Reddi</h2>
+  <p>AI görünürlük skorları, üçüncü taraf yapay zekâ motorlarının o anki yanıtlarına dayalı <strong>tahmini ölçümlerdir</strong>. Bu motorların davranışı GEONI'nin kontrolünde değildir; belirli bir sıralama, görünürlük veya ticari sonuç garanti edilmez. Hizmetler "olduğu gibi" sunulur.</p>
+
+  <h2>8. Sorumluluğun Sınırlandırılması</h2>
+  <p>GEONI'nin bir talepten doğan toplam sorumluluğu, talebe konu hizmet için ödediğiniz bedelle sınırlıdır. Dolaylı zararlar, kâr kaybı ve veri kaybından sorumluluk kabul edilmez.</p>
+
+  <h2>9. Askıya Alma ve Fesih</h2>
+  <p>Bu şartları ihlal eden hesaplar önceden bildirimle veya ağır ihlal hâllerinde derhâl askıya alınabilir ya da kapatılabilir. Hesabınızı dilediğiniz zaman <a href="mailto:mail@geoni.ai">mail@geoni.ai</a> adresine yazarak kapatabilirsiniz.</p>
+
+  <h2>10. Değişiklikler</h2>
+  <p>Bu şartlarda yapılacak değişiklikler bu sayfada yayımlanır ve "Son güncelleme" tarihi güncellenir. Değişiklik sonrasında hizmeti kullanmaya devam etmeniz, güncel şartları kabul ettiğiniz anlamına gelir.</p>
+
+  <h2>11. Uygulanacak Hukuk</h2>
+  <p>Bu şartlar Türkiye Cumhuriyeti hukukuna tabidir. Uyuşmazlıklarda Ankara mahkemeleri ve icra daireleri yetkilidir.</p>
+
+  <h2>12. İletişim</h2>
+  <p>Sorularınız için: <a href="mailto:mail@geoni.ai">mail@geoni.ai</a></p>
+</main>
+
+<footer>
+  <span>© 2026 GEONI</span>
+  <a href="/privacy">Gizlilik Politikası</a>
+  <a href="/terms">Kullanım Şartları</a>
+  <a href="mailto:mail@geoni.ai">mail@geoni.ai</a>
+</footer>
+
+</body>
+</html>
