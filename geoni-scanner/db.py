@@ -59,7 +59,9 @@ async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str
         "domain": request_data.get("domain"),
         "score": result.get("score"),
         "result_json": result,
-        "credits_spent": 10,
+        # Gercek dusumle ayni olmali (asagida deduct_credits 5 dusuyor) -
+        # eskiden 10 yaziliyordu, kullanici gercekte harcadigindan fazlasini goruyordu.
+        "credits_spent": 5,
         "status": "complete",
         "completed_at": result.get("created_at"),
     }
