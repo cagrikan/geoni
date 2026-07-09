@@ -2049,12 +2049,16 @@ async def get_ticket_role(ticket_id: int, user_id: str) -> tuple[str | None, dic
         logger.warning(f"get_ticket_role error: {e}")
         return None, None
 
-    if ticket.get("user_id") == user_id:
-        return "customer", ticket
+    # Oncelik: expert > admin > customer. Ayni hesap hem musteri hem uzman/
+    # admin olabildiginde (tek kisilik ekip, test) yazma yetkileri (gorev
+    # isaretleme, sablon) kaybolmasin diye en yetkili rol kazanir; musteriye
+    # ozel isler (itiraz) zaten role degil user_id sahipligine bakar.
     if ticket.get("assigned_expert_id") == user_id:
         return "expert", ticket
     if await has_admin_scope(user_id, "tickets"):
         return "admin", ticket
+    if ticket.get("user_id") == user_id:
+        return "customer", ticket
     return None, ticket
 
 
