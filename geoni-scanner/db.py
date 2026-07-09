@@ -2198,8 +2198,51 @@ async def notify_ticket_event(ticket_id: int, event: str, actor_role: str = "") 
             if expert:
                 sends.append((expert, f"Düzeltme istendi — {ref}", "Teslim düzeltme için iade edildi",
                               ["Gerekçe bilet mesajlarında. Düzeltip yeniden teslim edebilirsiniz."]))
+        elif event == "disputed":
+            for adm in await _ticket_admin_emails():
+                sends.append((adm, f"Müşteri itirazı — {ref}", "Onaylanmış işe müşteri itirazı",
+                              ["İtiraz gerekçesi bilet mesajlarında. Yeniden onaylayabilir veya uzmana iade edebilirsiniz."]))
+            if expert:
+                sends.append((expert, f"Müşteri itirazı — {ref}", "Teslimatınıza itiraz edildi",
+                              ["Admin kararını bekleyin; gerekirse bilet size iade edilecek."]))
 
         for to, subject, heading, lines in sends:
             asyncio.create_task(send_ticket_email(to, subject, heading, lines))
     except Exception as e:
         logger.warning(f"notify_ticket_event error: {e}")
+
+
+async def dispute_ticket(ticket_id: int, user_id: str, reason: str) -> dict:
+    """Musteri itirazi: yalnizca bilet sahibi, yalnizca 'verified' durumda.
+    Itiraz gerekcesi konusma akisina musteri mesaji olarak da duser -
+    admin karari (yeniden onay ya da uzmana iade) mevcut verify akisiyla
+    verilir; is admin onayi olmadan kapanmis sayilmaz (kullanici karari:
+    "musteriye birakirsan is bitmez ama itiraz hakki olmali")."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return {"success": False, "error": "not_configured"}
+    if not reason.strip():
+        return {"success": False, "error": "reason_required"}
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}&select=user_id,status",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code != 200 or not r.json():
+                return {"success": False, "error": "not_found"}
+            row = r.json()[0]
+            if row.get("user_id") != user_id:
+                return {"success": False, "error": "not_owner"}
+            if row.get("status") != "verified":
+                return {"success": False, "error": "invalid_status"}
+            patch = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}",
+                headers=_headers(), json={"status": "disputed"}, timeout=10,
+            )
+            if patch.status_code not in (200, 204):
+                return {"success": False, "error": "update_failed"}
+        await add_ticket_message(ticket_id, user_id, "customer", body=f"⚠ İtiraz: {reason.strip()}")
+        return {"success": True, "error": None}
+    except Exception as e:
+        logger.warning(f"dispute_ticket error: {e}")
+        return {"success": False, "error": "exception"}

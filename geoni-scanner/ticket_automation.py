@@ -82,6 +82,15 @@ async def fulfill_llms_robots_ticket(ticket_id: int, domain: str) -> bool:
             .replace("{robots_txt}", robots_txt)
             .replace("{llms_txt}", llms_txt)
         ) if template else f"{robots_txt}\n\n---\n\n{llms_txt}"
+        if not audit:
+            # Tarama yoksa llms.txt yalnizca domain adiyla uretilir - zayif.
+            # Musteriye durustce soyle ve zenginlestirme yolunu goster.
+            message += (
+                "\n\n> Not: Bu alan adı için henüz bir GEONI taraması bulunmadığından "
+                "llms.txt temel bilgilerle oluşturuldu. Bir web taraması yaptırırsanız "
+                "sayfa listesi ve konu özetleriyle zenginleştirilmiş sürümünü bu bilete "
+                "ücretsiz ekleriz - taramadan sonra buradan mesaj yazmanız yeterli."
+            )
 
         await add_ticket_message(ticket_id, None, "system", body=message)
         await mark_ticket_submitted(ticket_id)

@@ -38,7 +38,7 @@ from db import (
     admin_get_user_audits, admin_get_user_transactions, admin_get_user_tickets, admin_set_user_notes,
     admin_set_suspended, admin_set_admin_scopes,
     get_ticket_role, list_ticket_messages, add_ticket_message, create_ticket_upload_url, mark_ticket_read, notify_ticket_event,
-    list_ticket_tasks, toggle_ticket_task,
+    list_ticket_tasks, toggle_ticket_task, dispute_ticket,
 )
 from anthropic_admin import get_anthropic_cost_summary
 from aws_cost import get_aws_cost_summary
@@ -745,8 +745,12 @@ async def create_ticket(body: TicketPurchaseRequest, http_request: Request):
     if result.get("ticket_type_key") == "llms_robots" and result.get("ticket_id") and body.target:
         # Tek insan-uzman gerektirmeyen hizmet - satin alinir alinmaz
         # otomatik teslim edilir (admin hala 'submitted'i onaylamali).
-        if await fulfill_llms_robots_ticket(result["ticket_id"], body.target):
-            await notify_ticket_event(result["ticket_id"], "submitted")
+        # Arkaplanda kosar: tarama sorgusu + dosya uretimi satin alma
+        # yanitini geciktirmesin.
+        async def _auto_fulfill(tid: int, target: str):
+            if await fulfill_llms_robots_ticket(tid, target):
+                await notify_ticket_event(tid, "submitted")
+        asyncio.create_task(_auto_fulfill(result["ticket_id"], body.target))
     return {"success": True}
 
 @app.get("/api/tickets")
@@ -827,6 +831,20 @@ async def ticket_upload_url_ep(ticket_id: int, body: TicketUploadUrlRequest, htt
     if not result:
         raise HTTPException(status_code=400, detail="Yükleme linki oluşturulamadı")
     return result
+
+class TicketDisputeRequest(BaseModel):
+    reason: str
+
+@app.post("/api/tickets/{ticket_id}/dispute")
+async def ticket_dispute_ep(ticket_id: int, body: TicketDisputeRequest, http_request: Request):
+    user_id = await _require_user(http_request)
+    result = await dispute_ticket(ticket_id, user_id, body.reason)
+    if not result["success"]:
+        messages = {"reason_required": "İtiraz gerekçesi gerekli", "not_found": "Bilet bulunamadı",
+                    "not_owner": "Bu bilet size ait değil", "invalid_status": "Yalnızca onaylanmış işe itiraz edilebilir"}
+        raise HTTPException(status_code=400, detail=messages.get(result["error"], "İtiraz kaydedilemedi"))
+    await notify_ticket_event(ticket_id, "disputed")
+    return {"success": True}
 
 @app.get("/api/tickets/{ticket_id}/tasks")
 async def ticket_tasks_ep(ticket_id: int, http_request: Request):
