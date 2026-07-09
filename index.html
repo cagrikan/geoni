@@ -140,12 +140,37 @@ h2{font-family:var(--display);font-size:clamp(1.8rem,2.8vw,2.4rem);font-weight:7
 .sub{color:var(--text-sub);font-size:1rem;max-width:520px;line-height:1.75}
 
 /* SEO VS GEO */
-.compare{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:52px;max-width:760px}
-.cmp-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px}
-.cmp-card.active{border-color:rgba(124,134,245,.35);background:rgba(124,134,245,.04)}
-.cmp-icon{font-size:1.6rem;margin-bottom:16px}
-.cmp-title{font-family:var(--display);font-size:1rem;font-weight:600;margin-bottom:10px}
-.cmp-desc{color:var(--text-sub);font-size:.875rem;line-height:1.65}
+/* GEO Nedir: SERP-vs-AI duellosu + mini SSS (onaylanan onizleme) */
+.geo-duel{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:40px;margin-bottom:14px}
+.geo-pane{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+.geo-pane.win{border-color:rgba(124,134,245,.35)}
+.geo-pane-bar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+.geo-pane-bar>span:last-child{font-size:.75rem;color:var(--text-muted);font-family:var(--mono)}
+.geo-dots{display:flex;gap:4px}
+.geo-dots i{width:8px;height:8px;border-radius:999px;background:var(--border-mid)}
+.geo-pane-body{padding:16px;flex:1}
+.geo-serp-item{padding:7px 0}
+.geo-serp-item .gsu{font-size:.75rem;color:var(--good);opacity:.75}
+.geo-serp-item .gst{font-size:.875rem;color:#6D9BF0;text-decoration:underline;text-underline-offset:2px}
+.geo-serp-item.dim .gst{color:var(--text-muted);text-decoration-color:var(--border-mid)}
+.geo-serp-more{font-size:.75rem;color:var(--text-muted);padding-top:8px;font-family:var(--mono)}
+.geo-ai-q{display:inline-block;background:var(--accent);color:#fff;font-size:.8125rem;padding:8px 12px;border-radius:14px 14px 2px 14px;margin-bottom:14px}
+.geo-ai-a{background:var(--surface-2);border:1px solid var(--border);border-radius:14px 14px 14px 2px;padding:12px 14px;font-size:.875rem;color:var(--text-sub)}
+.geo-ai-a b{color:var(--text);background:var(--accent-dim);border:1px solid rgba(124,134,245,.3);border-radius:6px;padding:1px 6px}
+.geo-ai-src{display:inline-flex;align-items:center;gap:5px;margin-top:10px;font-size:.75rem;color:var(--text-muted);border:1px solid var(--border);border-radius:999px;padding:3px 9px}
+.geo-ai-src i{width:6px;height:6px;border-radius:999px;background:var(--good)}
+.geo-pane-foot{padding:11px 14px;border-top:1px solid var(--border);font-size:.8125rem;color:var(--text-muted)}
+.geo-pane.win .geo-pane-foot{color:var(--accent)}
+.geo-verdict{font-size:.875rem;color:var(--text-sub);text-align:center;margin-bottom:44px}
+.geo-verdict b{color:var(--text)}
+.geo-faq{border-top:1px solid var(--border)}
+.geo-faq-item{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.4fr);gap:8px 32px;padding:20px 0;border-bottom:1px solid var(--border)}
+.gfq{font-size:1rem;font-weight:600;letter-spacing:-.01em}
+.gfa{font-size:.875rem;color:var(--text-sub)}
+.gfa b{color:var(--text);font-weight:600}
+.geo-cta{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding-top:24px}
+.geo-cta a{background:var(--accent);color:#fff;text-decoration:none;font-size:.875rem;font-weight:600;padding:11px 22px;border-radius:6px}
+.geo-cta span{font-size:.8125rem;color:var(--text-muted)}
 
 /* HOW IT WORKS */
 .how-bg{background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border);scroll-margin-top:80px}
@@ -192,7 +217,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 /* RESPONSIVE */
 @media(max-width:1024px){.pkgs{grid-template-columns:1fr 1fr}}
 @media(max-width:900px){
-  .hero-inner,.compare{grid-template-columns:1fr}
+  .hero-inner,.geo-duel,.geo-faq-item{grid-template-columns:1fr}
   .steps{grid-template-columns:1fr}
   nav{padding:14px 20px}
   .nav-links{display:none}
@@ -556,7 +581,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 </nav>
 
 <!-- HERO -->
-<section class="hero">
+<section class="hero" id="top">
   <div class="hero-ambient"></div>
   <div class="hero-inner">
     <div>
@@ -679,17 +704,49 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
   <div class="inner">
     <span class="eyebrow" data-i18n="geo_eyebrow">// GEO Nedir?</span>
     <h2 data-i18n="geo_h2">Google sizi listeliyor. AI sizi anlatıyor —<br>ya da anlatmıyor.</h2>
-    <p class="sub" data-i18n="geo_sub">Generative Engine Optimization; markanızın ChatGPT, Perplexity, Claude ve Gemini tarafından kaynak olarak gösterilmesi için uygulanan sistematik optimizasyon sürecidir. Sıralama yarışı bitti — şimdi yanıt içinde yer alma yarışı var.</p>
-    <div class="compare">
-      <div class="cmp-card reveal">
-        <div class="cmp-icon">🔍</div>
-        <div class="cmp-title" data-i18n="cmp_seo_title">SEO (Klasik)</div>
-        <p class="cmp-desc" data-i18n="cmp_seo_desc">Google 10 seçenek sunar. Kullanıcı tarar, karşılaştırır, tıklar. Markanız sıralamada yoksa gözden kaçar.</p>
+    <p class="sub" data-i18n="geo_sub">Generative Engine Optimization; markanızın ChatGPT, Perplexity, Claude ve Gemini tarafından <em>kaynak olarak gösterilmesi</em> için uygulanan sistematik süreçtir. Sıralama yarışı bitti — şimdi yanıtın içinde yer alma yarışı var. Fark tam olarak şöyle görünür:</p>
+
+    <div class="geo-duel">
+      <div class="geo-pane reveal">
+        <div class="geo-pane-bar"><span class="geo-dots"><i></i><i></i><i></i></span><span data-i18n="geo_serp_url">google.com/search?q=en+iyi+geo+ajansı</span></div>
+        <div class="geo-pane-body">
+          <div class="geo-serp-item"><div class="gsu" data-i18n="geo_serp_1u">sponsorlu · rakip-ajans.com</div><div class="gst" data-i18n="geo_serp_1t">Rakip Ajans — GEO ve SEO Hizmetleri</div></div>
+          <div class="geo-serp-item"><div class="gsu" data-i18n="geo_serp_2u">listeleme-sitesi.com</div><div class="gst" data-i18n="geo_serp_2t">2026'nın En İyi 10 GEO Ajansı [Güncel Liste]</div></div>
+          <div class="geo-serp-item dim"><div class="gsu" data-i18n="geo_serp_3u">sizin-siteniz.com</div><div class="gst" data-i18n="geo_serp_3t">Siz — 7. sıradasınız</div></div>
+          <div class="geo-serp-item dim"><div class="gsu" data-i18n="geo_serp_4u">forum.ornek.com</div><div class="gst" data-i18n="geo_serp_4t">GEO ajansı tavsiyesi olan var mı?</div></div>
+          <div class="geo-serp-more" data-i18n="geo_serp_more">+ 6 sonuç daha…</div>
+        </div>
+        <div class="geo-pane-foot" data-i18n="geo_serp_foot">Kullanıcı tarar, karşılaştırır, seçer. Şansınız 10'da 1 — o da tıklarsa.</div>
       </div>
-      <div class="cmp-card active reveal">
-        <div class="cmp-icon">🤖</div>
-        <div class="cmp-title" data-i18n="cmp_geo_title">GEO (Yeni)</div>
-        <p class="cmp-desc" data-i18n="cmp_geo_desc">AI tek bir isim söyler. Tavsiye, açıklama, bağlam — hepsi o yanıtın içinde. Markanız orada değilse, müşteri için var olmamışsınız gibidir.</p>
+      <div class="geo-pane win reveal">
+        <div class="geo-pane-bar"><span class="geo-dots"><i></i><i></i><i></i></span><span data-i18n="chat_label">AI Cevap Motoru</span></div>
+        <div class="geo-pane-body">
+          <span class="geo-ai-q" data-i18n="geo_ai_q">En iyi GEO ajansı hangisi?</span>
+          <div class="geo-ai-a"><span data-i18n="geo_ai_a">Bu alanda öne çıkan seçenek <b>GEONI</b>. AI görünürlüğünü 0-100 skorla ölçüyor, eksikleri uzman hizmetleriyle giderip sonucu yeniden tarayarak kanıtlıyor.</span>
+            <div class="geo-ai-src"><i></i> <span data-i18n="geo_ai_src">Kaynak: geoni.ai</span></div>
+          </div>
+        </div>
+        <div class="geo-pane-foot" data-i18n="geo_ai_foot">Model tek isim söyler. Ya o isim sizsiniz — ya da müşteri için hiç var olmadınız.</div>
+      </div>
+    </div>
+    <p class="geo-verdict" data-i18n="geo_verdict">Kullanıcıların artan bölümü aramayı burada bitiriyor: <b>tek soruda tek cevap.</b> GEO, o cevabın içindeki isim olma disiplinidir.</p>
+
+    <div class="geo-faq">
+      <div class="geo-faq-item reveal">
+        <div class="gfq" data-i18n="geo_faq1_q">SEO'da iyiyim — GEO'da da iyi miyimdir?</div>
+        <div class="gfa" data-i18n="geo_faq1_a">Çoğu zaman <b>hayır</b>. AI motorları sıralamaya değil; bot erişiminize, yapılandırılmış verinize, varlık kayıtlarınıza (Wikidata) ve bağımsız atıflarınıza bakar. Google'da 1. sıradaki bir site, ChatGPT cevabında hiç görünmeyebilir.</div>
+      </div>
+      <div class="geo-faq-item reveal">
+        <div class="gfq" data-i18n="geo_faq2_q">GEO ne kadar sürede sonuç verir?</div>
+        <div class="gfa" data-i18n="geo_faq2_a">Teknik katman (bot erişimi, şema) <b>günler içinde</b> ölçülebilir etki yaratır; atıf ve bilinirlik katmanı <b>haftalar içinde</b> oturur. İkisini de aynı panelden, skor değişimiyle takip edersiniz.</div>
+      </div>
+      <div class="geo-faq-item reveal">
+        <div class="gfq" data-i18n="geo_faq3_q">Nereden başlamalıyım?</div>
+        <div class="gfa" data-i18n="geo_faq3_a">30 saniyelik <b>ücretsiz taramayla</b>. AI Görünürlük Skorunuz ve eksik listeniz çıkar; dilediğiniz eksiği tek tıkla uzmanlarımıza devredersiniz.</div>
+      </div>
+      <div class="geo-cta">
+        <a href="#top" data-i18n="geo_cta_btn">Ücretsiz Taramayla Başlayın →</a>
+        <span data-i18n="geo_cta_note">Kredi kartı gerekmez · Sonuç ~30 saniyede</span>
       </div>
     </div>
   </div>
@@ -874,11 +931,31 @@ const I18N = {
     "sector_tourism": "Turizm & Konaklama",
     "geo_eyebrow": "// GEO Nedir?",
     "geo_h2": "Google sizi listeliyor. AI sizi anlatıyor —<br>ya da anlatmıyor.",
-    "geo_sub": "Generative Engine Optimization; markanızın ChatGPT, Perplexity, Claude ve Gemini tarafından kaynak olarak gösterilmesi için uygulanan sistematik optimizasyon sürecidir. Sıralama yarışı bitti — şimdi yanıt içinde yer alma yarışı var.",
-    "cmp_seo_title": "SEO (Klasik)",
-    "cmp_seo_desc": "Google 10 seçenek sunar. Kullanıcı tarar, karşılaştırır, tıklar. Markanız sıralamada yoksa gözden kaçar.",
-    "cmp_geo_title": "GEO (Yeni)",
-    "cmp_geo_desc": "AI tek bir isim söyler. Tavsiye, açıklama, bağlam — hepsi o yanıtın içinde. Markanız orada değilse, müşteri için var olmamışsınız gibidir.",
+    "geo_sub": "Generative Engine Optimization; markanızın ChatGPT, Perplexity, Claude ve Gemini tarafından <em>kaynak olarak gösterilmesi</em> için uygulanan sistematik süreçtir. Sıralama yarışı bitti — şimdi yanıtın içinde yer alma yarışı var. Fark tam olarak şöyle görünür:",
+    "geo_serp_url": "google.com/search?q=en+iyi+geo+ajansı",
+    "geo_serp_1u": "sponsorlu · rakip-ajans.com",
+    "geo_serp_1t": "Rakip Ajans — GEO ve SEO Hizmetleri",
+    "geo_serp_2u": "listeleme-sitesi.com",
+    "geo_serp_2t": "2026'nın En İyi 10 GEO Ajansı [Güncel Liste]",
+    "geo_serp_3u": "sizin-siteniz.com",
+    "geo_serp_3t": "Siz — 7. sıradasınız",
+    "geo_serp_4u": "forum.ornek.com",
+    "geo_serp_4t": "GEO ajansı tavsiyesi olan var mı?",
+    "geo_serp_more": "+ 6 sonuç daha…",
+    "geo_serp_foot": "Kullanıcı tarar, karşılaştırır, seçer. Şansınız 10'da 1 — o da tıklarsa.",
+    "geo_ai_q": "En iyi GEO ajansı hangisi?",
+    "geo_ai_a": "Bu alanda öne çıkan seçenek <b>GEONI</b>. AI görünürlüğünü 0-100 skorla ölçüyor, eksikleri uzman hizmetleriyle giderip sonucu yeniden tarayarak kanıtlıyor.",
+    "geo_ai_src": "Kaynak: geoni.ai",
+    "geo_ai_foot": "Model tek isim söyler. Ya o isim sizsiniz — ya da müşteri için hiç var olmadınız.",
+    "geo_verdict": "Kullanıcıların artan bölümü aramayı burada bitiriyor: <b>tek soruda tek cevap.</b> GEO, o cevabın içindeki isim olma disiplinidir.",
+    "geo_faq1_q": "SEO'da iyiyim — GEO'da da iyi miyimdir?",
+    "geo_faq1_a": "Çoğu zaman <b>hayır</b>. AI motorları sıralamaya değil; bot erişiminize, yapılandırılmış verinize, varlık kayıtlarınıza (Wikidata) ve bağımsız atıflarınıza bakar. Google'da 1. sıradaki bir site, ChatGPT cevabında hiç görünmeyebilir.",
+    "geo_faq2_q": "GEO ne kadar sürede sonuç verir?",
+    "geo_faq2_a": "Teknik katman (bot erişimi, şema) <b>günler içinde</b> ölçülebilir etki yaratır; atıf ve bilinirlik katmanı <b>haftalar içinde</b> oturur. İkisini de aynı panelden, skor değişimiyle takip edersiniz.",
+    "geo_faq3_q": "Nereden başlamalıyım?",
+    "geo_faq3_a": "30 saniyelik <b>ücretsiz taramayla</b>. AI Görünürlük Skorunuz ve eksik listeniz çıkar; dilediğiniz eksiği tek tıkla uzmanlarımıza devredersiniz.",
+    "geo_cta_btn": "Ücretsiz Taramayla Başlayın →",
+    "geo_cta_note": "Kredi kartı gerekmez · Sonuç ~30 saniyede",
     "how_eyebrow": "// Nasıl Çalışır?",
     "how_h2": "Nasıl çalışır?",
     "how_sub": "AI görünürlüğü tek hamlede kazanılmaz. Her katman, markanızı bir AI yanıtına daha yaklaştırır.",
@@ -998,11 +1075,31 @@ const I18N = {
     "sector_tourism": "Tourism & Hospitality",
     "geo_eyebrow": "// What is GEO?",
     "geo_h2": "Google lists you. AI describes you —<br>or doesn't.",
-    "geo_sub": "Generative Engine Optimization is the systematic process of getting your brand cited by ChatGPT, Perplexity, Claude and Gemini. The ranking race is over — now it's the race to be inside the answer.",
-    "cmp_seo_title": "SEO (Classic)",
-    "cmp_seo_desc": "Google offers 10 options. The user scans, compares, clicks. If your brand isn't in the ranking, it gets overlooked.",
-    "cmp_geo_title": "GEO (New)",
-    "cmp_geo_desc": "AI names just one. Recommendation, description, context — all inside that one answer. If your brand isn't there, you don't exist for the customer.",
+    "geo_sub": "Generative Engine Optimization is the systematic process of getting your brand <em>cited as a source</em> by ChatGPT, Perplexity, Claude and Gemini. The ranking race is over — now it's the race to be inside the answer. Here is exactly what that difference looks like:",
+    "geo_serp_url": "google.com/search?q=best+geo+agency",
+    "geo_serp_1u": "sponsored · rival-agency.com",
+    "geo_serp_1t": "Rival Agency — GEO & SEO Services",
+    "geo_serp_2u": "listicle-site.com",
+    "geo_serp_2t": "Top 10 GEO Agencies of 2026 [Updated List]",
+    "geo_serp_3u": "your-site.com",
+    "geo_serp_3t": "You — ranked 7th",
+    "geo_serp_4u": "forum.example.com",
+    "geo_serp_4t": "Any GEO agency recommendations?",
+    "geo_serp_more": "+ 6 more results…",
+    "geo_serp_foot": "The user scans, compares, picks. Your odds: 1 in 10 — if they click at all.",
+    "geo_ai_q": "What's the best GEO agency?",
+    "geo_ai_a": "The standout option here is <b>GEONI</b>. It measures AI visibility with a 0-100 score, fixes the gaps with expert services, and proves the result with a re-scan.",
+    "geo_ai_src": "Source: geoni.ai",
+    "geo_ai_foot": "The model names one. Either that name is you — or you never existed for this customer.",
+    "geo_verdict": "A growing share of users end their search right here: <b>one question, one answer.</b> GEO is the discipline of being the name inside that answer.",
+    "geo_faq1_q": "I'm good at SEO — am I good at GEO too?",
+    "geo_faq1_a": "Usually <b>no</b>. AI engines don't look at rankings; they look at your bot access, structured data, entity records (Wikidata) and independent citations. A site ranked #1 on Google can be entirely absent from a ChatGPT answer.",
+    "geo_faq2_q": "How fast does GEO show results?",
+    "geo_faq2_a": "The technical layer (bot access, schema) shows measurable impact <b>within days</b>; the citation and recognition layer settles <b>within weeks</b>. You track both from one panel, via your score.",
+    "geo_faq3_q": "Where should I start?",
+    "geo_faq3_a": "With the <b>free 30-second scan</b>. You get your AI Visibility Score and gap list; hand any gap to our experts in one click.",
+    "geo_cta_btn": "Start with a Free Scan →",
+    "geo_cta_note": "No credit card · Results in ~30 seconds",
     "how_eyebrow": "// How it works?",
     "how_h2": "How it works?",
     "how_sub": "AI visibility isn't won in one move. Every layer brings your brand one step closer to an AI answer.",
