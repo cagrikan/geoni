@@ -215,3 +215,48 @@ async def send_audit_report_email(to_email: str, domain: str, result: dict, lang
     except Exception as e:
         logger.warning(f"Failed to send report email: {e}")
         return False
+
+
+# ── Bilet olay bildirimleri ──────────────────────────────────────────────
+# Tek sablonlu, kisa islem maili: baslik + satirlar + app'e CTA. Rapor
+# maili gibi fail-silent: cagiranlar asyncio.create_task ile atesleyip
+# unutabilir, endpoint gecikmez, hata yanit akisini bozmaz.
+
+_TICKET_MAIL_STYLE = "font-family:-apple-system,Segoe UI,sans-serif;background:#0A0B10;color:#EDEFF5;padding:32px;border-radius:14px;max-width:520px;margin:0 auto"
+
+
+async def send_ticket_email(to_email: str, subject: str, heading: str, lines: list, cta_label: str = "Bilete Git", cta_url: str = "https://app.geoni.ai") -> bool:
+    if not RESEND_API_KEY or RESEND_API_KEY == "your-resend-key-here":
+        logger.warning("RESEND_API_KEY not configured, skipping ticket email")
+        return False
+    if not to_email:
+        return False
+    body_rows = "".join(
+        f'<p style="margin:6px 0;font-size:14px;line-height:1.6;color:#9BA3B5;">{line}</p>'
+        for line in lines
+    )
+    html = f"""
+    <div style="{_TICKET_MAIL_STYLE}">
+      <div style="font-size:16px;font-weight:600;letter-spacing:.1em;color:#7C86F5;margin-bottom:20px;">GEONI</div>
+      <h2 style="font-size:18px;font-weight:600;margin:0 0 12px;color:#EDEFF5;">{heading}</h2>
+      {body_rows}
+      <a href="{cta_url}" style="display:inline-block;margin-top:20px;background:#7C86F5;color:#FFFFFF;padding:11px 22px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;">{cta_label} →</a>
+      <p style="margin:24px 0 0;font-size:12px;color:#697083;">Bu e-posta GEONI bilet sisteminden otomatik gönderilmiştir.</p>
+    </div>
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                json={"from": FROM_EMAIL, "to": [to_email], "subject": subject, "html": html},
+                timeout=15,
+            )
+            if resp.status_code in (200, 201):
+                logger.info(f"Ticket email sent to {to_email}: {subject}")
+                return True
+            logger.warning(f"Resend ticket email error {resp.status_code}: {resp.text[:200]}")
+            return False
+    except Exception as e:
+        logger.warning(f"Failed to send ticket email: {e}")
+        return False

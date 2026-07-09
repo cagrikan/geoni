@@ -37,7 +37,7 @@ from db import (
     has_admin_scope, is_user_suspended, admin_get_user_detail,
     admin_get_user_audits, admin_get_user_transactions, admin_get_user_tickets, admin_set_user_notes,
     admin_set_suspended, admin_set_admin_scopes,
-    get_ticket_role, list_ticket_messages, add_ticket_message, create_ticket_upload_url, mark_ticket_read,
+    get_ticket_role, list_ticket_messages, add_ticket_message, create_ticket_upload_url, mark_ticket_read, notify_ticket_event,
     list_ticket_tasks, toggle_ticket_task,
 )
 from anthropic_admin import get_anthropic_cost_summary
@@ -745,7 +745,8 @@ async def create_ticket(body: TicketPurchaseRequest, http_request: Request):
     if result.get("ticket_type_key") == "llms_robots" and result.get("ticket_id") and body.target:
         # Tek insan-uzman gerektirmeyen hizmet - satin alinir alinmaz
         # otomatik teslim edilir (admin hala 'submitted'i onaylamali).
-        await fulfill_llms_robots_ticket(result["ticket_id"], body.target)
+        if await fulfill_llms_robots_ticket(result["ticket_id"], body.target):
+            await notify_ticket_event(result["ticket_id"], "submitted")
     return {"success": True}
 
 @app.get("/api/tickets")
@@ -769,6 +770,7 @@ async def expert_submit_ticket(ticket_id: int, body: TicketSubmitRequest, http_r
     if not result["success"]:
         messages = {"not_found": "Bilet bulunamadı", "not_assigned": "Bu bilet size atanmamış", "invalid_status": "Bilet bu durumda teslim edilemez"}
         raise HTTPException(status_code=400, detail=messages.get(result["error"], "Teslim edilemedi"))
+    await notify_ticket_event(ticket_id, "submitted")
     return {"success": True}
 
 @app.post("/api/expert/tickets/{ticket_id}/start")
@@ -812,6 +814,7 @@ async def ticket_messages_create_ep(ticket_id: int, body: TicketMessageRequest, 
     ok = await add_ticket_message(ticket_id, user_id, role, body.body or "", body.attachment_url or "", body.attachment_name or "")
     if not ok:
         raise HTTPException(status_code=400, detail="Mesaj gönderilemedi")
+    await notify_ticket_event(ticket_id, "message", actor_role=role)
     return {"success": True}
 
 class TicketUploadUrlRequest(BaseModel):
@@ -862,6 +865,7 @@ async def admin_assign_ticket_ep(ticket_id: int, body: TicketAssignRequest, http
     await _require_admin_scope(http_request, "tickets")
     if not await admin_assign_ticket(ticket_id, body.expert_id):
         raise HTTPException(status_code=400, detail="Atama başarısız")
+    await notify_ticket_event(ticket_id, "assigned")
     return {"success": True}
 
 class TicketVerifyRequest(BaseModel):
@@ -873,6 +877,7 @@ async def admin_verify_ticket_ep(ticket_id: int, body: TicketVerifyRequest, http
     admin_id = await _require_admin_scope(http_request, "tickets")
     if not await admin_verify_ticket(ticket_id, admin_id, body.approve, body.reject_reason or ""):
         raise HTTPException(status_code=400, detail="İşlem başarısız")
+    await notify_ticket_event(ticket_id, "verified" if body.approve else "returned")
     return {"success": True}
 
 @app.get("/api/admin/ticket-types")

@@ -2117,3 +2117,89 @@ async def create_ticket_upload_url(ticket_id: int, filename: str) -> dict | None
     except Exception as e:
         logger.warning(f"create_ticket_upload_url error: {e}")
     return None
+
+
+# ── Bilet e-posta bildirimleri ───────────────────────────────────────────
+# Bilet sistemindeki en kritik islevsel eksik buydu: mesaj/atama/teslim/
+# onay olaylarinda kimseye haber gitmiyordu, herkes panele girip kirmizi
+# nokta aramak zorundaydi (ticket #1 gunlerce bu yuzden atanmamis kaldi).
+# Hepsi fire-and-forget: asyncio.create_task ile ateslenir, mail servisi
+# yavas/kapali olsa bile endpoint yaniti gecikmez.
+
+from mailer import send_ticket_email  # noqa: E402  (dosya sonu import: dairesel degil, mailer db'yi kullanmiyor)
+
+
+async def _ticket_admin_emails() -> list:
+    """is_admin + bilet yetkisi olan adminlerin e-postalari."""
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles?is_admin=eq.true&admin_scope_tickets=eq.true&select=id",
+                headers=_headers(), timeout=10,
+            )
+            ids = [row["id"] for row in r.json()] if r.status_code == 200 else []
+        emails = await _fetch_all_auth_emails()
+        return [emails[i] for i in ids if emails.get(i)]
+    except Exception as e:
+        logger.warning(f"_ticket_admin_emails error: {e}")
+        return []
+
+
+async def notify_ticket_event(ticket_id: int, event: str, actor_role: str = "") -> None:
+    """event: message | assigned | submitted | verified | returned"""
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}&select=*",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code != 200 or not r.json():
+                return
+            ticket = r.json()[0]
+        emails = await _fetch_all_auth_emails()
+        customer = emails.get(ticket.get("user_id"), "")
+        expert = emails.get(ticket.get("assigned_expert_id"), "") if ticket.get("assigned_expert_id") else ""
+        types = await list_ticket_types(active_only=False)
+        tt = next((t for t in types if t["id"] == ticket.get("ticket_type_id")), {})
+        name = tt.get("name", "Hizmet")
+        ref = f"#{ticket_id} · {name}" + (f" ({ticket.get('target')})" if ticket.get("target") else "")
+
+        sends = []  # (email, subject, heading, lines)
+        if event == "message":
+            line = [f"{ref} biletinde yeni bir mesaj var."]
+            if actor_role == "customer":
+                target = expert or None
+                if target:
+                    sends.append((target, f"Yeni mesaj — {ref}", "Müşteriden yeni mesaj", line))
+                else:
+                    for adm in await _ticket_admin_emails():
+                        sends.append((adm, f"Yeni mesaj — {ref}", "Atanmamış bilette müşteri mesajı", line))
+            else:
+                if customer:
+                    sends.append((customer, f"Yeni mesaj — {ref}", "Biletinize yanıt geldi", line))
+        elif event == "assigned":
+            if expert:
+                sends.append((expert, f"Yeni iş atandı — {ref}", "Size yeni bir iş atandı",
+                              [f"{ref} bileti size atandı.", "İş kırılımını inceleyip 'İşe Başladım' ile başlayabilirsiniz."]))
+        elif event == "submitted":
+            for adm in await _ticket_admin_emails():
+                sends.append((adm, f"Onay bekliyor — {ref}", "Teslim onayınızı bekliyor",
+                              [f"{ref} bileti teslim edildi ve onayınızı bekliyor."]))
+            if customer:
+                sends.append((customer, f"İşiniz teslim edildi — {ref}", "İşiniz tamamlandı, son kontrolde",
+                              ["Uzmanımız işi teslim etti; kalite kontrolünden sonra size iletilecek."]))
+        elif event == "verified":
+            if customer:
+                sends.append((customer, f"İşiniz hazır — {ref}", "İşiniz onaylandı ve teslim edildi",
+                              ["İş teslim raporu ve tüm çıktılar bilet mesajlarınızda."]))
+            if expert:
+                sends.append((expert, f"Teslim onaylandı — {ref}", "Teslimatınız onaylandı", [f"{ref} bileti onaylandı. Teşekkürler!"]))
+        elif event == "returned":
+            if expert:
+                sends.append((expert, f"Düzeltme istendi — {ref}", "Teslim düzeltme için iade edildi",
+                              ["Gerekçe bilet mesajlarında. Düzeltip yeniden teslim edebilirsiniz."]))
+
+        for to, subject, heading, lines in sends:
+            asyncio.create_task(send_ticket_email(to, subject, heading, lines))
+    except Exception as e:
+        logger.warning(f"notify_ticket_event error: {e}")
