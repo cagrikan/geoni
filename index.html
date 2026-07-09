@@ -295,6 +295,9 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 
 /* INSIGHTS BAR */
 .insights-bar{padding:0 48px 80px;scroll-margin-top:80px}
+.insight-benefit{margin-top:18px;padding-top:14px;border-top:1px solid var(--border);font-size:.8125rem;color:var(--text-sub);line-height:1.6}
+.insight-benefit b{color:var(--text)}
+.insight-cta{display:inline-block;margin-top:14px;background:var(--accent);color:#fff;text-decoration:none;font-size:.8125rem;font-weight:600;padding:9px 18px;border-radius:6px}
 .insights-inner{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:1.4fr 1fr;gap:20px}
 .insight-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:32px 36px}
 .eyebrow-sm{font-family:var(--mono);font-size:.75rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);display:block;margin-bottom:10px}
@@ -659,6 +662,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
         <span class="leg-item"><span class="leg-dot" style="background:#F87171"></span><span data-i18n="legend_google">Google Arama Trafiği</span></span>
         <span class="leg-item"><span class="leg-dot" style="background:#7C86F5"></span><span data-i18n="legend_ai">AI Sorgu Hacmi</span></span>
       </div>
+      <p class="insight-benefit" data-i18n="insight1_benefit">Erken davranan, rakipleri fark etmeden AI cevaplarındaki yeri kapar. <b>GEONI bugünkü yerinizi 30 saniyede gösterir</b> — kayma sizi geride bırakmadan.</p>
     </div>
 
     <!-- LOSS CALCULATOR -->
@@ -683,7 +687,8 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
         <div class="calc-unit" data-i18n="calc_unit">AI sorgusu / gün</div>
         <div class="calc-msg" data-i18n="calc_msg">sektörünüzde günlük yapılıyor. Görünmüyorsanız<br>bunların <strong style="color:var(--text)">tamamını</strong> kaçırıyorsunuz.</div>
         <div style="font-size:.75rem;font-family:var(--mono);color:var(--text-muted);margin-top:10px;letter-spacing:.04em" data-i18n="calc_footnote">* Türkiye tahmini, 2025 · ~70M internet kullanıcısı baz alınmıştır</div>
-        
+        <p class="insight-benefit" data-i18n="calc_benefit">Bu sorguların içinde <b>görünür olmak öğrenilebilir bir disiplin</b> — payınızı almak, eksiklerinizi gidermekle başlar.</p>
+        <a href="#top" class="insight-cta" data-i18n="calc_cta">Payınızı ölçün — ücretsiz tarama →</a>
       </div>
       <div id="calc-placeholder" style="margin-top:32px;text-align:center">
         <svg viewBox="0 0 64 64" width="48" height="48" style="margin-bottom:12px;opacity:.3">
@@ -918,6 +923,9 @@ const I18N = {
     "calc_unit": "AI sorgusu / gün",
     "calc_msg": "sektörünüzde günlük yapılıyor. Görünmüyorsanız<br>bunların <strong style=\"color:var(--text)\">tamamını</strong> kaçırıyorsunuz.",
     "calc_footnote": "* Türkiye tahmini, 2025 · ~70M internet kullanıcısı baz alınmıştır",
+    "insight1_benefit": "Erken davranan, rakipleri fark etmeden AI cevaplarındaki yeri kapar. <b>GEONI bugünkü yerinizi 30 saniyede gösterir</b> — kayma sizi geride bırakmadan.",
+    "calc_benefit": "Bu sorguların içinde <b>görünür olmak öğrenilebilir bir disiplin</b> — payınızı almak, eksiklerinizi gidermekle başlar.",
+    "calc_cta": "Payınızı ölçün — ücretsiz tarama →",
     "calc_placeholder": "Sektörünüzü seçtikten sonra<br>kaybı göreceksiniz.",
     "sector_ecommerce": "E-Ticaret & Perakende",
     "sector_tech": "Yazılım & Teknoloji",
@@ -1062,6 +1070,9 @@ const I18N = {
     "calc_unit": "AI queries / day",
     "calc_msg": "happen daily in your sector. If you're not visible, you're missing <strong style=\"color:var(--text)\">all</strong> of them.",
     "calc_footnote": "* Turkey estimate, 2025 · based on ~70M internet users",
+    "insight1_benefit": "Early movers claim their place in AI answers before competitors notice. <b>GEONI shows where you stand today in 30 seconds</b> — before the shift leaves you behind.",
+    "calc_benefit": "Being visible inside these queries is <b>a learnable discipline</b> — claiming your share starts with fixing your gaps.",
+    "calc_cta": "Measure your share — free scan →",
     "calc_placeholder": "Select your sector to<br>see what you're losing.",
     "sector_ecommerce": "E-Commerce & Retail",
     "sector_tech": "Software & Technology",
