@@ -32,7 +32,7 @@ from brand_recall import check_brand_recall, infer_brand_identity
 from topics import generate_topics_and_opportunities
 from db import (
     list_due_watchlist_items, update_watchlist_after_scan, get_auth_email,
-    save_audit, save_brand_check,
+    save_audit, save_brand_check, get_credit_balance,
 )
 from mailer import send_monitor_email
 
@@ -42,6 +42,7 @@ MONITOR_CYCLE_SECONDS = 3600   # saatte bir kontrol
 MONITOR_BATCH_SIZE = 3         # donem basina en cok 3 hedef (kota korumasi)
 MONITOR_PAGE_LIMIT = 30        # izleme taramasi hafif crawl
 SCORE_CHANGE_THRESHOLD = 5     # bildirim esigi (puan)
+FREE_MONITOR_DAYS = 30         # ilk ay ucretsiz; sonrasi aktif bakiye sarti
 
 
 async def _scan_web_item(item: dict) -> int | None:
@@ -155,8 +156,34 @@ async def _scan_brand_item(item: dict) -> int | None:
     return result.get("score")
 
 
+def _is_in_free_period(item: dict) -> bool:
+    """Izleme kaydinin ilk-ay-ucretsiz doneminde olup olmadigi."""
+    from datetime import timezone, timedelta
+    raw = item.get("created_at") or ""
+    try:
+        created = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) - created <= timedelta(days=FREE_MONITOR_DAYS)
+    except (ValueError, AttributeError):
+        return True  # tarih okunamadiysa kullanici aleyhine davranma
+
+
 async def _process_item(item: dict):
     label = item.get("label", "?")
+
+    # Ucretlendirme kapisi: ilk FREE_MONITOR_DAYS gun ucretsiz; sonrasinda
+    # izleme yalnizca aktif token bakiyesi olan kullanicilar icin surer.
+    # Taramanin kendisi yine kontor dusmez (deduct=False) — bakiye sadece
+    # "aktif musteri" kosulu. Bakiyesizlerde tarama atlanir, sira haftaya
+    # ertelenir; panel 'izleme duraklatildi' rozetini gosterir.
+    if not _is_in_free_period(item):
+        balance = await get_credit_balance(item.get("user_id"))
+        if balance <= 0:
+            logger.info(f"monitor: '{label}' atlandi — ucretsiz ay bitti, bakiye yok")
+            await update_watchlist_after_scan(item.get("id"), None)
+            return
+
     try:
         if item.get("type") == "web":
             new_score = await _scan_web_item(item)

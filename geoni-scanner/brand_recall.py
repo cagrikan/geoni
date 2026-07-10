@@ -43,7 +43,7 @@ import httpx
 
 from db import log_provider_call
 from perplexity_admin import record_perplexity_call
-from sov import check_share_of_voice
+from sov import check_share_of_voice, has_usable_topic, infer_topic
 
 logger = logging.getLogger(__name__)
 
@@ -1024,8 +1024,13 @@ async def check_brand_recall(
     # Step 3.5: Share of Voice — kategori sorgularinda gorunurluk (v3).
     # Topic uretimiyle paralel calisir; her ikisi de temsili yanitlara bagli.
     emit(msgs.get("sov", msgs["scoring"]))
+    # Kullanici alan girmediyse web sonuclarindan cikarmayi dene ("bu alan"
+    # gibi anlamsiz sorgular uretilmesin); cikarilamazsa SOV puanlanmaz.
+    sov_topic = topic
+    if not has_usable_topic(name, sov_topic) and not custom_queries:
+        sov_topic = await infer_topic(name, _sanitize_web_results(web_results), _ask_claude)
     sov_task = check_share_of_voice(
-        name, topic, _ask_perplexity_sourced, _ask_claude,
+        name, sov_topic, _ask_perplexity_sourced, _ask_claude,
         ask_google=_ask_gemini_grounded if GOOGLE_API_KEY else None,
         custom_queries=custom_queries,
         own_domain=website or "",

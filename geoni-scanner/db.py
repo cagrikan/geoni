@@ -2357,3 +2357,21 @@ async def get_auth_email(user_id: str) -> str:
     except Exception as e:
         logger.warning(f"get_auth_email error: {e}")
     return ""
+
+
+async def get_credit_balance(user_id: str) -> int:
+    """Kullanicinin guncel token bakiyesi (izleme ucretlendirme kapisi icin)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
+        return 0
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credit_balance",
+                headers=_headers(),
+                timeout=10,
+            )
+            if r.status_code == 200 and r.json():
+                return int(r.json()[0].get("credit_balance") or 0)
+    except Exception as e:
+        logger.warning(f"get_credit_balance error: {e}")
+    return 0
