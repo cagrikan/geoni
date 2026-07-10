@@ -219,6 +219,9 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
                 "inferred_name": identity["name"],
                 "inferred_topic": identity["topic"],
             },
+            # v3: Share of Voice — markayi bilmeyen kullanicinin kategori
+            # sorgularinda gorunurluk + ayni yanitlardan cikarilan rakipler.
+            "sov": brand_recall_result.get("sov"),
             "created_at": datetime.now().isoformat()
         }
 
@@ -298,6 +301,7 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
                 "opportunity_topics": result.get("opportunity_topics", []),
                 "checked": result.get("checked", False),
                 "raw_list": result.get("raw_list"),
+                "sov": result.get("sov"),
                 "created_at": datetime.now().isoformat(),
             },
             "completed_at": datetime.now().isoformat(),

@@ -45,28 +45,38 @@ async def fetch_robots_txt(client: httpx.AsyncClient, base_url: str) -> RobotFil
     return rp
 
 
-async def fetch_sitemap_urls(client: httpx.AsyncClient, base_url: str, limit: int = 200) -> list[str]:
+async def fetch_sitemap(client: httpx.AsyncClient, base_url: str, limit: int = 200) -> dict:
+    """
+    Sitemap'ten URL listesi + lastmod tarihlerini ceker. lastmod tarihleri
+    tazelik skorunun (scoring.py v3) gercek-tarih sinyalidir; eskiden hic
+    okunmuyordu ve tazelik title icindeki yil metnine bakiyordu.
+    """
     sitemap_url = urljoin(base_url, "/sitemap.xml")
-    urls = []
+    urls: list[str] = []
+    lastmods: list[str] = []
+    found = False
     try:
         resp = await client.get(sitemap_url, timeout=10)
         if resp.status_code == 200:
             # Very simple XML parse without extra deps
             import re
-            urls = re.findall(r"<loc>(.*?)</loc>", resp.text)
-            urls = urls[:limit]
+            found = True
+            urls = re.findall(r"<loc>(.*?)</loc>", resp.text)[:limit]
+            lastmods = re.findall(r"<lastmod>(.*?)</lastmod>", resp.text)[:limit]
     except Exception as e:
         logger.info(f"No sitemap.xml found or error fetching it: {e}")
-    return urls
+    return {"found": found, "urls": urls, "lastmods": lastmods}
 
 
-def _extract_schema_types(raw_blocks: list[str]) -> list[str]:
+def _extract_schema_info(raw_blocks: list[str]) -> dict:
     """
     Parse <script type="application/ld+json"> block contents and return the
-    distinct @type values found (e.g. ["Organization", "FAQPage"]).
-    Tolerant of arrays, @graph wrappers, and malformed JSON (Madde 2.3).
+    distinct @type values found (e.g. ["Organization", "FAQPage"]) plus any
+    datePublished/dateModified values (tazelik skoru v3 icin gercek tarih
+    sinyali). Tolerant of arrays, @graph wrappers, and malformed JSON.
     """
     types: set[str] = set()
+    dates: set[str] = set()
 
     def _collect(node):
         if isinstance(node, dict):
@@ -75,6 +85,10 @@ def _extract_schema_types(raw_blocks: list[str]) -> list[str]:
                 types.add(t)
             elif isinstance(t, list):
                 types.update(x for x in t if isinstance(x, str))
+            for date_key in ("datePublished", "dateModified"):
+                d = node.get(date_key)
+                if isinstance(d, str) and d.strip():
+                    dates.add(d.strip())
             if "@graph" in node and isinstance(node["@graph"], list):
                 for item in node["@graph"]:
                     _collect(item)
@@ -91,7 +105,7 @@ def _extract_schema_types(raw_blocks: list[str]) -> list[str]:
         except Exception:
             continue
 
-    return sorted(types)
+    return {"types": sorted(types), "dates": sorted(dates)}
 
 
 async def extract_page_metadata(page) -> dict:
@@ -105,11 +119,21 @@ async def extract_page_metadata(page) -> dict:
     h1 = ""
     canonical_url = ""
     schema_types: list[str] = []
+    schema_dates: list[str] = []
+    noindex = False
 
     try:
         meta_description = await page.eval_on_selector(
             "meta[name='description']", "el => el.content"
         )
+    except Exception:
+        pass
+
+    try:
+        robots_meta = await page.eval_on_selector(
+            "meta[name='robots']", "el => el.content"
+        )
+        noindex = "noindex" in (robots_meta or "").lower()
     except Exception:
         pass
 
@@ -130,7 +154,9 @@ async def extract_page_metadata(page) -> dict:
         raw_ld_blocks = await page.eval_on_selector_all(
             "script[type='application/ld+json']", "els => els.map(e => e.textContent)"
         )
-        schema_types = _extract_schema_types(raw_ld_blocks or [])
+        schema_info = _extract_schema_info(raw_ld_blocks or [])
+        schema_types = schema_info["types"]
+        schema_dates = schema_info["dates"]
     except Exception:
         pass
 
@@ -140,6 +166,8 @@ async def extract_page_metadata(page) -> dict:
         "h1": h1,
         "canonical_url": canonical_url or "",
         "schema_types": schema_types,
+        "schema_dates": schema_dates,
+        "noindex": noindex,
     }
 
 
@@ -167,8 +195,8 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
 
     async with httpx.AsyncClient(follow_redirects=True) as client:
         robots = await fetch_robots_txt(client, base_url)
-        sitemap_urls = await fetch_sitemap_urls(client, base_url, limit=page_limit)
-        for su in sitemap_urls:
+        sitemap = await fetch_sitemap(client, base_url, limit=page_limit)
+        for su in sitemap["urls"]:
             if su not in visited:
                 queue.append((su, 1))
 
@@ -250,4 +278,6 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
         "total_pages": len(results),
         "crawl_time_ms": crawl_time_ms,
         "pages": results,
+        "sitemap_found": sitemap["found"],
+        "sitemap_lastmods": sitemap["lastmods"],
     }

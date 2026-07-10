@@ -21,7 +21,7 @@ Full pipeline:
 2. Kimlik dogrulama (opsiyonel context varsa)
 3. Her model icin 3 formulasyonla iki asamali tanima (parametrik → failover)
 4. Tek toplu judge cagrisi (3 model yaniti icin) ile dogruluk skorlamasi
-5. Model skoru = dogruluk*0.60 + guven*0.25 + uzunluk*0.15 (medyan, 3 formulasyon)
+5. Model skoru = dogruluk*0.70 + guven*0.25 + uzunluk*0.05 (medyan, 3 formulasyon)
 6. Topic uretimi (guclu konular + kacan firsatlar)
 
 Geriye donuk uyumluluk: check_brand_recall()'un dondurdugu sozlukteki tum
@@ -43,6 +43,7 @@ import httpx
 
 from db import log_provider_call
 from perplexity_admin import record_perplexity_call
+from sov import check_share_of_voice
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ def _next_tavily_key() -> tuple[str, str]:
     _tavily_rr["i"] += 1
     return TAVILY_API_KEYS[idx], f"tavily-{idx + 1}"
 
-SCORING_VERSION = "v2-judge"
+SCORING_VERSION = "v3-sov"
 
 # Canli SSE ilerleme mesajlari (dil secimine gore, bkz. check_brand_recall(lang=))
 PROGRESS_MESSAGES = {
@@ -77,6 +78,7 @@ PROGRESS_MESSAGES = {
         "model_no_answer": "{label} yanıt vermedi",
         "querying_models": "Claude, ChatGPT, Gemini ve Perplexity sorgulanıyor…",
         "comparing":       "Yanıtlar web verisiyle karşılaştırılıyor…",
+        "sov":             "Kategori sorgularında görünürlük ölçülüyor…",
         "scoring":         "Puanlama hesaplanıyor…",
     },
     "en": {
@@ -86,6 +88,7 @@ PROGRESS_MESSAGES = {
         "model_no_answer": "{label} did not answer",
         "querying_models": "Querying Claude, ChatGPT, Gemini and Perplexity…",
         "comparing":       "Comparing answers with web data…",
+        "sov":             "Measuring visibility in category queries…",
         "scoring":         "Calculating score…",
     },
 }
@@ -93,6 +96,7 @@ PROGRESS_MESSAGES = {
 # Recall sorgularinda skor tutarliligi icin temperature sabitlenir (Madde 2.7)
 RECALL_TEMPERATURE = 0.1
 
+# SOV olculemedeginde kullanilan (eski v2) agirliklar
 WEIGHTS = {
     "claude":           0.16,
     "openai":           0.24,
@@ -100,6 +104,19 @@ WEIGHTS = {
     "perplexity":       0.16,
     "response_quality": 0.10,
     "topic_relevance":  0.10,
+}
+
+# v3: Share of Voice (kategori sorgularinda gecis orani) %30 agirlikla girer.
+# Tanima (recall) markayi BILEN kullaniciyi, SOV ise markayi BILMEYEN
+# kullaniciyi temsil eder — GEO'nun asil ticari degeri ikincisidir.
+WEIGHTS_SOV = {
+    "claude":           0.12,
+    "openai":           0.18,
+    "gemini":           0.18,
+    "perplexity":       0.12,
+    "response_quality": 0.05,
+    "topic_relevance":  0.05,
+    "share_of_voice":   0.30,
 }
 
 # Yedek (fallback) mekanizma: structured output parse edilemediginde kullanilir.
@@ -515,12 +532,16 @@ async def _check_model_two_phase(name: str, topic: str, web_results: list, ask_f
 
 async def judge_batch_accuracy(model_texts: dict, web_results: list, person_info: dict) -> dict:
     """
-    Uc modelin temsili yanitlarini TEK toplu gpt-4o-mini cagrisinda,
-    Tavily web verisiyle karsilastirarak dogruluk puanlar.
-    Basarisiz olursa bos sozluk doner (cagiran taraf legacy skora duser).
+    Model yanitlarini TEK toplu judge cagrisinda Tavily web verisiyle
+    karsilastirarak dogruluk puanlar.
+
+    v3: Birincil judge Claude Haiku — eski gpt-4o-mini judge, GPT'nin kendi
+    yanitini da puanladigi icin oz-tercih (self-preference) riski tasiyordu.
+    Anthropic cagrisi basarisiz olursa gpt-4o-mini yedek olarak kalir.
+    Ikisi de basarisiz olursa bos sozluk doner (cagiran taraf legacy skora duser).
     """
     model_texts = {k: v for k, v in model_texts.items() if v}
-    if not OPENAI_API_KEY or not model_texts:
+    if not (ANTHROPIC_API_KEY or OPENAI_API_KEY) or not model_texts:
         return {}
 
     web_context = _format_web_context(web_results, limit=6)
@@ -547,40 +568,56 @@ async def judge_batch_accuracy(model_texts: dict, web_results: list, person_info
         f"Değerlendirilecek model adları tam olarak şunlar: {', '.join(model_texts.keys())}"
     )
 
-    try:
-        async with httpx.AsyncClient() as c:
-            r = await c.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-                json={
-                    "model": "gpt-4o-mini",
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 600,
-                    "temperature": 0,
-                    "response_format": {"type": "json_object"},
-                },
-                timeout=25,
-            )
-            if r.status_code == 200:
-                asyncio.create_task(log_provider_call("openai"))
-                raw = r.json()["choices"][0]["message"]["content"]
-                data = json.loads(raw)
-                out = {}
-                for key in model_texts:
-                    d = data.get(key) or {}
-                    try:
-                        out[key] = {
-                            "dogrulanmis_olgu_sayisi": int(d.get("dogrulanmis_olgu_sayisi", 0)),
-                            "celiski_var": bool(d.get("celiski_var", False)),
-                            "uydurma_suphesi": bool(d.get("uydurma_suphesi", False)),
-                            "dogruluk_skoru": max(0.0, min(100.0, float(d.get("dogruluk_skoru", 0)))),
-                        }
-                    except (TypeError, ValueError):
-                        continue
+    def _parse_judge_output(data: dict | None) -> dict:
+        out = {}
+        if not isinstance(data, dict):
+            return out
+        for key in model_texts:
+            d = data.get(key) or {}
+            try:
+                out[key] = {
+                    "dogrulanmis_olgu_sayisi": int(d.get("dogrulanmis_olgu_sayisi", 0)),
+                    "celiski_var": bool(d.get("celiski_var", False)),
+                    "uydurma_suphesi": bool(d.get("uydurma_suphesi", False)),
+                    "dogruluk_skoru": max(0.0, min(100.0, float(d.get("dogruluk_skoru", 0)))),
+                }
+            except (TypeError, ValueError):
+                continue
+        return out
+
+    # Birincil: Claude Haiku (farkli model ailesi -> oz-tercih riski yok)
+    if ANTHROPIC_API_KEY:
+        try:
+            raw = await _ask_claude(prompt, temperature=0, max_tokens=600)
+            out = _parse_judge_output(_extract_structured_json(raw or ""))
+            if out:
                 return out
-            logger.warning(f"judge_fallback: HTTP {r.status_code}: {r.text[:200]}")
-    except Exception as e:
-        logger.warning(f"judge_fallback: exception {e}")
+            logger.info("judge: anthropic yaniti parse edilemedi, openai yedegine geciliyor")
+        except Exception as e:
+            logger.info(f"judge: anthropic hatasi ({e}), openai yedegine geciliyor")
+
+    # Yedek: gpt-4o-mini
+    if OPENAI_API_KEY:
+        try:
+            async with httpx.AsyncClient() as c:
+                r = await c.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                    json={
+                        "model": "gpt-4o-mini",
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": 600,
+                        "temperature": 0,
+                        "response_format": {"type": "json_object"},
+                    },
+                    timeout=25,
+                )
+                if r.status_code == 200:
+                    asyncio.create_task(log_provider_call("openai"))
+                    return _parse_judge_output(json.loads(r.json()["choices"][0]["message"]["content"]))
+                logger.warning(f"judge_fallback: HTTP {r.status_code}: {r.text[:200]}")
+        except Exception as e:
+            logger.warning(f"judge_fallback: exception {e}")
     return {}
 
 
@@ -591,7 +628,9 @@ def _model_score_from_components(taniyor: bool, guven: float, dogruluk_skoru: fl
     guven = max(0.0, min(100.0, guven or 0))
     dogruluk = max(0.0, min(100.0, dogruluk_skoru or 0))
     uzunluk = max(0.0, min(100.0, uzunluk_skoru or 0))
-    score = dogruluk * 0.60 + guven * 0.25 + uzunluk * 0.15
+    # v3: uzunluk %15 -> %5. Yanit uzunlugu gorunurlukle ilgili zayif bir
+    # sinyaldi; agirlik dogruluga kaydirildi.
+    score = dogruluk * 0.70 + guven * 0.25 + uzunluk * 0.05
     if uydurma_suphesi or celiski_var:
         score = min(score, 30.0)
     return round(score, 1)
@@ -718,7 +757,8 @@ async def check_brand_recall(
     2. Kimlik dogrulama (context varsa)
     3. Her model icin 3 formulasyonla iki asamali tanima
     4. Tek toplu judge cagrisi ile dogruluk skorlamasi
-    5. Model skoru = medyan(dogruluk*0.60 + guven*0.25 + uzunluk*0.15)
+    5. Model skoru = medyan(dogruluk*0.70 + guven*0.25 + uzunluk*0.05)
+    5.5 Share of Voice: kategori sorgularinda gorunurluk (v3, %30 agirlik)
     6. Topic uretimi
     """
     msgs = PROGRESS_MESSAGES.get(lang, PROGRESS_MESSAGES["tr"])
@@ -730,7 +770,8 @@ async def check_brand_recall(
     if not any([ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY, PERPLEXITY_API_KEY]):
         return {"recognized": False, "score": None, "topic": topic, "raw_list": None,
                 "checked": False, "model_results": {}, "performing_topics": [], "opportunity_topics": [],
-                "web_results": [], "scoring_version": SCORING_VERSION}
+                "web_results": [], "scoring_version": SCORING_VERSION,
+                "sov": {"checked": False, "score": None, "queries": [], "competitors": []}}
 
     # Step 1: Tavily web search with enriched query
     emit(msgs["web_search"])
@@ -889,6 +930,13 @@ async def check_brand_recall(
         if judge is not None:
             model_results[key]["judge"] = judge
 
+    # Step 3.5: Share of Voice — kategori sorgularinda gorunurluk (v3).
+    # Topic uretimiyle paralel calisir; her ikisi de temsili yanitlara bagli.
+    emit(msgs.get("sov", msgs["scoring"]))
+    sov_task = check_share_of_voice(name, topic, _ask_perplexity, _ask_claude)
+    topics_task = _generate_brand_topics(name, topic, web_results, representative_texts)
+    sov_result, topics = await asyncio.gather(sov_task, topics_task)
+
     # Step 4: Genel skor
     model_keys = list(model_raw.keys())
 
@@ -899,11 +947,21 @@ async def check_brand_recall(
 
     relevance_score = _topic_relevance_score(web_results, name, topic)
 
-    overall_score = int(round(
-        sum(per_model_final_score[k] * WEIGHTS[k] for k in model_keys) +
-        quality_score * WEIGHTS["response_quality"] +
-        relevance_score * WEIGHTS["topic_relevance"]
-    ))
+    sov_checked = bool(sov_result.get("checked")) and sov_result.get("score") is not None
+    if sov_checked:
+        weights = WEIGHTS_SOV
+        overall_score = int(round(
+            sum(per_model_final_score[k] * weights[k] for k in model_keys) +
+            quality_score * weights["response_quality"] +
+            relevance_score * weights["topic_relevance"] +
+            sov_result["score"] * weights["share_of_voice"]
+        ))
+    else:
+        overall_score = int(round(
+            sum(per_model_final_score[k] * WEIGHTS[k] for k in model_keys) +
+            quality_score * WEIGHTS["response_quality"] +
+            relevance_score * WEIGHTS["topic_relevance"]
+        ))
 
     # Karsilastirma icin eski (legacy) skor da hesaplanir
     legacy_quality_score = sum(_length_band_score(t) for t in representative_texts.values()) / max(len(representative_texts), 1)
@@ -920,12 +978,10 @@ async def check_brand_recall(
         "perplexity":     round(per_model_final_score["perplexity"], 1),
         "yanit_kalitesi": round(quality_score, 1),
         "konu_uyumu":     round(relevance_score, 1),
+        **({"kategori_gorunurlugu": round(sov_result["score"], 1)} if sov_checked else {}),
     }
 
     recognition_count = sum(1 for v in model_results.values() if v["recognized"])
-
-    # Step 5: Topic generation
-    topics = await _generate_brand_topics(name, topic, web_results, representative_texts)
 
     raw_parts = []
     for key in model_keys:
@@ -938,7 +994,8 @@ async def check_brand_recall(
     logger.info(
         f"Brand recall for '{name}': score={overall_score} (legacy={legacy_overall_score}), "
         f"{recognition_count}/{len(model_keys)} models, {len(web_results)} web results, "
-        f"judged_models={len(dogruluk_values)}/{len(model_keys)}"
+        f"judged_models={len(dogruluk_values)}/{len(model_keys)}, "
+        f"sov={'%s/%s' % (sov_result.get('mention_count'), sov_result.get('query_count')) if sov_checked else 'n/a'}"
     )
 
     return {
@@ -948,6 +1005,7 @@ async def check_brand_recall(
         "score_legacy": legacy_overall_score,
         "scoring_version": SCORING_VERSION,
         "score_breakdown": score_breakdown,
+        "sov": sov_result,
         "topic": topic,
         "raw_list": raw_list,
         "model_results": model_results,

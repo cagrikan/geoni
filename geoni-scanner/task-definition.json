@@ -7,7 +7,7 @@
   "containerDefinitions": [
     {
       "name": "geoni-backend",
-      "image": "<ECR_REGISTRY>/geoni-scanner:latest",
+      "image": "016031489497.dkr.ecr.eu-central-1.amazonaws.com/geoni-scanner:latest",
       "portMappings": [
         {
           "containerPort": 8000,
@@ -61,27 +61,27 @@
       "secrets": [
         {
           "name": "DATABASE_URL",
-          "valueFrom": "arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:geoni/database-url"
+          "valueFrom": "arn:aws:secretsmanager:eu-central-1:016031489497:secret:geoni/database-url"
         },
         {
           "name": "REDIS_URL",
-          "valueFrom": "arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:geoni/redis-url"
+          "valueFrom": "arn:aws:secretsmanager:eu-central-1:016031489497:secret:geoni/redis-url"
         },
         {
           "name": "ANTHROPIC_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:geoni/anthropic-key"
+          "valueFrom": "arn:aws:secretsmanager:eu-central-1:016031489497:secret:geoni/anthropic-key"
         },
         {
           "name": "OPENAI_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:geoni/openai-key"
+          "valueFrom": "arn:aws:secretsmanager:eu-central-1:016031489497:secret:geoni/openai-key"
         },
         {
           "name": "RESEND_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:geoni/resend-key"
+          "valueFrom": "arn:aws:secretsmanager:eu-central-1:016031489497:secret:geoni/resend-key"
         },
         {
           "name": "JWT_SECRET_KEY",
-          "valueFrom": "arn:aws:secretsmanager:eu-central-1:ACCOUNT_ID:secret:geoni/jwt-secret"
+          "valueFrom": "arn:aws:secretsmanager:eu-central-1:016031489497:secret:geoni/jwt-secret"
         }
       ],
       "logConfiguration": {
@@ -104,8 +104,8 @@
       }
     }
   ],
-  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
-  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskRole",
+  "executionRoleArn": "arn:aws:iam::016031489497:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::016031489497:role/ecsTaskRole",
   "tags": [
     {
       "key": "Project",

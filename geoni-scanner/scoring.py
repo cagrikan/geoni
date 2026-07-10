@@ -2,42 +2,47 @@
 GEONI Scanner - Scoring Engine
 Computes the AI Visibility Score (0-100) from crawl + indexing + brand-recall data.
 
-Formula (Technical Doc 5.1, "v2" — Teknik Duzeltme ve Eklenti Plani Faz 2):
+Formula "v3" (Algoritma Iyilestirme Paketi, Temmuz 2026):
 
-  6 boyutlu (brand recall mevcutsa):
-    Score = (IndexCoverage * 0.25) + (Authority * 0.20) + (Freshness * 0.15)
-          + (Schema * 0.10) + (Engagement * 0.10) + (BrandRecall * 0.20)
+  7 boyutlu (brand recall mevcutsa):
+    Score = (IndexCoverage * 0.20) + (Authority * 0.15) + (Freshness * 0.10)
+          + (Schema * 0.10) + (AIAccess * 0.12) + (Engagement * 0.08)
+          + (BrandRecall * 0.25)
 
-  5 boyutlu fallback (brand recall hesaplanamazsa):
-    Score = (IndexCoverage * 0.30) + (Authority * 0.25) + (Freshness * 0.20)
-          + (Schema * 0.15) + (Engagement * 0.10)
+  6 boyutlu fallback (brand recall hesaplanamazsa):
+    Score = (IndexCoverage * 0.28) + (Authority * 0.22) + (Freshness * 0.14)
+          + (Schema * 0.14) + (AIAccess * 0.14) + (Engagement * 0.08)
 
-Madde 2.4 duzeltmesi: Bing `site:` sorgusu bot korumasi nedeniyle sahada
-guvenilmez bulundugu icin TAMAMEN KALDIRILDI. Otorite artik uc dayanakli:
-  1) Open PageRank API (ucretsiz, domain authority)
-  2) Tavily sonuclarinda markanin kac farkli domain'de gectigi (brand_recall
-     asamasinda zaten cekilen veriden turetilir, ek maliyet yok)
-  3) Wikipedia/Wikidata varlik kontrolu (tek HTTP istegi)
-Etkilesim boyutu da ayni Tavily verisinden (sonuc cesitliligi + haber/medya
-domain orani) turetilir; Bing/Google sayaclarina bagimliligi kaldirildi.
+v3 degisiklikleri:
+  - AI Erisimi yeni boyut: robots.txt'te arama/egitim botu izinleri +
+    llms.txt + sitemap. Bu sinyaller zaten hesaplaniyordu (indexing.py)
+    ama skora hic girmiyordu — GEO'nun en temel kosulu skorun parcasi oldu.
+  - Tazelik artik gercek tarihlerden: sitemap <lastmod> + JSON-LD
+    datePublished/dateModified. Yil-metni araması yalnizca fallback.
+  - Otorite: Tavily "farkli domain" bacagi markanin KENDI domain'ini
+    saymaz; Wikipedia ikili bacak olmaktan cikip +15 bonusa dondu
+    (Wikipedia sayfasi olmayan kucuk isletme otoritenin ucte birini
+    kaybetmesin diye).
+  - Etkilesim: otoriteyle ayni sinyali (domain cesitliligi) cifte saymayi
+    birakti; sosyal/dizin varligi + haber orani olctu.
+  - Indekslenebilirlik: Google site: orneklemesi bot korumasina takilirsa
+    diye kendi kontrolumuzdeki durust sinyalle (noindex/canonical)
+    harmanlanir.
 
-Madde 2.3 duzeltmesi: "Sema Butunlugu" artik gercek JSON-LD (schema.org)
-verisini olcer (crawler.py'nin cikardigi schema_types alani uzerinden).
-Eski meta-etiket kontrolu (canonical+description+title) "Temel Meta Sagligi"
-adiyla ayri ve durust bir alt gosterge olarak korunur; agirlikli skora
-KARISMAZ.
+Madde 2.3/2.4 duzeltmeleri (v2) korunur: Bing yok, sema gercek JSON-LD,
+meta sagligi ayri gosterge.
 """
 
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
-SCORING_VERSION = "v2"
+SCORING_VERSION = "v3"
 
 OPENPAGERANK_API_KEY = __import__("os").environ.get("OPENPAGERANK_API_KEY", "")
 
@@ -59,11 +64,77 @@ CRITICAL_HOME_TYPES = {"Organization", "Person", "WebSite", "LocalBusiness"}
 # Icerik sayfalarinda beklenen kritik schema.org turleri
 CRITICAL_CONTENT_TYPES = {"Article", "FAQPage", "Product", "BlogPosting", "NewsArticle"}
 
+# Sosyal ag + is dizini domainleri: etkilesim boyutunun yeni sinyali (v3).
+# Markanin buralarda gorunmesi, AI motorlarinin alintiladigi "varlik izi"dir.
+SOCIAL_DIRECTORY_DOMAINS = {
+    "linkedin.com", "instagram.com", "facebook.com", "x.com", "twitter.com",
+    "youtube.com", "tiktok.com", "g2.com", "capterra.com", "producthunt.com",
+    "trustpilot.com", "sikayetvar.com", "tripadvisor.com", "glassdoor.com",
+    "crunchbase.com", "github.com", "medium.com",
+}
 
-def compute_index_coverage(crawl_result: dict, indexing_status: dict) -> float:
-    total_pages = max(len(crawl_result.get("pages", [])), 1)
+
+def _indexability_score(pages: list[dict]) -> float:
+    """
+    Kendi kontrolumuzdeki durust indekslenebilirlik sinyali (v3):
+    sayfalarin noindex TASIMAMASI (%70) + canonical varligi (%30).
+    Google `site:` orneklemesi bot korumasina takildiginda skoru sifira
+    cokertmemesi icin index boyutuyla harmanlanir.
+    """
+    if not pages:
+        return 0.0
+    indexable = sum(1 for p in pages if not p.get("noindex"))
+    canonical = sum(1 for p in pages if p.get("canonical_url"))
+    return min(100.0, (indexable / len(pages)) * 70 + (canonical / len(pages)) * 30)
+
+
+def compute_index_coverage(crawl_result: dict, indexing_status: dict) -> dict:
+    """v3: Google site: orneklemesi (0.5) + indekslenebilirlik (0.5) harmani."""
+    pages = crawl_result.get("pages", [])
+    total_pages = max(len(pages), 1)
     indexed = indexing_status.get("indexed_count", 0)
-    return min(100.0, (indexed / total_pages) * 100)
+    google_coverage = min(100.0, (indexed / total_pages) * 100)
+    indexability = _indexability_score(pages)
+    return {
+        "score": google_coverage * 0.5 + indexability * 0.5,
+        "google_coverage": round(google_coverage, 1),
+        "indexability": round(indexability, 1),
+    }
+
+
+# ── AI Erisimi: yeni boyut (v3) ─────────────────────────────────────────────
+
+def compute_ai_access_score(indexing_status: dict, crawl_result: dict) -> dict:
+    """
+    GEO'nun en temel kosulu: AI botlari siteye erisebiliyor mu?
+    - Arama/alintilanma botlari (OAI-SearchBot, PerplexityBot, ...) %60 —
+      gercek zamanli AI yanitlarinda gorunmeyi dogrudan bunlar belirler.
+    - Egitim botlari (GPTBot, ClaudeBot, ...) %20 — modelin kalici bilgisine
+      girme sansi.
+    - llms.txt varligi %10, sitemap varligi %10 — niyet beyanlari.
+    """
+    bot_access = indexing_status.get("bot_access", {}) or {}
+    arama = bot_access.get("arama", {}) or {}
+    egitim = bot_access.get("egitim", {}) or {}
+
+    arama_ratio = (sum(1 for v in arama.values() if v) / len(arama)) if arama else 1.0
+    egitim_ratio = (sum(1 for v in egitim.values() if v) / len(egitim)) if egitim else 1.0
+    llms_txt = bool(indexing_status.get("llms_txt"))
+    sitemap_found = bool(crawl_result.get("sitemap_found"))
+
+    score = (
+        arama_ratio * 60
+        + egitim_ratio * 20
+        + (10 if llms_txt else 0)
+        + (10 if sitemap_found else 0)
+    )
+    return {
+        "score": min(100.0, score),
+        "arama_ratio": round(arama_ratio, 2),
+        "egitim_ratio": round(egitim_ratio, 2),
+        "llms_txt": llms_txt,
+        "sitemap_found": sitemap_found,
+    }
 
 
 # ── Otorite: uc dayanakli yapi (Madde 2.4) ─────────────────────────────────
@@ -90,15 +161,28 @@ async def _open_pagerank_score(domain: str) -> float | None:
     return None
 
 
-def _tavily_mentions_score(web_results: list) -> float | None:
-    """Tavily sonuclarinda markanin kac farkli domain'de gectigine dayali skor. Ek API maliyeti yoktur."""
+def _external_domains(web_results: list, own_domain: str = "") -> set[str]:
+    """Tavily sonuclarindaki farkli domainler — markanin KENDI domain'i haric (v3)."""
+    own = (own_domain or "").lower().removeprefix("www.")
+    domains = set()
+    for r in web_results or []:
+        netloc = urlparse(r.get("url", "")).netloc.lower().removeprefix("www.")
+        if netloc and (not own or (netloc != own and not netloc.endswith("." + own))):
+            domains.add(netloc)
+    return domains
+
+
+def _tavily_mentions_score(web_results: list, own_domain: str = "") -> float | None:
+    """
+    Tavily sonuclarinda markanin kac farkli DIS domain'de gectigine dayali skor.
+    v3: kendi domain'i sayilmaz — site kendi kendine "bahsedilme" puani alamaz.
+    """
     if not web_results:
         return None
-    distinct_domains = {urlparse(r.get("url", "")).netloc for r in web_results if r.get("url")}
-    distinct_domains.discard("")
-    if not distinct_domains:
-        return None
-    return min(100.0, len(distinct_domains) * 15.0)  # ~7 farkli domain = 100
+    distinct = _external_domains(web_results, own_domain)
+    if not distinct:
+        return 0.0  # sonuc var ama hepsi kendi sitesi: dis dunyada iz yok
+    return min(100.0, len(distinct) * 15.0)  # ~7 farkli dis domain = 100
 
 
 async def _wikipedia_presence_score(name: str) -> float:
@@ -121,53 +205,103 @@ async def _wikipedia_presence_score(name: str) -> float:
 
 async def estimate_authority_score(domain: str, brand_name: str = "", web_results: list | None = None) -> dict:
     """
-    Uc dayanakli otorite skoru: Open PageRank + Tavily domain cesitliligi +
-    Wikipedia/Wikidata varligi. Kullanilamayan bacaklar atlanir (agirliksiz
-    ortalama, mevcut baaklar uzerinden). Hicbiri kullanilamazsa muhafazakar
-    bir varsayilan (30.0) donulur — eski davranisla tutarli.
+    v3 otorite skoru: Open PageRank (0.55) + Tavily dis-domain bahsi (0.45)
+    agirlikli ortalamasi; Wikipedia varligi ikili bacak degil +15 bonus.
+    Eski yapida Wikipedia 0/100 esit-agirlikli bacakti — Wikipedia sayfasi
+    olmayan her kucuk isletme otoritenin ucte birini bastan kaybediyordu.
+    Kullanilamayan bacaklar atlanir (kalanlar uzerinden yeniden normalize).
+    Hicbiri kullanilamazsa muhafazakar varsayilan (30.0) donulur.
     """
     legs: dict[str, float] = {}
+    weights = {"open_pagerank": 0.55, "tavily_mentions": 0.45}
 
     opr = await _open_pagerank_score(domain)
     if opr is not None:
         legs["open_pagerank"] = opr
 
-    tavily_leg = _tavily_mentions_score(web_results or [])
+    tavily_leg = _tavily_mentions_score(web_results or [], own_domain=domain)
     if tavily_leg is not None:
         legs["tavily_mentions"] = tavily_leg
 
     wiki = await _wikipedia_presence_score(brand_name or domain)
-    legs["wikipedia"] = wiki  # her zaman hesaplanabilir (0 ya da 100)
 
     if legs:
-        score = sum(legs.values()) / len(legs)
+        total_w = sum(weights[k] for k in legs)
+        score = sum(legs[k] * weights[k] for k in legs) / total_w
     else:
         score = 30.0  # muhafazakar fallback
+
+    if wiki > 0:
+        score = min(100.0, score + 15.0)  # Wikipedia bonusu
+        legs["wikipedia_bonus"] = 15.0
 
     return {"score": score, "legs": legs}
 
 
-def compute_freshness_score(pages: list[dict]) -> float:
+def _parse_any_date(raw: str) -> datetime | None:
+    """ISO 8601 ve yaygin sitemap/JSON-LD tarih bicimlerini toleransli parse eder."""
+    if not raw:
+        return None
+    raw = raw.strip()
+    try:
+        d = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+    except ValueError:
+        pass
+    m = re.match(r"(\d{4})-(\d{2})-(\d{2})", raw)
+    if m:
+        try:
+            return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    return None
+
+
+def compute_freshness_score(pages: list[dict], sitemap_lastmods: list[str] | None = None) -> dict:
     """
-    Estimate freshness based on presence of recent dates in page metadata
-    (title/description often contain year or 'updated' markers for blogs).
-    Falls back to a neutral score if no signal is found.
+    v3: Tazelik artik gercek tarihlerden hesaplanir:
+      1) sitemap <lastmod> degerleri (crawler.py artik okuyor)
+      2) sayfalardaki JSON-LD datePublished/dateModified (schema_dates)
+    Son 12 ay icinde guncellenen kayit orani skoru belirler.
+    Hic gercek tarih yoksa eski yil-metni sezgiseline (fallback) dusulur —
+    o sezgisel tek basina neredeyse anlamsizdi ("2026" yazisi araniyordu).
     """
     if not pages:
-        return 50.0
+        return {"score": 50.0, "signal": "none", "dated_count": 0, "recent_ratio": 0.0}
 
-    current_year = datetime.now().year
+    now = datetime.now(timezone.utc)
+    dates: list[datetime] = []
+    for raw in (sitemap_lastmods or []):
+        d = _parse_any_date(raw)
+        if d:
+            dates.append(d)
+    for page in pages:
+        for raw in page.get("schema_dates", []) or []:
+            d = _parse_any_date(raw)
+            if d:
+                dates.append(d)
+
+    if dates:
+        recent = sum(1 for d in dates if (now - d).days <= 365)
+        very_recent = sum(1 for d in dates if (now - d).days <= 90)
+        ratio = recent / len(dates)
+        boost = (very_recent / len(dates)) * 10  # son 3 ay aktifligi kucuk bonus
+        score = min(100.0, 30 + ratio * 60 + boost)
+        return {"score": score, "signal": "real_dates", "dated_count": len(dates),
+                "recent_ratio": round(ratio, 2)}
+
+    # Fallback: eski yil-metni sezgiseli
+    current_year = now.year
     recent_signals = 0
-
     for page in pages:
         text_blob = " ".join(
             str(page.get(field, "")) for field in ("title", "meta_description")
         )
         if str(current_year) in text_blob or str(current_year - 1) in text_blob:
             recent_signals += 1
-
     ratio = recent_signals / len(pages)
-    return min(100.0, 40 + ratio * 60)  # baseline 40, up to 100 with strong signal
+    return {"score": min(100.0, 40 + ratio * 60), "signal": "year_text_fallback",
+            "dated_count": 0, "recent_ratio": round(ratio, 2)}
 
 
 # ── Sema: gercek JSON-LD (Madde 2.3) ────────────────────────────────────────
@@ -244,21 +378,26 @@ def compute_schema_score(pages: list[dict], domain: str = "") -> dict:
     }
 
 
-# ── Etkilesim: Tavily tabanli (Madde 2.4) ──────────────────────────────────
+# ── Etkilesim: sosyal/dizin + haber (v3) ────────────────────────────────────
 
-def compute_engagement_score(web_results: list | None) -> float:
+def compute_engagement_score(web_results: list | None, own_domain: str = "") -> float:
     """
-    Etkilesim proxy'si artik Bing/Google sonuc sayisina degil, Tavily
-    sonuc cesitliligine (farkli domain sayisi) ve haber/medya domain
-    oranina dayaniyor. Bing kaldirildigi icin (Madde 2.4) bu boyut artik
-    brand_recall asamasinda zaten cekilen veriden turetiliyor.
+    v3: Etkilesim, otorite boyutuyla ayni sinyali (domain cesitliligi) cifte
+    saymayi birakti. Yeni sinyaller:
+      - Sosyal ag / is dizini varligi (LinkedIn, Instagram, G2, Trustpilot,
+        şikayetvar...): her farkli platform 20 puan, en cok 60.
+      - Haber/medya orani: %40.
+    Kendi domain sonuclari sayilmaz.
     """
     if not web_results:
         return 20.0  # notr-dusuk baseline, veri yoksa fallback
 
-    distinct_domains = {urlparse(r.get("url", "")).netloc for r in web_results if r.get("url")}
-    distinct_domains.discard("")
-    diversity_score = min(100.0, len(distinct_domains) * 15.0)
+    external = _external_domains(web_results, own_domain)
+    social_hits = {
+        d for d in external
+        if any(d == sd or d.endswith("." + sd) for sd in SOCIAL_DIRECTORY_DOMAINS)
+    }
+    social_score = min(60.0, len(social_hits) * 20.0)
 
     news_hits = sum(
         1 for r in web_results
@@ -266,7 +405,7 @@ def compute_engagement_score(web_results: list | None) -> float:
     )
     news_ratio = news_hits / max(len(web_results), 1)
 
-    return min(100.0, diversity_score * 0.7 + news_ratio * 100 * 0.3)
+    return min(100.0, social_score + news_ratio * 100 * 0.4)
 
 
 async def compute_ai_visibility_score(crawl_result: dict, indexing_status: dict, brand_recall_result: dict | None = None) -> dict:
@@ -285,39 +424,46 @@ async def compute_ai_visibility_score(crawl_result: dict, indexing_status: dict,
     web_results = (brand_recall_result or {}).get("web_results") or []
     brand_name = (brand_recall_result or {}).get("topic") or domain
 
-    index_coverage = compute_index_coverage(crawl_result, indexing_status)
+    index = compute_index_coverage(crawl_result, indexing_status)
+    index_coverage = index["score"]
     authority = await estimate_authority_score(domain, brand_name=brand_name, web_results=web_results)
     authority_score = authority["score"]
-    freshness_score = compute_freshness_score(pages)
+    freshness = compute_freshness_score(pages, crawl_result.get("sitemap_lastmods"))
+    freshness_score = freshness["score"]
     schema = compute_schema_score(pages, domain=domain)
     schema_score = schema["score"]
+    ai_access = compute_ai_access_score(indexing_status, crawl_result)
+    ai_access_score = ai_access["score"]
     meta_health_score = compute_meta_health_score(pages)
-    engagement_score = compute_engagement_score(web_results)
+    engagement_score = compute_engagement_score(web_results, own_domain=domain)
 
     brand_recall_checked = bool(brand_recall_result and brand_recall_result.get("checked"))
     brand_recall_score = brand_recall_result.get("score") if brand_recall_checked else None
 
     if brand_recall_checked and brand_recall_score is not None:
         score = (
-            (index_coverage * 0.25)
-            + (authority_score * 0.20)
-            + (freshness_score * 0.15)
+            (index_coverage * 0.20)
+            + (authority_score * 0.15)
+            + (freshness_score * 0.10)
             + (schema_score * 0.10)
-            + (engagement_score * 0.10)
-            + (brand_recall_score * 0.20)
+            + (ai_access_score * 0.12)
+            + (engagement_score * 0.08)
+            + (brand_recall_score * 0.25)
         )
-        weights_used = {"index_coverage": 0.25, "authority": 0.20, "freshness": 0.15,
-                         "schema": 0.10, "engagement": 0.10, "brand_recall": 0.20}
+        weights_used = {"index_coverage": 0.20, "authority": 0.15, "freshness": 0.10,
+                         "schema": 0.10, "ai_access": 0.12, "engagement": 0.08,
+                         "brand_recall": 0.25}
     else:
         score = (
-            (index_coverage * 0.30)
-            + (authority_score * 0.25)
-            + (freshness_score * 0.20)
-            + (schema_score * 0.15)
-            + (engagement_score * 0.10)
+            (index_coverage * 0.28)
+            + (authority_score * 0.22)
+            + (freshness_score * 0.14)
+            + (schema_score * 0.14)
+            + (ai_access_score * 0.14)
+            + (engagement_score * 0.08)
         )
-        weights_used = {"index_coverage": 0.30, "authority": 0.25, "freshness": 0.20,
-                         "schema": 0.15, "engagement": 0.10}
+        weights_used = {"index_coverage": 0.28, "authority": 0.22, "freshness": 0.14,
+                         "schema": 0.14, "ai_access": 0.14, "engagement": 0.08}
 
     return {
         "overall_score": int(round(score)),
@@ -328,6 +474,7 @@ async def compute_ai_visibility_score(crawl_result: dict, indexing_status: dict,
             "authority": round(authority_score, 1),
             "freshness": round(freshness_score, 1),
             "schema": round(schema_score, 1),
+            "ai_access": round(ai_access_score, 1),
             "engagement": round(engagement_score, 1),
             **({"brand_recall": round(brand_recall_score, 1)} if brand_recall_score is not None else {}),
         },
@@ -338,5 +485,11 @@ async def compute_ai_visibility_score(crawl_result: dict, indexing_status: dict,
             "schema_distinct_types": schema["distinct_types"],
             "schema_critical_home": schema["critical_home"],
             "schema_critical_content": schema["critical_content"],
+            "google_coverage": index["google_coverage"],
+            "indexability": index["indexability"],
+            "freshness_signal": freshness["signal"],
+            "freshness_dated_count": freshness["dated_count"],
+            "freshness_recent_ratio": freshness["recent_ratio"],
+            "ai_access": ai_access,
         },
     }
