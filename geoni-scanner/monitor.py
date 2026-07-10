@@ -1,7 +1,7 @@
 """
 GEONI Scanner - Izleme v2 (haftalik otomatik yeniden tarama)
 
-Kullanicinin izleme listesine (watchlist) ekledigi hedefler haftada bir
+Kullanicinin izleme listesine (watchlist) ekledigi hedefler 15 gunde bir
 otomatik olarak yeniden taranir:
   - type=web    -> tam site denetimi (crawl + indexing + recall + skor v3)
   - type=person/brand -> marka bilinirligi kontrolu (recall + SOV)
@@ -36,10 +36,12 @@ from db import (
 )
 from mailer import send_monitor_email
 from stability import build_stability
+from scanqueue import acquire_scan_slot, release_scan_slot
 
 logger = logging.getLogger(__name__)
 
 MONITOR_CYCLE_SECONDS = 3600   # saatte bir kontrol
+MONITOR_INTERVAL_DAYS = 15     # hedef basina en cok 15 gunde bir otomatik tarama
 MONITOR_BATCH_SIZE = 3         # donem basina en cok 3 hedef (kota korumasi)
 MONITOR_PAGE_LIMIT = 30        # izleme taramasi hafif crawl
 SCORE_CHANGE_THRESHOLD = 5     # bildirim esigi (puan)
@@ -193,10 +195,15 @@ async def _process_item(item: dict):
             return
 
     try:
-        if item.get("type") == "web":
-            new_score = await _scan_web_item(item)
-        else:
-            new_score = await _scan_brand_item(item)
+        # Kullanici taramalariyla ayni kuyruk: izleme asla kaynaklari bogamaz
+        await acquire_scan_slot()
+        try:
+            if item.get("type") == "web":
+                new_score = await _scan_web_item(item)
+            else:
+                new_score = await _scan_brand_item(item)
+        finally:
+            release_scan_slot()
     except Exception as e:
         logger.warning(f"monitor: '{label}' taramasi basarisiz: {e}")
         # Basarisiz denemede de zamani guncelle — bozuk hedef her saat
@@ -223,7 +230,7 @@ async def monitor_loop():
     logger.info("monitor: izleme dongusu basladi")
     while True:
         try:
-            items = await list_due_watchlist_items(limit=MONITOR_BATCH_SIZE)
+            items = await list_due_watchlist_items(limit=MONITOR_BATCH_SIZE, interval_days=MONITOR_INTERVAL_DAYS)
             if items:
                 logger.info(f"monitor: {len(items)} hedef sirada")
             for item in items:

@@ -314,7 +314,7 @@ async def send_ticket_email(to_email: str, subject: str, heading: str, lines: li
 
 async def send_monitor_email(to_email: str, label: str, old_score: int, new_score: int) -> bool:
     """
-    Izleme v2: haftalik otomatik taramada skor anlamli degistiginde (±5)
+    Izleme v2: duzenli otomatik taramada skor anlamli degistiginde (±5)
     kullaniciya bildirim. send_ticket_email ile ayni gorsel dil; fail-silent.
     """
     delta = new_score - old_score
@@ -326,7 +326,7 @@ async def send_monitor_email(to_email: str, label: str, old_score: int, new_scor
         subject,
         f"{label} için AI görünürlük skoru {yon}",
         [
-            f"Haftalık otomatik taramada <strong style=\"color:#EDEFF5\">{label}</strong> skoru "
+            f"Düzenli otomatik taramada <strong style=\"color:#EDEFF5\">{label}</strong> skoru "
             f"<strong style=\"color:#EDEFF5\">{old_score}</strong> → "
             f"<strong style=\"color:{'#3FB950' if delta > 0 else '#F85149'}\">{new_score}</strong> olarak ölçüldü ({arrow}{abs(delta)} puan).",
             "Raporun tamamını ve değişen boyutları panelinizde görebilirsiniz.",

@@ -87,6 +87,7 @@ class BrandCheckResponse(BaseModel):
 
 from monitor import monitor_loop
 from stability import build_stability
+from scanqueue import acquire_scan_slot, release_scan_slot, estimate_wait_seconds
 
 app = FastAPI(title="GEONI Visibility Scanner MVP", version="0.9.0", description="AI visibility auditing with Playwright crawling, 6-dimension domain scoring, brand recall with rich context, identity verification, and email delivery")
 
@@ -115,6 +116,7 @@ audit_events: dict[str, asyncio.Queue] = {}
 # Canli SSE ilerleme mesajlari (dil secimine gore, bkz. run_audit_job)
 AUDIT_PROGRESS_MESSAGES = {
     "tr": {
+        "queue_wait":    "Sorgunuz AI motorlarına iletildi — yanıtları bekleniyor (tahmini ~{mins} dk)…",
         "crawling":      "{domain} taranıyor…",
         "pages_scanned": "{count} sayfa tarandı ✓",
         "checking_bots": "AI botlarının erişimi kontrol ediliyor…",
@@ -122,6 +124,7 @@ AUDIT_PROGRESS_MESSAGES = {
         "scoring":       "Skor hesaplanıyor…",
     },
     "en": {
+        "queue_wait":    "Your query was sent to the AI engines — waiting for their responses (est. ~{mins} min)…",
         "crawling":      "Scanning {domain}…",
         "pages_scanned": "{count} pages scanned ✓",
         "checking_bots": "Checking AI bot access…",
@@ -169,7 +172,16 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
         if queue is not None:
             queue.put_nowait(message)
 
+    slot_acquired = False
     try:
+        # Tarama kuyrugu: ayni anda en cok SCAN_CONCURRENCY tarama (bkz. scanqueue.py).
+        # Slot doluysa kullaniciya tahmini bekleme suresi soylenir; release
+        # asagidaki finally'de — pipeline nasil biterse bitsin slot birakilir.
+        wait_s = estimate_wait_seconds()
+        if wait_s > 0:
+            emit(msgs["queue_wait"].format(mins=max(1, round(wait_s / 60))))
+        await acquire_scan_slot()
+        slot_acquired = True
         jobs_store[job_id]["status"] = "crawling"
         emit(msgs["crawling"].format(domain=request.domain))
         crawl_result = await crawl_domain(request.domain, request.page_limit)
@@ -271,6 +283,8 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
         jobs_store[job_id]["status"] = "failed"
         jobs_store[job_id]["error"] = str(e)
     finally:
+        if slot_acquired:
+            release_scan_slot()
         emit("__done__")
 
 
@@ -287,7 +301,15 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
         if queue is not None:
             queue.put_nowait(message)
 
+    slot_acquired2 = False
     try:
+        # Ayni tarama kuyrugu (bkz. scanqueue.py) — kisi taramasi da LLM yogun
+        wait_s2 = estimate_wait_seconds()
+        if wait_s2 > 0:
+            lang2 = (request.lang or "tr")
+            emit(AUDIT_PROGRESS_MESSAGES.get(lang2, AUDIT_PROGRESS_MESSAGES["tr"])["queue_wait"].format(mins=max(1, round(wait_s2 / 60))))
+        await acquire_scan_slot()
+        slot_acquired2 = True
         result = await check_brand_recall(
             name=request.name,
             topic=request.topic or "",
@@ -349,6 +371,8 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
         brand_checks_store[job_id]["status"] = "failed"
         brand_checks_store[job_id]["error"] = str(e)
     finally:
+        if slot_acquired2:
+            release_scan_slot()
         emit("__done__")
 
 
