@@ -12,6 +12,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 import asyncio
+import os
+import secrets
 import json
 import uuid
 from datetime import datetime
@@ -346,6 +348,17 @@ async def scan_count():
     """Public aggregate count for the landing page social-proof counter."""
     return {"count": await get_total_scan_count()}
 
+def _is_internal_scan(http_request) -> bool:
+    """
+    Ic dogrulama anahtari: X-Internal-Scan basligi INTERNAL_SCAN_TOKEN env
+    degeriyle eslesiyorsa hiz siniri atlanir. Yalnizca kendi dogrulama/test
+    taramalarimiz icin — anahtar yapilandirilmamissa hicbir istek muaf olmaz.
+    """
+    token = os.environ.get("INTERNAL_SCAN_TOKEN", "")
+    header = http_request.headers.get("X-Internal-Scan", "")
+    return bool(token) and bool(header) and secrets.compare_digest(header, token)
+
+
 @app.post("/api/audit/quick", response_model=AuditResponse)
 async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, http_request: Request):
     client_ip = get_client_ip(http_request)
@@ -356,7 +369,7 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
         token_rl = auth_header_rl.replace("Bearer ", "") if auth_header_rl.startswith("Bearer ") else ""
         user_id_rl = await get_user_id_from_token(token_rl) if token_rl else None
         is_premium = await check_is_premium(user_id_rl) if user_id_rl else False
-        if not is_premium:
+        if not is_premium and not _is_internal_scan(http_request):
             enforce_audit_rate_limits(client_ip, request.email, request.domain)
     except RateLimitExceeded as e:
         raise HTTPException(
@@ -438,7 +451,7 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
     try:
         # Skip rate limit for premium/admin users
         is_premium2 = await check_is_premium(user_id_rl2)
-        if not is_premium2:
+        if not is_premium2 and not _is_internal_scan(http_request):
             enforce_audit_rate_limits(client_ip, request.email, request.name)
     except RateLimitExceeded as e:
         raise HTTPException(
