@@ -308,6 +308,11 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
             "result": {
                 "name": request.name,
                 "topic": request.topic,
+                # Kimlik uyusmazliginda arayuz aciklamali ekrani gosterebilsin -
+                # eskiden bu bayrak kayda yazilmiyor, kullanici ici bos bir
+                # "0 raporu" goruyordu.
+                "identity_mismatch": result.get("identity_mismatch", False),
+                "match_score": result.get("match_score"),
                 "recognized": result.get("recognized", False),
                 "recognition_count": result.get("recognition_count", 0),
                 "score": result.get("score", 0),

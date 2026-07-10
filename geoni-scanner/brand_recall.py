@@ -888,7 +888,10 @@ async def check_brand_recall(
             logger.info(f"LinkedIn check failed: {e}, skipping")
 
     # Step 1c: Identity verification (only if web results found and context given)
-    has_context = any([role, company, location, sector])
+    # Yalnizca sehir gibi zayif baglam dogrulamayi TETIKLEMEZ: "Geoni + ankara"
+    # gibi ince baglamlarda hakem yanlis "eslesmiyor" karari verip taramayi
+    # olduruyordu. Guclu baglam (unvan/sirket/sektor) sart.
+    has_context = any([role, company, sector])
     if web_results and has_context and OPENAI_API_KEY:
         emit(msgs["verifying_identity"])
         context_parts = []
