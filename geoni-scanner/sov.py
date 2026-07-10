@@ -36,7 +36,8 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
-SOV_QUERY_COUNT = 3
+SOV_QUERY_COUNT = 3      # birincil alan sorgusu
+SOV_ADJACENT_COUNT = 2   # komsu alan sorgusu (ikinci yakalanma sansi)
 MAX_CUSTOM_QUERIES = 3
 
 ENGINE_LABELS = {"perplexity": "Perplexity", "google": "Google AI"}
@@ -183,10 +184,16 @@ async def infer_topic(name: str, web_results: list, ask_llm) -> str:
     return ""
 
 
-async def generate_category_queries(name: str, topic: str, ask_llm) -> list[str]:
+async def generate_category_queries(name: str, topic: str, ask_llm) -> list[dict]:
     """
-    Markayi bilmeyen bir kullanicinin soracagi 3 kategori/niyet sorgusu uretir.
-    ask_llm: async (prompt) -> str|None (haiku beklenir). Basarisizsa sablon.
+    Markayi bilmeyen bir kullanicinin soracagi kategori/niyet sorgulari uretir:
+    3 soru birincil alandan + 2 soru EN YAKIN KOMSU alandan (komsu alani
+    uretici model kendisi secer). Komsu alan sorgulari ziyaretciye ikinci
+    bir yakalanma sansi verir; rakip/kaynak istihbaratini da genisletir.
+
+    Donus: [{"query": str, "adjacent": bool, "topic": str}, ...]
+    ask_llm: async (prompt) -> str|None (haiku beklenir). Basarisizsa sablon
+    (yalnizca birincil alan).
     Cagiran taraf gecerli bir topic garantiler (bkz. has_usable_topic).
     """
     if not has_usable_topic(name, topic):
@@ -194,22 +201,39 @@ async def generate_category_queries(name: str, topic: str, ask_llm) -> list[str]
 
     prompt = (
         f"'{topic}' alaninda hizmet/urun arayan ama hicbir marka adi BILMEYEN bir "
-        f"kullanicinin bir AI asistanina soracagi {SOV_QUERY_COUNT} gercekci Turkce soru yaz. "
+        f"kullanicinin bir AI asistanina soracagi gercekci Turkce sorular yaz:\n"
+        f"- {SOV_QUERY_COUNT} soru dogrudan '{topic}' alanindan,\n"
+        f"- {SOV_ADJACENT_COUNT} soru bu alana EN YAKIN komsu alandan (komsu alani kendin sec; "
+        f"ör. 'dijital dönüşüm danışmanlığı' -> 'yönetim danışmanlığı' gibi).\n"
         f"Sorular oneri/karsilastirma istesin ('en iyi', 'hangisini onerirsin', 'kimler var' gibi) "
         f"ve icinde HICBIR marka adi gecmesin.\n"
-        f'Yalnizca su JSON formatinda dondur: {{"queries": ["soru1", "soru2", "soru3"]}}'
+        f'Yalnizca su JSON formatinda dondur: '
+        f'{{"komsu_alan": "...", "queries": [{{"soru": "...", "alan": "birincil"}}, '
+        f'{{"soru": "...", "alan": "komsu"}}]}}'
     )
     try:
         raw = await ask_llm(prompt)
         data = _extract_json(raw) if raw else None
-        queries = (data or {}).get("queries") if isinstance(data, dict) else None
-        if queries and isinstance(queries, list):
-            clean = [q.strip() for q in queries if isinstance(q, str) and q.strip()]
-            if clean:
-                return clean[:SOV_QUERY_COUNT]
+        raw_queries = (data or {}).get("queries") if isinstance(data, dict) else None
+        adjacent_topic = str((data or {}).get("komsu_alan", "")).strip() if isinstance(data, dict) else ""
+        if raw_queries and isinstance(raw_queries, list):
+            primary, adjacent = [], []
+            for q in raw_queries:
+                if not isinstance(q, dict):
+                    continue
+                soru = str(q.get("soru", "")).strip()
+                if not soru:
+                    continue
+                if str(q.get("alan", "")).strip().lower() == "komsu":
+                    adjacent.append({"query": soru, "adjacent": True, "topic": adjacent_topic or topic})
+                else:
+                    primary.append({"query": soru, "adjacent": False, "topic": topic})
+            out = primary[:SOV_QUERY_COUNT] + adjacent[:SOV_ADJACENT_COUNT]
+            if out:
+                return out
     except Exception as e:
         logger.info(f"SOV query generation failed, falling back to templates: {e}")
-    return _fallback_queries(topic)
+    return [{"query": q, "adjacent": False, "topic": topic} for q in _fallback_queries(topic)]
 
 
 async def _extract_competitors(answers: list[str], own_name: str, ask_llm) -> list[dict]:
@@ -292,7 +316,7 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
 
     custom = sanitize_custom_queries(custom_queries)
     if custom:
-        queries = custom
+        queries = [{"query": q, "adjacent": False, "topic": topic} for q in custom]
     elif not has_usable_topic(name, topic):
         # Alan bilinmiyor ve ozel sorgu da yok: 'bu alan' gibi anlamsiz
         # sorgularla olcum uydurmak yerine SOV durustce atlanir —
@@ -316,9 +340,10 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
 
     # Tum (sorgu x motor) ciftleri paralel
     pairs = [(qi, eng) for qi in range(len(queries)) for eng in engines]
-    raw = await asyncio.gather(*[_safe_ask(engines[eng], queries[qi]) for qi, eng in pairs])
+    raw = await asyncio.gather(*[_safe_ask(engines[eng], queries[qi]["query"]) for qi, eng in pairs])
 
-    per_query = [{"query": q, "mentioned": False, "engines": {}, "answer_snippet": ""}
+    per_query = [{"query": q["query"], "mentioned": False, "engines": {}, "answer_snippet": "",
+                  **({"adjacent": True, "adjacent_topic": q.get("topic", "")} if q.get("adjacent") else {})}
                  for q in queries]
     answers: list[str] = []
     source_counter: Counter = Counter()
