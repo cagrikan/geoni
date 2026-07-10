@@ -203,8 +203,20 @@ async def _wikipedia_presence_score(name: str) -> float:
     return 0.0
 
 
+_TR_TRANSLIT = str.maketrans("çğıöşüâîû", "cgiosuaiu")
+
 def _norm_label(s: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+    """
+    Ad karsilastirmasi icin normalize: kucult, Turkce karakterleri ASCII'ye
+    cevir (Wikidata etiketleri cogunlukla ASCII: 'Çağrı' ~ 'Cagri'),
+    aksanlari ayikla, harf/rakam disini at. Eski surum Turkce harfleri
+    SILIYORDU ('Çağrı' -> 'ar') ve eslesme hic tutmuyordu.
+    """
+    import unicodedata
+    s = (s or "").lower().translate(_TR_TRANSLIT)
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]", "", s)
 
 
 async def _wikidata_presence(name: str) -> bool:
