@@ -142,6 +142,22 @@ def _fallback_queries(topic: str) -> list[str]:
     ]
 
 
+# Oneri-niyeti ipuclari: SOV sorusu ancak isim/marka onerisi istiyorsa
+# anlamlidir. "Nasil yapilir / zorluklar neler" tipi sorulara AI hicbir
+# zaman marka adi vermez — o sorularla olcum yapisal olarak hep 0 cikar.
+_RECOMMEND_CUES = (
+    "kimler", "kimi", "kime", "hangi firma", "hangi şirket", "hangi kişi",
+    "hangi danışman", "hangi kurum", "hangi marka", "hangi ajans", "hangisini",
+    "öner", "tavsiye", "en iyi", "en iyileri", "öne çıkan", "lider",
+    "markalar", "firmalar", "şirketler", "sağlayıcılar", "kuruluşlar",
+)
+
+
+def _is_recommendation_query(q: str) -> bool:
+    norm = _normalize(q)
+    return any(_normalize(c) in norm for c in _RECOMMEND_CUES)
+
+
 def has_usable_topic(name: str, topic: str) -> bool:
     """Alan bilgisi SOV sorgusu uretmeye elverisli mi?"""
     t = (topic or "").strip()
@@ -205,8 +221,10 @@ async def generate_category_queries(name: str, topic: str, ask_llm) -> list[dict
         f"- {SOV_QUERY_COUNT} soru dogrudan '{topic}' alanindan,\n"
         f"- {SOV_ADJACENT_COUNT} soru bu alana EN YAKIN komsu alandan (komsu alani kendin sec; "
         f"ör. 'dijital dönüşüm danışmanlığı' -> 'yönetim danışmanlığı' gibi).\n"
-        f"Sorular oneri/karsilastirma istesin ('en iyi', 'hangisini onerirsin', 'kimler var' gibi) "
-        f"ve icinde HICBIR marka adi gecmesin.\n"
+        f"KURAL: Her soru MUTLAKA isim/oneri istesin — 'kimler var', 'hangi firmalari/kisileri "
+        f"onerirsin', 'en iyileri hangileri' gibi. 'Nasil yapilir', 'nelere dikkat etmeliyim', "
+        f"'zorluklar neler' gibi YONTEM sorulari YAZMA (bunlara marka adi verilmez). "
+        f"Sorularin icinde HICBIR marka adi gecmesin.\n"
         f'Yalnizca su JSON formatinda dondur: '
         f'{{"komsu_alan": "...", "queries": [{{"soru": "...", "alan": "birincil"}}, '
         f'{{"soru": "...", "alan": "komsu"}}]}}'
@@ -228,7 +246,18 @@ async def generate_category_queries(name: str, topic: str, ask_llm) -> list[dict
                     adjacent.append({"query": soru, "adjacent": True, "topic": adjacent_topic or topic})
                 else:
                     primary.append({"query": soru, "adjacent": False, "topic": topic})
+            # Oneri niyeti tasimayan sorular elenir — yoksa SOV yapisal 0 olur
+            primary = [q for q in primary if _is_recommendation_query(q["query"])]
+            adjacent = [q for q in adjacent if _is_recommendation_query(q["query"])]
             out = primary[:SOV_QUERY_COUNT] + adjacent[:SOV_ADJACENT_COUNT]
+            # Birincil taraf eksik kaldiysa sablonlarla tamamla
+            if len(primary) < SOV_QUERY_COUNT:
+                existing = {q["query"] for q in out}
+                for tq in _fallback_queries(topic):
+                    if len([q for q in out if not q.get("adjacent")]) >= SOV_QUERY_COUNT:
+                        break
+                    if tq not in existing:
+                        out.insert(0, {"query": tq, "adjacent": False, "topic": topic})
             if out:
                 return out
     except Exception as e:
