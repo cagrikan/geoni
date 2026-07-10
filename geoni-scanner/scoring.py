@@ -203,6 +203,43 @@ async def _wikipedia_presence_score(name: str) -> float:
     return 0.0
 
 
+def _norm_label(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+async def _wikidata_presence(name: str) -> bool:
+    """
+    Wikidata'da varlik (entity) kontrolu. Wikipedia sayfasi olmayan ama
+    Wikidata kaydi olan markalar icin ikincil otorite sinyali — ayrica
+    sattigimiz 'Wikidata Kaydi' hizmetinin skoru gercekten oynatmasini
+    saglar (hizmet-skor tutarliligi). Ad eslesmesi normalize edilerek
+    yapilir ("GEONI" ~ "Geoni.ai" gibi ek/uzanti farklari eslesir).
+    """
+    if not name or not name.strip():
+        return False
+    norm_name = _norm_label(name)
+    if len(norm_name) < 3:
+        return False
+    for lang in ("tr", "en"):
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    "https://www.wikidata.org/w/api.php",
+                    params={"action": "wbsearchentities", "search": name.strip(),
+                            "language": lang, "format": "json", "limit": 5},
+                    timeout=8, headers=HEADERS,
+                )
+                if resp.status_code != 200:
+                    continue
+                for item in resp.json().get("search", []):
+                    norm_label = _norm_label(item.get("label", ""))
+                    if norm_label and (norm_name in norm_label or norm_label in norm_name):
+                        return True
+        except Exception as e:
+            logger.info(f"Wikidata check failed ({lang}) for '{name}': {e}")
+    return False
+
+
 async def estimate_authority_score(domain: str, brand_name: str = "", web_results: list | None = None) -> dict:
     """
     v3 otorite skoru: Open PageRank (0.55) + Tavily dis-domain bahsi (0.45)
@@ -232,8 +269,13 @@ async def estimate_authority_score(domain: str, brand_name: str = "", web_result
         score = 30.0  # muhafazakar fallback
 
     if wiki > 0:
-        score = min(100.0, score + 15.0)  # Wikipedia bonusu
+        score = min(100.0, score + 15.0)  # Wikipedia bonusu (guclu sinyal)
         legs["wikipedia_bonus"] = 15.0
+    elif await _wikidata_presence(brand_name or domain):
+        # Wikipedia yoksa Wikidata varligi ikincil bonus — 'Wikidata Kaydi'
+        # hizmetini alan musterinin skoru gorunur sekilde yukselir.
+        score = min(100.0, score + 8.0)
+        legs["wikidata_bonus"] = 8.0
 
     return {"score": score, "legs": legs}
 
