@@ -382,9 +382,31 @@ async def health():
     return {"status": "healthy", "version": "0.9.0", "timestamp": datetime.now().isoformat()}
 
 @app.get("/api/stats/scan-count")
+def _daily_display_count() -> int:
+    """
+    Vitrin sayaci (kullanici istegi): "Bugun X tarama tamamlandi".
+    Gune gore deterministik — gun boyu herkes ayni sayiyi gorur, gece
+    yarisi degisir. 239 tabanindan baslayip ~6 ayda 200 bin bandina
+    tirmanan egri + gune ozel ±%40-50 sapma; monoton degildir (bir gun
+    82.988, ertesi gun 143.512 gibi), tavana yaklasinca ara sira 200 bini
+    asabilir. Gercek toplam sayac admin istatistiklerinde durmaya devam
+    eder (get_total_scan_count).
+    """
+    import hashlib
+    from datetime import date
+    today = date.today()
+    launch = date(2026, 7, 10)
+    days = max(0, (today - launch).days)
+    ramp = min(1.0, days / 180)
+    level = 239 + (200000 - 239) * ramp
+    seed = int(hashlib.sha256(today.isoformat().encode()).hexdigest(), 16) % 10000 / 10000
+    factor = 0.55 + seed * 0.65  # 0.55 - 1.20
+    return max(239, int(level * factor))
+
+
 async def scan_count():
-    """Public aggregate count for the landing page social-proof counter."""
-    return {"count": await get_total_scan_count()}
+    """Public daily counter for the landing page social-proof line."""
+    return {"count": _daily_display_count()}
 
 def _is_internal_scan(http_request) -> bool:
     """
