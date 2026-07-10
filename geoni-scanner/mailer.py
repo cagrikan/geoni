@@ -46,6 +46,10 @@ _EMAIL_TEXT = {
         "footer_brand": "GEONI — AI Görünürlük Platformu",
         "footer_note": 'Bu e-posta, <strong style="color:#64748B;">{domain}</strong> için app.geoni.ai üzerinden başlattığınız ücretsiz AI görünürlük taraması sonucunda otomatik olarak gönderilmiştir.',
         "subject": "{domain} için AI Görünürlük Skorunuz: {score}/100",
+        "sov_title": "AI Aramada Görünürlük",
+        "sov_summary": "{m}/{q} kategori sorgusunda öneriliyorsunuz",
+        "sov_sources_label": "AI yanıtlarında kaynak gösterilen siteler:",
+        "smoothed_label": "Yumuşatılmış skor (son 3 tarama)",
         "breakdown_labels": {
             "index_coverage": "Dizin Kapsamı",
             "authority": "Otorite",
@@ -68,6 +72,10 @@ _EMAIL_TEXT = {
         "footer_brand": "GEONI — AI Visibility Platform",
         "footer_note": 'This email was sent automatically as a result of the free AI visibility scan you started for <strong style="color:#64748B;">{domain}</strong> on app.geoni.ai.',
         "subject": "Your AI Visibility Score for {domain}: {score}/100",
+        "sov_title": "Visibility in AI Search",
+        "sov_summary": "{m}/{q} category queries recommend you",
+        "sov_sources_label": "Sites cited as sources in AI answers:",
+        "smoothed_label": "Smoothed score (last 3 scans)",
         "breakdown_labels": {
             "index_coverage": "Index Coverage",
             "authority": "Authority",
@@ -129,6 +137,43 @@ def _build_report_html(domain: str, result: dict, lang: str = "tr") -> str:
         </tr>
         """
 
+    # SOV bolumu (v3): kategori sorgularinda gorunurluk + kaynak siteler
+    sov = result.get("sov") or {}
+    sov_html = ""
+    if sov.get("checked") and sov.get("score") is not None:
+        m, q = sov.get("mention_count", 0), sov.get("query_count", 0)
+        sov_color = "#3FB950" if (q and m / q >= .65) else "#D29922" if (q and m / q >= .4) else "#F85149"
+        rows = ""
+        for item in (sov.get("queries") or [])[:5]:
+            mark = "✓" if item.get("mentioned") else "✗"
+            mark_color = "#3FB950" if item.get("mentioned") else "#F85149"
+            qtext = str(item.get("query", ""))[:110]
+            rows += (f'<tr><td style="padding:4px 8px 4px 0;color:{mark_color};font-size:13px;'
+                     f'vertical-align:top;">{mark}</td>'
+                     f'<td style="padding:4px 0;color:#94A3B8;font-size:13px;">{qtext}</td></tr>')
+        sources = [src.get("domain", "") for src in (sov.get("sources") or [])[:5] if src.get("domain")]
+        sources_html = ""
+        if sources:
+            sources_html = (f'<p style="color:#64748B;font-size:12px;margin:10px 0 0;">'
+                            f'{text["sov_sources_label"]} '
+                            f'<span style="color:#94A3B8;">{", ".join(sources)}</span></p>')
+        sov_html = f"""
+          <h2 style="color:#FFFFFF;font-size:16px;margin:24px 0 8px;">{text["sov_title"]}</h2>
+          <p style="color:{sov_color};font-size:14px;font-weight:bold;margin:0 0 8px;">
+            {text["sov_summary"].format(m=m, q=q)}
+          </p>
+          <table style="width:100%;border-collapse:collapse;">{rows}</table>
+          {sources_html}
+        """
+
+    # Yumusatilmis skor satiri (stability, v3)
+    stability = result.get("stability") or {}
+    smoothed_html = ""
+    if stability.get("smoothed_score") is not None:
+        smoothed_html = (f'<div style="color:#64748B;font-size:12px;margin-top:6px;">'
+                         f'{text["smoothed_label"]}: '
+                         f'<span style="color:#94A3B8;font-weight:bold;">{stability["smoothed_score"]}</span></div>')
+
     return f"""
     <div style="background:#07070F;padding:32px 16px;font-family:Arial,sans-serif;">
       <div style="max-width:560px;margin:0 auto;background:#0E0E1C;border-radius:16px;overflow:hidden;border:1px solid rgba(129,140,248,0.2);">
@@ -149,11 +194,14 @@ def _build_report_html(domain: str, result: dict, lang: str = "tr") -> str:
           <div style="text-align:center;margin-bottom:24px;">
             <div style="font-size:48px;font-weight:bold;color:{color};">{score}</div>
             <div style="color:#8893AB;font-size:12px;letter-spacing:1px;text-transform:uppercase;">{text["score_label"]}</div>
+            {smoothed_html}
           </div>
 
           <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
             {breakdown_rows}
           </table>
+
+          {sov_html}
 
           <h2 style="color:#FFFFFF;font-size:16px;margin:24px 0 12px;">{text["strong_topics"]}</h2>
           {_render_topic_list(top_topics, text["strong_topics_empty"])}

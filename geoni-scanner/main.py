@@ -86,6 +86,7 @@ class BrandCheckResponse(BaseModel):
     status: str
 
 from monitor import monitor_loop
+from stability import build_stability
 
 app = FastAPI(title="GEONI Visibility Scanner MVP", version="0.9.0", description="AI visibility auditing with Playwright crawling, 6-dimension domain scoring, brand recall with rich context, identity verification, and email delivery")
 
@@ -234,6 +235,11 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
             # v3: Share of Voice — markayi bilmeyen kullanicinin kategori
             # sorgularinda gorunurluk + ayni yanitlardan cikarilan rakipler.
             "sov": brand_recall_result.get("sov"),
+            # Skor istikrari: yumusatilmis skor + degisim kaynagi (oynaklik notu)
+            "stability": await build_stability("web", request.domain,
+                                               score_result["overall_score"],
+                                               score_result["breakdown"],
+                                               score_result.get("weights_used")),
             "created_at": datetime.now().isoformat()
         }
 
@@ -315,6 +321,9 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
                 "checked": result.get("checked", False),
                 "raw_list": result.get("raw_list"),
                 "sov": result.get("sov"),
+                "stability": await build_stability(request.type or "person", request.name,
+                                                   result.get("score"),
+                                                   result.get("score_breakdown", {})),
                 "created_at": datetime.now().isoformat(),
             },
             "completed_at": datetime.now().isoformat(),

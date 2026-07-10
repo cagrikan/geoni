@@ -35,6 +35,7 @@ from db import (
     save_audit, save_brand_check, get_credit_balance,
 )
 from mailer import send_monitor_email
+from stability import build_stability
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,10 @@ async def _scan_web_item(item: dict) -> int | None:
             "inferred_topic": identity["topic"],
         },
         "sov": brand_recall_result.get("sov"),
+        "stability": await build_stability("web", domain,
+                                           score_result["overall_score"],
+                                           score_result["breakdown"],
+                                           score_result.get("weights_used")),
         "auto_monitor": True,  # rapor basliginda "otomatik izleme taramasi" gosterilebilir
         "created_at": datetime.now().isoformat(),
     }
@@ -141,6 +146,9 @@ async def _scan_brand_item(item: dict) -> int | None:
         "checked": True,
         "raw_list": result.get("raw_list"),
         "sov": result.get("sov"),
+        "stability": await build_stability(item.get("type") or "person", name,
+                                           result.get("score"),
+                                           result.get("score_breakdown", {})),
         "auto_monitor": True,
         "created_at": datetime.now().isoformat(),
     }

@@ -2375,3 +2375,41 @@ async def get_credit_balance(user_id: str) -> int:
     except Exception as e:
         logger.warning(f"get_credit_balance error: {e}")
     return 0
+
+
+async def get_previous_audits(kind: str, target: str, limit: int = 2) -> list:
+    """
+    Ayni hedefin onceki tamamlanmis taramalari (en yeni once) — skor
+    istikrari (stability.py) icin. kind: 'web' -> domain esleme,
+    digerleri -> name esleme. Donen: [{"score", "breakdown"}, ...]
+    """
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not target:
+        return []
+    col = "domain" if kind == "web" else "name"
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/audits",
+                headers=_headers(),
+                params={
+                    col: f"eq.{target.strip()}",
+                    "status": "eq.complete",
+                    "score": "not.is.null",
+                    "order": "created_at.desc",
+                    "limit": str(limit),
+                    "select": "score,result_json",
+                },
+                timeout=10,
+            )
+            if r.status_code == 200:
+                out = []
+                for row in r.json():
+                    rj = row.get("result_json") or {}
+                    out.append({
+                        "score": row.get("score"),
+                        "breakdown": rj.get("score_breakdown") or {},
+                    })
+                return out
+    except Exception as e:
+        logger.warning(f"get_previous_audits error: {e}")
+    return []
