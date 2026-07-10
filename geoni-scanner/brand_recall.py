@@ -645,7 +645,10 @@ async def judge_batch_accuracy(model_texts: dict, web_results: list, person_info
         "<<<MODEL_YANITLARI_BITIS>>>\n\n"
         "Her model için: iddiaların web verisiyle uyuşup uyuşmadığını, kaç spesifik doğru olgu "
         "(unvan, şirket, şehir, proje vb.) içerdiğini, çelişki olup olmadığını, uydurma (halüsinasyon) "
-        "şüphesi olup olmadığını ve yanıtın markaya/kişiye dair genel tonunu (duygu) değerlendir.\n\n"
+        "şüphesi olup olmadığını ve yanıtın markaya/kişiye dair genel tonunu (duygu) değerlendir.\n"
+        "duygu tanımı: yanıt kişiyi/markayı övüyorsa 'pozitif'; eleştiriyor, skandal/olumsuzlukla "
+        "anıyorsa 'negatif'; bilgilendirici, kararsız ya da UYDURMA/yanlış-kişi ise 'notr' "
+        "(yanlış bilgi olumsuz ton DEĞİLDİR).\n\n"
         "Yalnızca şu JSON formatında döndür, başka hiçbir şey yazma:\n"
         '{"<model_adi>": {"dogrulanmis_olgu_sayisi": 0-10, "celiski_var": true/false, '
         '"uydurma_suphesi": true/false, "dogruluk_skoru": 0-100, '
@@ -1017,9 +1020,14 @@ async def check_brand_recall(
         }
         if judge is not None:
             model_results[key]["judge"] = judge
-            # Duygu (sentiment): yanit tonu — raporda rozet olarak gosterilir
             if data["recognized"]:
-                model_results[key]["sentiment"] = judge.get("duygu", "notr")
+                if judge.get("uydurma_suphesi") or judge.get("celiski_var"):
+                    # "Taniyor" ama muhtemelen yanlis kisiyi: ton rozeti yerine
+                    # raporda "karistiriyor olabilir" uyarisi gosterilir.
+                    model_results[key]["hallucination"] = True
+                else:
+                    # Duygu (sentiment): yanit tonu — raporda rozet olarak gosterilir
+                    model_results[key]["sentiment"] = judge.get("duygu", "notr")
 
     # Step 3.5: Share of Voice — kategori sorgularinda gorunurluk (v3).
     # Topic uretimiyle paralel calisir; her ikisi de temsili yanitlara bagli.
