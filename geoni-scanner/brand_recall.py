@@ -1100,6 +1100,7 @@ async def check_brand_recall(
     )
 
     return {
+        "name": name,  # scoring.py otorite kontrolu (Wikipedia/Wikidata) icin
         "recognized": recognition_count > 0,
         "recognition_count": recognition_count,
         "score": overall_score,

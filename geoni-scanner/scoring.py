@@ -464,7 +464,10 @@ async def compute_ai_visibility_score(crawl_result: dict, indexing_status: dict,
     pages = crawl_result.get("pages", [])
 
     web_results = (brand_recall_result or {}).get("web_results") or []
-    brand_name = (brand_recall_result or {}).get("topic") or domain
+    # Onceden yanlislikla topic (faaliyet alani) kullaniliyordu — Wikipedia/
+    # Wikidata'da "AI gorunurluk optimizasyonu" gibi alan adlari araniyordu.
+    # Dogrusu marka ADI; yoksa domain de kabul edilebilir bir eslesme verir.
+    brand_name = (brand_recall_result or {}).get("name") or domain
 
     index = compute_index_coverage(crawl_result, indexing_status)
     index_coverage = index["score"]
