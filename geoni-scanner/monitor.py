@@ -57,6 +57,7 @@ async def _scan_web_item(item: dict) -> int | None:
     brand_recall_result = await check_brand_recall(
         identity["name"], identity["topic"],
         custom_queries=item.get("custom_queries"),
+        website=domain,
     )
     score_result = await compute_ai_visibility_score(crawl_result, indexing_status, brand_recall_result)
     topics = await generate_topics_and_opportunities(domain, crawl_result["pages"])
@@ -118,6 +119,7 @@ async def _scan_brand_item(item: dict) -> int | None:
         topic=target.get("topic") or "",
         entity_type=item.get("type") or "person",
         custom_queries=item.get("custom_queries"),
+        website=target.get("website") or "",
     )
     if not result.get("checked"):
         return None

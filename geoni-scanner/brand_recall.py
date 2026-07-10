@@ -357,11 +357,16 @@ async def _ask_gemini(prompt: str, temperature: float = RECALL_TEMPERATURE, max_
     return None
 
 
-async def _ask_gemini_grounded(prompt: str, temperature: float = 0.3, max_tokens: int = 500) -> str | None:
+async def _ask_gemini_grounded(prompt: str, temperature: float = 0.3, max_tokens: int = 500) -> dict | None:
     """
     Google Search grounding'li Gemini — Google AI Overviews'un esdegeri
     (ayni arama altyapisi + ayni model ailesi; resmi AIO API'si yok).
     SOV'un "google" motoru olarak kullanilir.
+
+    Donus: {"text": str, "citations": [kaynak, ...]} — atif istihbarati icin
+    groundingMetadata'daki kaynaklar da dondurulur. Grounding URI'lari
+    vertexaisearch yonlendirmesi oldugundan asil site adi genellikle
+    chunk.web.title alanindadir; ikisi de tasinir, domain cikarimi sov.py'de.
     """
     if not GOOGLE_API_KEY:
         return None
@@ -379,11 +384,60 @@ async def _ask_gemini_grounded(prompt: str, temperature: float = 0.3, max_tokens
             )
             if r.status_code == 200:
                 asyncio.create_task(log_provider_call("google"))
-                parts = r.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
-                return " ".join(p.get("text", "") for p in parts).strip()
+                cand = r.json().get("candidates", [{}])[0]
+                parts = cand.get("content", {}).get("parts", [])
+                text = " ".join(p.get("text", "") for p in parts).strip()
+                citations = []
+                for chunk in (cand.get("groundingMetadata", {}) or {}).get("groundingChunks", []) or []:
+                    web = chunk.get("web") or {}
+                    src = web.get("title") or web.get("uri") or ""
+                    if src:
+                        citations.append(src)
+                return {"text": text, "citations": citations}
             logger.warning(f"Gemini grounded {r.status_code}: {r.text[:200]}")
     except Exception as e:
         logger.warning(f"Gemini grounded query failed: {e}")
+    return None
+
+
+async def _ask_perplexity_sourced(prompt: str, temperature: float = RECALL_TEMPERATURE, max_tokens: int = 500) -> dict | None:
+    """
+    _ask_perplexity'nin atif dondüren varyanti (SOV kaynak istihbarati icin):
+    {"text": str, "citations": [url, ...]}. Perplexity atiflari yanit
+    govdesinde 'citations' (eski) ya da 'search_results' (yeni) alaninda verir.
+    """
+    if not PERPLEXITY_API_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient() as c:
+            r = await c.post(
+                "https://api.perplexity.ai/chat/completions",
+                headers={"Authorization": f"Bearer {PERPLEXITY_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "model": "sonar",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                },
+                timeout=30,
+            )
+            if r.status_code == 200:
+                asyncio.create_task(log_provider_call("perplexity"))
+                body = r.json()
+                usage = body.get("usage")
+                if usage:
+                    asyncio.create_task(record_perplexity_call(usage))
+                citations = list(body.get("citations") or [])
+                for sr in body.get("search_results") or []:
+                    if isinstance(sr, dict) and sr.get("url"):
+                        citations.append(sr["url"])
+                return {
+                    "text": body["choices"][0]["message"]["content"].strip(),
+                    "citations": citations,
+                }
+            logger.warning(f"Perplexity {r.status_code}: {r.text[:200]}")
+    except Exception as e:
+        logger.warning(f"Perplexity query failed: {e}")
     return None
 
 
@@ -971,9 +1025,10 @@ async def check_brand_recall(
     # Topic uretimiyle paralel calisir; her ikisi de temsili yanitlara bagli.
     emit(msgs.get("sov", msgs["scoring"]))
     sov_task = check_share_of_voice(
-        name, topic, _ask_perplexity, _ask_claude,
+        name, topic, _ask_perplexity_sourced, _ask_claude,
         ask_google=_ask_gemini_grounded if GOOGLE_API_KEY else None,
         custom_queries=custom_queries,
+        own_domain=website or "",
     )
     topics_task = _generate_brand_topics(name, topic, web_results, representative_texts)
     sov_result, topics = await asyncio.gather(sov_task, topics_task)

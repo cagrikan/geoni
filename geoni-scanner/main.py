@@ -184,7 +184,7 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
         # within that topic. This becomes a 6th scoring dimension.
         page_titles = [p.get("title", "") for p in crawl_result.get("pages", []) if p.get("title")]
         identity = await infer_brand_identity(request.domain, page_titles)
-        brand_recall_result = await check_brand_recall(identity["name"], identity["topic"], on_progress=emit, lang=request.lang, custom_queries=request.custom_queries)
+        brand_recall_result = await check_brand_recall(identity["name"], identity["topic"], on_progress=emit, lang=request.lang, custom_queries=request.custom_queries, website=request.domain)
         emit(msgs["scoring"])
 
         score_result = await compute_ai_visibility_score(crawl_result, indexing_status, brand_recall_result)

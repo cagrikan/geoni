@@ -31,6 +31,8 @@ import json
 import logging
 import re
 import unicodedata
+from collections import Counter
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +78,33 @@ def _extract_json(raw: str) -> dict | list | None:
             except Exception:
                 return None
     return None
+
+
+def _source_domain(src: str) -> str:
+    """
+    Atif kaynagindan alan adi cikarir. Kaynak bir URL, ciplak domain
+    ("example.com") ya da Gemini grounding basligi olabilir. Google'in
+    vertexaisearch yonlendirme adresleri elenip bos dondurulur.
+    """
+    src = (src or "").strip().lower()
+    if not src:
+        return ""
+    if "://" in src:
+        host = urlparse(src).netloc
+    elif re.match(r"^[a-z0-9.-]+\.[a-z]{2,}$", src):
+        host = src  # ciplak domain (Gemini grounding title cogunlukla boyle)
+    else:
+        return ""
+    host = host.removeprefix("www.")
+    if not host or "vertexaisearch" in host or host.endswith("googleusercontent.com"):
+        return ""
+    return host
+
+
+def _is_own_domain(domain: str, own: str) -> bool:
+    if not domain or not own:
+        return False
+    return domain == own or domain.endswith("." + own)
 
 
 def sanitize_custom_queries(raw) -> list[str]:
@@ -173,25 +202,36 @@ async def _extract_competitors(answers: list[str], own_name: str, ask_llm) -> li
 
 
 async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
-                               ask_google=None, custom_queries: list | None = None) -> dict:
+                               ask_google=None, custom_queries: list | None = None,
+                               own_domain: str = "") -> dict:
     """
-    Tam SOV olcumu (cok motorlu):
+    Tam SOV olcumu (cok motorlu + atif istihbarati):
       - Sorgular: kullanici tanimli (varsa) yoksa 3 uretilmis kategori sorgusu
       - Motorlar: Perplexity + (varsa) Google grounding'li Gemini (AIO esdegeri)
       - Skor: en az bir motorda gecen sorgu orani
       - Rakipler: tum yanitlardan tek cikarim cagrisiyla
+      - Kaynaklar: motorlarin atif listelerinden (citations/grounding)
+        cikarilan alan adlari — AI bu kategoride kime guveniyor?
+
+    Motor fonksiyonlari str YA DA {"text", "citations"} dondurebilir
+    (geriye uyumluluk).
 
     Donen sozluk:
       {checked, score (0-100), mention_count, query_count, engines_used,
        custom_queries_used: bool,
-       queries: [{query, mentioned, engines: {perplexity: {answered, mentioned}, ...},
+       queries: [{query, mentioned, engines: {eng: {answered, mentioned, sources}},
                   answer_snippet}],
-       competitors: [{name, mentions}]}
+       competitors: [{name, mentions}],
+       sources: [{domain, mentions, own: bool}],   # atif alan siteler
+       own_cited_count: int}                        # kendi sitesinin atif aldigi yanit sayisi
     """
     empty = {"checked": False, "score": None, "mention_count": 0, "query_count": 0,
-             "queries": [], "competitors": [], "engines_used": [], "custom_queries_used": False}
+             "queries": [], "competitors": [], "engines_used": [], "custom_queries_used": False,
+             "sources": [], "own_cited_count": 0}
     if not name:
         return empty
+
+    own = _source_domain(own_domain) or (own_domain or "").strip().lower().removeprefix("www.")
 
     custom = sanitize_custom_queries(custom_queries)
     if custom:
@@ -218,10 +258,24 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
     per_query = [{"query": q, "mentioned": False, "engines": {}, "answer_snippet": ""}
                  for q in queries]
     answers: list[str] = []
+    source_counter: Counter = Counter()
+    own_cited_answers = 0
     for (qi, eng), ans in zip(pairs, raw):
-        answer = str(ans) if ans else ""
+        if isinstance(ans, dict):
+            answer = str(ans.get("text") or "")
+            raw_citations = ans.get("citations") or []
+        else:
+            answer = str(ans) if ans else ""
+            raw_citations = []
+        domains = sorted({d for d in (_source_domain(c) for c in raw_citations) if d})
         mentioned = _brand_mentioned(answer, name)
-        per_query[qi]["engines"][eng] = {"answered": bool(answer), "mentioned": mentioned}
+        per_query[qi]["engines"][eng] = {
+            "answered": bool(answer), "mentioned": mentioned,
+            **({"sources": domains} if domains else {}),
+        }
+        source_counter.update(domains)
+        if answer and own and any(_is_own_domain(d, own) for d in domains):
+            own_cited_answers += 1
         if answer:
             answers.append(answer)
             if not per_query[qi]["answer_snippet"]:
@@ -238,10 +292,15 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
     score = round((mention_count / answered) * 100, 1)
     competitors = await _extract_competitors(answers, name, ask_llm)
 
+    sources = [
+        {"domain": d, "mentions": n, "own": _is_own_domain(d, own)}
+        for d, n in source_counter.most_common(10)
+    ]
+
     logger.info(
         f"SOV for '{name}': {mention_count}/{answered} queries "
         f"(engines={list(engines)}, custom={bool(custom)}), score={score}, "
-        f"competitors={len(competitors)}"
+        f"competitors={len(competitors)}, sources={len(sources)}, own_cited={own_cited_answers}"
     )
     return {
         "checked": True,
@@ -252,4 +311,6 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
         "custom_queries_used": bool(custom),
         "queries": per_query,
         "competitors": competitors,
+        "sources": sources,
+        "own_cited_count": own_cited_answers,
     }
