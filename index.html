@@ -1595,7 +1595,7 @@ async function runWebCheck() {
     resultEl.innerHTML = `
       <div class="web-result">
         <div class="web-result__desc">⏳ ${dict.demo_web_limit}</div>
-        <a href="https://app.geoni.ai/login" class="premium-teaser-btn">${dict.demo_web_limit_cta}</a>
+        <a href="https://app.geoni.ai/login?scan_domain=${encodeURIComponent(domain)}" class="premium-teaser-btn">${dict.demo_web_limit_cta}</a>
       </div>`;
     return;
   }
@@ -1647,7 +1647,7 @@ async function runWebCheck() {
         ${modelsHtml ? `<div class="web-result__models">${modelsHtml}</div>` : ''}
         ${desc}
         ${meta ? `<div class="web-result__meta">${meta}</div>` : ''}
-        <a href="https://app.geoni.ai/login" class="premium-teaser-btn web-result__cta">${dict.demo_web_score_cta}</a>
+        <a href="https://app.geoni.ai/login?scan_domain=${encodeURIComponent(domain)}" class="premium-teaser-btn web-result__cta">${dict.demo_web_score_cta}</a>
       </div>`;
   } catch (e) {
     resultEl.innerHTML = `<div class="web-result"><div class="web-result__desc">${dict.demo_web_error}</div></div>`;
