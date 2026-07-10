@@ -357,6 +357,36 @@ async def _ask_gemini(prompt: str, temperature: float = RECALL_TEMPERATURE, max_
     return None
 
 
+async def _ask_gemini_grounded(prompt: str, temperature: float = 0.3, max_tokens: int = 500) -> str | None:
+    """
+    Google Search grounding'li Gemini — Google AI Overviews'un esdegeri
+    (ayni arama altyapisi + ayni model ailesi; resmi AIO API'si yok).
+    SOV'un "google" motoru olarak kullanilir.
+    """
+    if not GOOGLE_API_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient() as c:
+            r = await c.post(
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+                headers={"x-goog-api-key": GOOGLE_API_KEY},
+                json={
+                    "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                    "tools": [{"google_search": {}}],
+                    "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature},
+                },
+                timeout=40,
+            )
+            if r.status_code == 200:
+                asyncio.create_task(log_provider_call("google"))
+                parts = r.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                return " ".join(p.get("text", "") for p in parts).strip()
+            logger.warning(f"Gemini grounded {r.status_code}: {r.text[:200]}")
+    except Exception as e:
+        logger.warning(f"Gemini grounded query failed: {e}")
+    return None
+
+
 async def _ask_perplexity(prompt: str, temperature: float = RECALL_TEMPERATURE, max_tokens: int = 500) -> str | None:
     if not PERPLEXITY_API_KEY:
         return None
@@ -560,11 +590,12 @@ async def judge_batch_accuracy(model_texts: dict, web_results: list, person_info
         f"{responses_block}\n"
         "<<<MODEL_YANITLARI_BITIS>>>\n\n"
         "Her model için: iddiaların web verisiyle uyuşup uyuşmadığını, kaç spesifik doğru olgu "
-        "(unvan, şirket, şehir, proje vb.) içerdiğini, çelişki olup olmadığını ve uydurma (halüsinasyon) "
-        "şüphesi olup olmadığını değerlendir.\n\n"
+        "(unvan, şirket, şehir, proje vb.) içerdiğini, çelişki olup olmadığını, uydurma (halüsinasyon) "
+        "şüphesi olup olmadığını ve yanıtın markaya/kişiye dair genel tonunu (duygu) değerlendir.\n\n"
         "Yalnızca şu JSON formatında döndür, başka hiçbir şey yazma:\n"
         '{"<model_adi>": {"dogrulanmis_olgu_sayisi": 0-10, "celiski_var": true/false, '
-        '"uydurma_suphesi": true/false, "dogruluk_skoru": 0-100}}\n'
+        '"uydurma_suphesi": true/false, "dogruluk_skoru": 0-100, '
+        '"duygu": "pozitif" veya "notr" veya "negatif"}}\n'
         f"Değerlendirilecek model adları tam olarak şunlar: {', '.join(model_texts.keys())}"
     )
 
@@ -575,11 +606,13 @@ async def judge_batch_accuracy(model_texts: dict, web_results: list, person_info
         for key in model_texts:
             d = data.get(key) or {}
             try:
+                duygu = str(d.get("duygu", "")).strip().lower()
                 out[key] = {
                     "dogrulanmis_olgu_sayisi": int(d.get("dogrulanmis_olgu_sayisi", 0)),
                     "celiski_var": bool(d.get("celiski_var", False)),
                     "uydurma_suphesi": bool(d.get("uydurma_suphesi", False)),
                     "dogruluk_skoru": max(0.0, min(100.0, float(d.get("dogruluk_skoru", 0)))),
+                    "duygu": duygu if duygu in ("pozitif", "notr", "negatif") else "notr",
                 }
             except (TypeError, ValueError):
                 continue
@@ -750,6 +783,7 @@ async def check_brand_recall(
     entity_type: str = "person",
     on_progress=None,  # optional callable(str) -> None, used to stream live status via SSE
     lang: str = "tr",
+    custom_queries: list | None = None,  # kullanici tanimli SOV sorgulari (izleme listesi)
 ) -> dict:
     """
     Full brand recall pipeline (v2-judge):
@@ -929,11 +963,18 @@ async def check_brand_recall(
         }
         if judge is not None:
             model_results[key]["judge"] = judge
+            # Duygu (sentiment): yanit tonu — raporda rozet olarak gosterilir
+            if data["recognized"]:
+                model_results[key]["sentiment"] = judge.get("duygu", "notr")
 
     # Step 3.5: Share of Voice — kategori sorgularinda gorunurluk (v3).
     # Topic uretimiyle paralel calisir; her ikisi de temsili yanitlara bagli.
     emit(msgs.get("sov", msgs["scoring"]))
-    sov_task = check_share_of_voice(name, topic, _ask_perplexity, _ask_claude)
+    sov_task = check_share_of_voice(
+        name, topic, _ask_perplexity, _ask_claude,
+        ask_google=_ask_gemini_grounded if GOOGLE_API_KEY else None,
+        custom_queries=custom_queries,
+    )
     topics_task = _generate_brand_topics(name, topic, web_results, representative_texts)
     sov_result, topics = await asyncio.gather(sov_task, topics_task)
 

@@ -53,8 +53,9 @@ async def get_total_scan_count() -> int:
         return SCAN_COUNT_DISPLAY_BASE
 
 
-async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str = None) -> bool:
-    """Save domain audit result to Supabase audits table."""
+async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str = None, deduct: bool = True) -> bool:
+    """Save domain audit result to Supabase audits table.
+    deduct=False: otomatik izleme taramalari kontor dusmez (izleme ucretsiz)."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         logger.warning("Supabase not configured, skipping audit save")
         return False
@@ -68,7 +69,7 @@ async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str
         "result_json": result,
         # Gercek dusumle ayni olmali (asagida deduct_credits 5 dusuyor) -
         # eskiden 10 yaziliyordu, kullanici gercekte harcadigindan fazlasini goruyordu.
-        "credits_spent": 5,
+        "credits_spent": 5 if deduct else 0,
         "status": "complete",
         "completed_at": result.get("created_at"),
     }
@@ -84,7 +85,7 @@ async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str
             if r.status_code in (200, 201):
                 logger.info(f"Audit {job_id} saved to Supabase")
                 # Deduct credits if user is logged in
-                if user_id:
+                if user_id and deduct:
                     await deduct_credits(user_id, 5, "web_audit", job_id)
                 return True
             logger.warning(f"Supabase audit save failed: {r.status_code} {r.text[:200]}")
@@ -93,14 +94,15 @@ async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str
     return False
 
 
-async def save_brand_check(job_id: str, request_data: dict, result: dict, user_id: str = None) -> bool:
-    """Save brand check result to Supabase audits table."""
+async def save_brand_check(job_id: str, request_data: dict, result: dict, user_id: str = None, deduct: bool = True) -> bool:
+    """Save brand check result to Supabase audits table.
+    deduct=False: otomatik izleme taramalari kontor dusmez (izleme ucretsiz)."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         logger.warning("Supabase not configured, skipping brand check save")
         return False
 
     entity_type = request_data.get("type", "person")
-    credits = 10
+    credits = 10 if deduct else 0
 
     payload = {
         "id": job_id,
@@ -129,7 +131,7 @@ async def save_brand_check(job_id: str, request_data: dict, result: dict, user_i
             )
             if r.status_code in (200, 201):
                 logger.info(f"Brand check {job_id} saved to Supabase")
-                if user_id:
+                if user_id and deduct:
                     await deduct_credits(user_id, credits, f"{entity_type}_check", job_id)
                 return True
             logger.warning(f"Supabase brand check save failed: {r.status_code} {r.text[:200]}")
@@ -2281,3 +2283,77 @@ async def dispute_ticket(ticket_id: int, user_id: str, reason: str) -> dict:
     except Exception as e:
         logger.warning(f"dispute_ticket error: {e}")
         return {"success": False, "error": "exception"}
+
+
+# ── Izleme v2: haftalik otomatik yeniden tarama (monitor.py kullanir) ────────
+
+async def list_due_watchlist_items(limit: int = 3, interval_days: int = 7) -> list:
+    """
+    Sirasi gelen izleme kayitlarini dondurur: izleme acik VE hic otomatik
+    taranmamis ya da son otomatik taramasi interval_days'ten eski.
+    limit dusuk tutulur (donem basina az is) — API kotalarini korur.
+    """
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return []
+    from datetime import datetime, timedelta, timezone
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=interval_days)).isoformat()
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/watchlist",
+                headers=_headers(),
+                params={
+                    "monitor_enabled": "eq.true",
+                    "or": f"(last_auto_scan_at.is.null,last_auto_scan_at.lt.{cutoff})",
+                    "order": "last_auto_scan_at.asc.nullsfirst",
+                    "limit": str(limit),
+                },
+                timeout=10,
+            )
+            if r.status_code == 200:
+                return r.json()
+            logger.warning(f"list_due_watchlist_items failed: {r.status_code} {r.text[:200]}")
+    except Exception as e:
+        logger.warning(f"list_due_watchlist_items error: {e}")
+    return []
+
+
+async def update_watchlist_after_scan(item_id: str, score) -> bool:
+    """Otomatik tarama sonrasi izleme kaydini gunceller (zaman + son skor)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    from datetime import datetime, timezone
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/watchlist",
+                headers=_headers(),
+                params={"id": f"eq.{item_id}"},
+                json={
+                    "last_auto_scan_at": datetime.now(timezone.utc).isoformat(),
+                    **({"last_score": int(score)} if score is not None else {}),
+                },
+                timeout=10,
+            )
+            return r.status_code in (200, 204)
+    except Exception as e:
+        logger.warning(f"update_watchlist_after_scan error: {e}")
+    return False
+
+
+async def get_auth_email(user_id: str) -> str:
+    """Tek kullanicinin e-postasini auth admin API'sinden ceker (izleme bildirimi icin)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
+        return ""
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}",
+                headers=_headers(),
+                timeout=10,
+            )
+            if r.status_code == 200:
+                return r.json().get("email", "") or ""
+    except Exception as e:
+        logger.warning(f"get_auth_email error: {e}")
+    return ""

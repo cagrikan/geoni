@@ -57,6 +57,7 @@ class AuditRequest(BaseModel):
     page_limit: int = 500
     lang: Optional[str] = "tr"
     private: Optional[bool] = False
+    custom_queries: Optional[List[str]] = None  # kullanici tanimli SOV sorgulari
 
 class AuditResponse(BaseModel):
     job_id: str
@@ -76,10 +77,13 @@ class BrandCheckRequest(BaseModel):
     email: Optional[str] = "anonymous@geoni.ai"
     lang: Optional[str] = "tr"
     private: Optional[bool] = False
+    custom_queries: Optional[List[str]] = None  # kullanici tanimli SOV sorgulari
 
 class BrandCheckResponse(BaseModel):
     job_id: str
     status: str
+
+from monitor import monitor_loop
 
 app = FastAPI(title="GEONI Visibility Scanner MVP", version="0.9.0", description="AI visibility auditing with Playwright crawling, 6-dimension domain scoring, brand recall with rich context, identity verification, and email delivery")
 
@@ -93,6 +97,12 @@ app.add_middleware(
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+@app.on_event("startup")
+async def _start_monitor():
+    # Izleme v2: haftalik otomatik yeniden tarama dongusu (bkz. monitor.py)
+    asyncio.create_task(monitor_loop())
+
 
 jobs_store = {}
 brand_checks_store = {}
@@ -174,7 +184,7 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
         # within that topic. This becomes a 6th scoring dimension.
         page_titles = [p.get("title", "") for p in crawl_result.get("pages", []) if p.get("title")]
         identity = await infer_brand_identity(request.domain, page_titles)
-        brand_recall_result = await check_brand_recall(identity["name"], identity["topic"], on_progress=emit, lang=request.lang)
+        brand_recall_result = await check_brand_recall(identity["name"], identity["topic"], on_progress=emit, lang=request.lang, custom_queries=request.custom_queries)
         emit(msgs["scoring"])
 
         score_result = await compute_ai_visibility_score(crawl_result, indexing_status, brand_recall_result)
@@ -283,6 +293,7 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
             entity_type=request.type or "person",
             on_progress=emit,
             lang=request.lang or "tr",
+            custom_queries=request.custom_queries,
         )
         brand_checks_store[job_id].update({
             "status": "complete",
