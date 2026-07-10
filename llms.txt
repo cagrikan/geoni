@@ -15,9 +15,9 @@ GEONI, markaların, kişilerin ve web sitelerinin yapay zeka cevap motorlarında
 
 - **AI Bot Access Setup:** robots.txt + llms.txt files generated for the customer's domain (automated, delivered in minutes).
 - **Structured Data (Schema) Setup:** Organization / Person / Product / FAQ JSON-LD authored for the site and verified with Google Rich Results Test.
-- **Wikidata Entity Registration:** Creating or enriching the brand/person Wikidata item with independent sources.
+- **Entity Registration:** Creating or enriching the brand/person entity record in global knowledge bases with independent sources.
 - **AI-Citable Content Production:** Answer-first content engineered to be quoted by AI engines.
-- **Trusted Source Visibility:** Earned mentions via journalist source-request platforms (Source of Sources, Qwoted, Featured) and niche directories.
+- **Trusted Source Visibility:** Earned mentions via journalist/media outreach channels and niche directories.
 
 Each service ships with a work-breakdown checklist, in-app messaging with the assigned expert, and a delivery report.
 
@@ -25,12 +25,12 @@ Each service ships with a work-breakdown checklist, in-app messaging with the as
 
 - **Visibility Audit (one-time):** Baseline scans, competitor comparison, prompt-simulation map across 15-20 real buyer questions, prioritized action list, live presentation.
 - **Citation Builder (monthly):** Technical GEO infrastructure - bot access, schema, entity consistency - kept live, plus 2-4 AI-ready contents per month.
-- **AI Authority (monthly):** Citation Builder plus media citations, Wikidata entity management, monthly prompt-simulation maps and strategy sessions.
+- **AI Authority (monthly):** Citation Builder plus media citations, entity record management, monthly prompt-simulation maps and strategy sessions.
 - **Enterprise (custom):** Multi-brand management with a dedicated strategist, API/dashboard integration and white-label reporting.
 
 ## Facts
 
-- Scoring dimensions include: AI crawler accessibility, structured data coverage, entity presence (Wikidata/Knowledge Graph), brand recall inside LLMs, and citation footprint.
+- Scoring dimensions include: AI crawler accessibility, structured data coverage, entity presence (knowledge graphs), brand recall inside LLMs, and citation footprint.
 - GEONI distinguishes training crawlers (GPTBot, ClaudeBot, Google-Extended, CCBot) from search/citation crawlers (OAI-SearchBot, ChatGPT-User, PerplexityBot, Claude-SearchBot) - visibility in real-time AI answers is governed by the latter.
 - Market: Türkiye-based (Ankara), serving globally. Interface in Turkish and English.
 
