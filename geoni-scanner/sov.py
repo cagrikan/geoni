@@ -41,6 +41,16 @@ MAX_CUSTOM_QUERIES = 3
 
 ENGINE_LABELS = {"perplexity": "Perplexity", "google": "Google AI"}
 
+# Rakip cikariminda elenecek adlar: AI platformlarinin kendileri mecradir,
+# rakip degildir. Yanitlar "ChatGPT'de gorunmek icin..." gibi cumlelerle
+# dolu oldugundan cikarim bunlari marka sanip listeyi kirletiyordu.
+COMPETITOR_DENYLIST = {
+    "chatgpt", "gpt", "gpt-4", "gpt-5", "openai", "claude", "anthropic",
+    "gemini", "google", "google ai", "google ai overviews", "ai overviews",
+    "perplexity", "copilot", "microsoft copilot", "bing", "deepseek", "grok",
+    "meta ai", "llama", "yapay zeka", "ai",
+}
+
 
 def _normalize(text: str) -> str:
     text = (text or "").strip().lower()
@@ -188,6 +198,8 @@ async def _extract_competitors(answers: list[str], own_name: str, ask_llm) -> li
                 continue
             cname = str(c.get("name", "")).strip()
             if not cname or _normalize(cname) == own_norm:
+                continue
+            if _normalize(cname) in COMPETITOR_DENYLIST:
                 continue
             try:
                 mentions = max(1, int(c.get("mentions", 1)))
