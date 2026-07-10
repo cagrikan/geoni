@@ -385,22 +385,33 @@ def _daily_display_count() -> int:
     """
     Vitrin sayaci (kullanici istegi): "Bugun X tarama tamamlandi".
     Gune gore deterministik — gun boyu herkes ayni sayiyi gorur, gece
-    yarisi degisir. 239 tabanindan baslayip ~6 ayda 200 bin bandina
-    tirmanan egri + gune ozel ±%40-50 sapma; monoton degildir (bir gun
-    82.988, ertesi gun 143.512 gibi), tavana yaklasinca ara sira 200 bini
-    asabilir. Gercek toplam sayac admin istatistiklerinde durmaya devam
-    eder (get_total_scan_count).
+    yarisi degisir. Tempo GUNLUK: 239'dan baslayip her gun bilesik
+    %35-75 rastgele buyur (~2 haftada 200 bin bandi), sonrasinda her gun
+    80 bin - 240 bin arasinda rastgele salinir (bir gun 82.988, ertesi
+    gun 239.341 gibi; monoton degildir). Gercek toplam sayac admin
+    istatistiklerinde durmaya devam eder (get_total_scan_count).
     """
     import hashlib
-    from datetime import date
+    from datetime import date, timedelta
+
+    def day_seed(d: date) -> float:
+        return int(hashlib.sha256(d.isoformat().encode()).hexdigest(), 16) % 10000 / 10000
+
     today = date.today()
     launch = date(2026, 7, 10)
     days = max(0, (today - launch).days)
-    ramp = min(1.0, days / 180)
-    level = 239 + (200000 - 239) * ramp
-    seed = int(hashlib.sha256(today.isoformat().encode()).hexdigest(), 16) % 10000 / 10000
-    factor = 0.55 + seed * 0.65  # 0.55 - 1.20
-    return max(239, int(level * factor))
+
+    val = 239.0
+    for n in range(1, min(days, 40) + 1):
+        d = launch + timedelta(days=n)
+        val *= 1.35 + day_seed(d) * 0.40  # gunluk +%35..%75
+        if val >= 200000:
+            break
+
+    if val >= 200000:
+        # Olgun donem: 80k-240k arasi gunluk salinim
+        return int(80000 + day_seed(today) * 160000)
+    return int(val)
 
 
 @app.get("/api/stats/scan-count")
