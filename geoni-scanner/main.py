@@ -381,7 +381,6 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
 async def health():
     return {"status": "healthy", "version": "0.9.0", "timestamp": datetime.now().isoformat()}
 
-@app.get("/api/stats/scan-count")
 def _daily_display_count() -> int:
     """
     Vitrin sayaci (kullanici istegi): "Bugun X tarama tamamlandi".
@@ -404,6 +403,7 @@ def _daily_display_count() -> int:
     return max(239, int(level * factor))
 
 
+@app.get("/api/stats/scan-count")
 async def scan_count():
     """Public daily counter for the landing page social-proof line."""
     return {"count": _daily_display_count()}
