@@ -579,10 +579,10 @@ async def get_credit_packages(active_only: bool = True) -> list:
     return []
 
 
-async def record_purchase(user_id: str, credits: int, amount_paid: float, currency_paid: str, external_id: str, channel: str = "web") -> bool:
-    """Credits a user's balance for a REAL payment (Lemon Squeezy webhook).
-    Idempotent on external_id - a retried/duplicate webhook delivery for
-    the same order is a no-op, not a double-credit."""
+async def record_purchase(user_id: str, credits: int, amount_paid: float, currency_paid: str, external_id: str, channel: str = "web", description: str = "Satın alma") -> bool:
+    """Credits a user's balance for a REAL payment (Polar / Lemon Squeezy
+    webhook). Idempotent on external_id - a retried/duplicate webhook
+    delivery for the same order is a no-op, not a double-credit."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not credits:
         return False
     try:
@@ -620,7 +620,7 @@ async def record_purchase(user_id: str, credits: int, amount_paid: float, curren
                     "user_id": user_id,
                     "amount": credits,
                     "type": "purchase",
-                    "description": "Lemon Squeezy satın alma",
+                    "description": description,
                     "channel": channel,
                     "amount_paid": amount_paid,
                     "currency_paid": currency_paid,

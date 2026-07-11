@@ -1049,6 +1049,13 @@ async def admin_experts(http_request: Request):
 async def credit_packages():
     return await get_credit_packages(active_only=True)
 
+@app.get("/api/me/transactions")
+async def my_transactions(http_request: Request, limit: int = 20, offset: int = 0):
+    """Kullanicinin kendi token hareketleri (cuzdan ekstresi) - admin
+    tarafindaki sorgunun kendi hesabina sinirli hali."""
+    user_id = await _require_user(http_request)
+    return await admin_get_user_transactions(user_id, limit=min(max(limit, 1), 50), offset=max(offset, 0))
+
 class CheckoutRequest(BaseModel):
     package_id: str
 
@@ -1094,6 +1101,7 @@ async def lemonsqueezy_webhook(http_request: Request):
         amount_paid=order["amount_paid"],
         currency_paid=order["currency_paid"],
         external_id=order["external_id"],
+        description="Lemon Squeezy satın alma",
     )
     return {"success": ok}
 
@@ -1118,6 +1126,7 @@ async def polar_webhook(http_request: Request):
         amount_paid=order["amount_paid"],
         currency_paid=order["currency_paid"],
         external_id=f"polar_{order['external_id']}",
+        description="Polar satın alma",
     )
     return {"success": ok}
 
