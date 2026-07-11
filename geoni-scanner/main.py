@@ -560,6 +560,53 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
     logger.info(f"Brand check job {job_id} created for '{request.name}' (ip={client_ip})")
     return BrandCheckResponse(job_id=job_id, status="queued")
 
+class SocialCheckRequest(BaseModel):
+    handle: str
+    niche: Optional[str] = ""
+    email: EmailStr
+    lang: Optional[str] = "tr"
+
+    @field_validator("email")
+    @classmethod
+    def _reject_non_ascii_email(cls, v: str) -> str:
+        if not v.isascii():
+            raise ValueError("value is not a valid email address: contains non-ASCII characters")
+        return v
+
+@app.post("/api/social-check", response_model=BrandCheckResponse)
+async def start_social_check(request: SocialCheckRequest, background_tasks: BackgroundTasks, http_request: Request):
+    """Anonim, rate-limitli sosyal görünürlük taraması: AI motorlarına
+    '@handle kim' + '[niş] için en iyi hesaplar' sorar; hesabın tanınıp
+    tanınmadığını, kategori görünürlüğünü (SoV) ve önerilen rakipleri döner.
+    Marka-recall motorunu yeniden kullanır — giriş gerekmez (site audit gibi
+    ücretsiz + rate-limitli + e-posta ile lead capture). Kredi düşülmez."""
+    client_ip = get_client_ip(http_request)
+    try:
+        if not _is_internal_scan(http_request):
+            enforce_audit_rate_limits(client_ip, request.email, request.handle)
+    except RateLimitExceeded as e:
+        raise HTTPException(
+            status_code=429,
+            detail=_rate_limit_message(request.lang or "tr", e.retry_after_seconds),
+            headers={"Retry-After": str(e.retry_after_seconds)},
+        )
+
+    handle = request.handle.strip().lstrip("@")
+    brand_req = BrandCheckRequest(
+        type="brand",
+        name=f"@{handle}",
+        topic=(request.niche or "").strip(),
+        email=request.email,
+        lang=request.lang or "tr",
+        private=True,  # anonim: DB'ye kaydetme, sadece bellekte poll'lanir
+    )
+    job_id = str(uuid.uuid4())
+    brand_checks_store[job_id] = {"job_id": job_id, "status": "queued", "name": brand_req.name, "topic": brand_req.topic, "created_at": datetime.now().isoformat(), "result": None, "error": None}
+    brand_check_events[job_id] = asyncio.Queue()
+    background_tasks.add_task(run_brand_check_job, job_id, brand_req, "")  # token yok = anonim, kredi dusulmez
+    logger.info(f"Social check job {job_id} created for '@{handle}' (ip={client_ip})")
+    return BrandCheckResponse(job_id=job_id, status="queued")
+
 @app.get("/api/brand-check/{job_id}")
 async def get_brand_check_status(job_id: str):
     if job_id not in brand_checks_store:
