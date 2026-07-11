@@ -634,6 +634,82 @@ async def record_purchase(user_id: str, credits: int, amount_paid: float, curren
     return False
 
 
+async def get_credit_transaction(tx_id) -> dict | None:
+    """Tek bir token hareketi (admin iade akisi icin)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/credit_transactions?id=eq.{tx_id}&select=id,user_id,amount,type,description,external_id",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code == 200 and r.json():
+                return r.json()[0]
+    except Exception as e:
+        logger.warning(f"get_credit_transaction error: {e}")
+    return None
+
+
+async def transaction_exists(external_id: str) -> bool:
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/credit_transactions?select=id&external_id=eq.{external_id}",
+                headers=_headers(), timeout=10,
+            )
+            return r.status_code == 200 and bool(r.json())
+    except Exception as e:
+        logger.warning(f"transaction_exists error: {e}")
+    return False
+
+
+async def record_refund(user_id: str, credits: int, external_id: str, description: str = "İade: Polar satın alma") -> bool:
+    """Iade sonrasi tokenlari geri duser. Bakiye eksiye dusebilir (kullanici
+    tokenlari coktan harcadiysa) - iade karari admin'in, engellemiyoruz.
+    Idempotency'yi cagiran taraf transaction_exists ile saglar."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not credits:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credit_balance,total_credits_purchased",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code != 200 or not r.json():
+                return False
+            row = r.json()[0]
+            patch_r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
+                headers=_headers(),
+                json={
+                    "credit_balance": (row.get("credit_balance") or 0) - credits,
+                    "total_credits_purchased": (row.get("total_credits_purchased") or 0) - credits,
+                },
+                timeout=10,
+            )
+            if patch_r.status_code not in (200, 204):
+                return False
+            await client.post(
+                f"{SUPABASE_URL}/rest/v1/credit_transactions",
+                headers=_headers(),
+                json={
+                    "user_id": user_id,
+                    "amount": -credits,
+                    "type": "refund",
+                    "description": description,
+                    "external_id": external_id,
+                },
+                timeout=10,
+            )
+            return True
+    except Exception as e:
+        logger.warning(f"record_refund error: {e}")
+    return False
+
+
 async def get_admin_sales_stats(days: int = 14) -> dict:
     """Real revenue (from actual Lemon Squeezy purchases), broken down by
     channel (web/ios/android), by signup traffic source (utm_source, i.e.
@@ -1302,7 +1378,7 @@ async def admin_get_user_audits(user_id: str, limit: int = 8, offset: int = 0) -
 
 async def admin_get_user_transactions(user_id: str, limit: int = 8, offset: int = 0) -> dict:
     rows, total = await _paginated_get(
-        f"{SUPABASE_URL}/rest/v1/credit_transactions?user_id=eq.{user_id}&select=id,amount,type,description,created_at"
+        f"{SUPABASE_URL}/rest/v1/credit_transactions?user_id=eq.{user_id}&select=id,amount,type,description,external_id,created_at"
         f"&order=created_at.desc&limit={limit}&offset={offset}",
         {**_headers(), "Prefer": "count=exact"},
     )

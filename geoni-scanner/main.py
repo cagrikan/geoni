@@ -32,6 +32,7 @@ from db import (
     admin_list_users, admin_list_audits, admin_get_audit, admin_adjust_credits, admin_set_is_admin,
     get_manual_balances, set_manual_balance, get_manual_topups_total, list_manual_topups, add_manual_topup,
     get_credit_packages, record_purchase, get_admin_sales_stats, get_pricing_tiers, add_pricing_tier, delete_pricing_tier,
+    get_credit_transaction, transaction_exists, record_refund,
     get_manual_cost, set_manual_cost, list_campaigns, create_campaign, delete_campaign,
     is_expert, list_ticket_types, purchase_ticket, list_user_tickets, list_expert_tickets,
     submit_ticket_evidence, start_ticket_work, admin_list_tickets, admin_assign_ticket, admin_verify_ticket,
@@ -1129,6 +1130,30 @@ async def polar_webhook(http_request: Request):
         description="Polar satın alma",
     )
     return {"success": ok}
+
+class AdminRefundRequest(BaseModel):
+    transaction_id: str
+
+@app.post("/api/admin/refunds")
+async def admin_refund(body: AdminRefundRequest, http_request: Request):
+    """Bir Polar satin almasini iade eder: kalan tutar Polar'dan geri
+    gonderilir, tokenlar kullanicinin cuzdanindan dusulur (eksiye
+    dusebilir - karar admin'in). external_id uzerinden idempotent."""
+    await _require_admin_scope(http_request, "users")
+    tx = await get_credit_transaction(body.transaction_id)
+    if not tx or tx.get("type") != "purchase" or (tx.get("amount") or 0) <= 0:
+        raise HTTPException(status_code=400, detail="İade edilebilir bir satın alma bulunamadı")
+    ext = tx.get("external_id") or ""
+    if not ext.startswith("polar_"):
+        raise HTTPException(status_code=400, detail="Yalnızca Polar satın almaları buradan iade edilebilir")
+    refund_ext = f"refund_{ext}"
+    if await transaction_exists(refund_ext):
+        raise HTTPException(status_code=409, detail="Bu satın alma zaten iade edilmiş")
+    refund = await polar.create_refund(ext[len("polar_"):])
+    if not refund:
+        raise HTTPException(status_code=502, detail="Polar iadesi başarısız (sipariş zaten iade edilmiş olabilir)")
+    ok = await record_refund(tx["user_id"], tx["amount"], refund_ext)
+    return {"success": ok, "refund_id": refund.get("id")}
 
 @app.get("/api/admin/users")
 async def admin_users(http_request: Request, search: str = "", sort_by: str = "created_at", sort_dir: str = "desc", limit: int = 50, offset: int = 0):

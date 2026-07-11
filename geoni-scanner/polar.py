@@ -104,6 +104,39 @@ async def create_checkout(product_id: str, user_id: str, credits: int, email: st
         return None
 
 
+async def create_refund(order_id: str) -> dict | None:
+    """Refunds the remaining refundable amount of a paid order. Polar
+    expects the NET amount (tax excluded) and refunds the tax share
+    proportionally on top. Returns the refund object, or None on failure
+    (including nothing left to refund)."""
+    if not POLAR_ACCESS_TOKEN:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(f"{API_BASE}/orders/{order_id}", headers=HEADERS, timeout=20)
+            if r.status_code != 200:
+                logger.warning(f"Polar refund: order fetch failed: {r.status_code} {r.text[:200]}")
+                return None
+            order = r.json()
+            refundable = (order.get("net_amount") or 0) - (order.get("refunded_amount") or 0)
+            if refundable <= 0:
+                logger.warning(f"Polar refund: order {order_id} has nothing left to refund")
+                return None
+            rr = await client.post(
+                f"{API_BASE}/refunds/",
+                headers=HEADERS,
+                json={"order_id": order_id, "reason": "customer_request", "amount": refundable},
+                timeout=20,
+            )
+            if rr.status_code not in (200, 201):
+                logger.warning(f"Polar refund create failed: {rr.status_code} {rr.text[:300]}")
+                return None
+            return rr.json()
+    except Exception as e:
+        logger.warning(f"Polar refund error: {e}")
+        return None
+
+
 def parse_order_webhook(payload: dict) -> dict | None:
     """Extracts what we need from an order.paid webhook payload. Returns
     None if this isn't a paid order or our metadata is missing (e.g. an
