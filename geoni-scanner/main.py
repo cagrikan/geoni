@@ -757,7 +757,11 @@ async def admin_total_cost(http_request: Request):
 @app.get("/api/admin/stats/sales")
 async def admin_sales_stats(http_request: Request, days: int = 14):
     await _require_admin(http_request)
-    return await get_admin_sales_stats(days=days)
+    stats = await get_admin_sales_stats(days=days)
+    # Canli Polar ozeti (brut/net/KDV/indirim/iade + son siparisler);
+    # Polar erisilemezse satis sekmesi yine calisir, blok null olur.
+    stats["polar"] = await polar.get_sales_summary(days=days)
+    return stats
 
 class PricingTierRequest(BaseModel):
     platform: str = "web"

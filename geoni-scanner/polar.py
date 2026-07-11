@@ -23,6 +23,7 @@ import time
 import base64
 import hashlib
 import logging
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -134,6 +135,54 @@ async def create_refund(order_id: str) -> dict | None:
             return rr.json()
     except Exception as e:
         logger.warning(f"Polar refund error: {e}")
+        return None
+
+
+async def get_sales_summary(days: int = 14) -> dict | None:
+    """Admin Satis sekmesi icin canli Polar ozeti: brut/net/KDV/indirim/iade
+    toplamlari (para birimi cinsinden, cent degil) + son siparisler.
+    Ilk 100 siparisle sinirli - GEONI olceginde fazlasiyla yeterli."""
+    if not POLAR_ACCESS_TOKEN:
+        return None
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    summary = {
+        "order_count": 0, "gross": 0.0, "net": 0.0, "tax": 0.0,
+        "discount": 0.0, "refunded": 0.0, "currency": "USD", "recent": [],
+    }
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(f"{API_BASE}/orders/?limit=100&sorting=-created_at", headers=HEADERS, timeout=20)
+            if r.status_code != 200:
+                logger.warning(f"Polar sales summary failed: {r.status_code} {r.text[:200]}")
+                return None
+        for o in r.json().get("items", []):
+            created = datetime.fromisoformat(o["created_at"].replace("Z", "+00:00"))
+            if created < since:
+                break  # created_at'e gore azalan sirali
+            if not o.get("paid"):
+                continue
+            summary["order_count"] += 1
+            summary["gross"] += (o.get("total_amount") or 0) / 100
+            summary["net"] += (o.get("net_amount") or 0) / 100
+            summary["tax"] += (o.get("tax_amount") or 0) / 100
+            summary["discount"] += (o.get("discount_amount") or 0) / 100
+            summary["refunded"] += (o.get("refunded_amount") or 0) / 100
+            summary["currency"] = (o.get("currency") or "usd").upper()
+            if len(summary["recent"]) < 8:
+                summary["recent"].append({
+                    "created_at": o.get("created_at"),
+                    "product": (o.get("product") or {}).get("name") or "—",
+                    "email": (o.get("customer") or {}).get("email") or "—",
+                    "total": (o.get("total_amount") or 0) / 100,
+                    "currency": (o.get("currency") or "usd").upper(),
+                    "discount_code": (o.get("discount") or {}).get("code"),
+                    "status": o.get("status"),
+                })
+        for k in ("gross", "net", "tax", "discount", "refunded"):
+            summary[k] = round(summary[k], 2)
+        return summary
+    except Exception as e:
+        logger.warning(f"Polar sales summary error: {e}")
         return None
 
 
