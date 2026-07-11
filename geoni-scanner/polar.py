@@ -51,20 +51,22 @@ def verify_webhook_signature(raw_body: bytes, webhook_id: str, timestamp: str, s
     try:
         if abs(time.time() - int(timestamp)) > WEBHOOK_TOLERANCE_SECONDS:
             return False
-    except ValueError:
+        secret = POLAR_WEBHOOK_SECRET
+        if secret.startswith("whsec_"):
+            # Polar generates the base64 part without "=" padding.
+            b64 = secret[len("whsec_"):]
+            key = base64.b64decode(b64 + "=" * (-len(b64) % 4))
+        else:
+            key = secret.encode()
+        signed_content = f"{webhook_id}.{timestamp}.".encode() + raw_body
+        expected = base64.b64encode(hmac.new(key, signed_content, hashlib.sha256).digest()).decode()
+        for candidate in signature_header.split(" "):
+            # Each entry looks like "v1,<base64sig>"
+            parts = candidate.split(",", 1)
+            if len(parts) == 2 and hmac.compare_digest(expected, parts[1]):
+                return True
+    except Exception:
         return False
-    secret = POLAR_WEBHOOK_SECRET
-    if secret.startswith("whsec_"):
-        key = base64.b64decode(secret[len("whsec_"):])
-    else:
-        key = secret.encode()
-    signed_content = f"{webhook_id}.{timestamp}.".encode() + raw_body
-    expected = base64.b64encode(hmac.new(key, signed_content, hashlib.sha256).digest()).decode()
-    for candidate in signature_header.split(" "):
-        # Each entry looks like "v1,<base64sig>"
-        parts = candidate.split(",", 1)
-        if len(parts) == 2 and hmac.compare_digest(expected, parts[1]):
-            return True
     return False
 
 
