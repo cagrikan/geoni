@@ -1382,6 +1382,23 @@ async def admin_get_user_transactions(user_id: str, limit: int = 8, offset: int 
         f"&order=created_at.desc&limit={limit}&offset={offset}",
         {**_headers(), "Prefer": "count=exact"},
     )
+    # Iade edilen satin almalari isaretle (iade kaydi refund_<external_id>
+    # kuraliyla tutulur) - arayuz butonu gizleyip "iade edildi" gosterir.
+    purchase_exts = [r["external_id"] for r in rows if r.get("type") == "purchase" and r.get("external_id")]
+    if purchase_exts:
+        try:
+            async with httpx.AsyncClient() as client:
+                refund_ids = ",".join(f'"refund_{e}"' for e in purchase_exts)
+                rr = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/credit_transactions?select=external_id&external_id=in.({refund_ids})",
+                    headers=_headers(), timeout=10,
+                )
+                refunded = {x["external_id"] for x in rr.json()} if rr.status_code == 200 else set()
+            for r in rows:
+                if r.get("type") == "purchase":
+                    r["refunded"] = f"refund_{r.get('external_id')}" in refunded
+        except Exception as e:
+            logger.warning(f"refund flag lookup error: {e}")
     return {"items": rows, "total": total}
 
 
