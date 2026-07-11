@@ -9,7 +9,7 @@ without a website (e.g. political candidates, executives).
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional, List
 import asyncio
 import os
@@ -62,6 +62,16 @@ class AuditRequest(BaseModel):
     lang: Optional[str] = "tr"
     private: Optional[bool] = False
     custom_queries: Optional[List[str]] = None  # kullanici tanimli SOV sorgulari
+
+    @field_validator("email")
+    @classmethod
+    def _reject_non_ascii_email(cls, v: str) -> str:
+        # EmailStr, SMTPUTF8 sayesinde emoji/unicode yerel kisimlari kabul
+        # ediyor (or. 🎉@x.com). Bunlar pratikte teslim edilemez ama gecerli
+        # sayilip bosuna tarama + LLM maliyeti tetikliyor - ASCII sarti koy.
+        if not v.isascii():
+            raise ValueError("value is not a valid email address: contains non-ASCII characters")
+        return v
 
 class AuditResponse(BaseModel):
     job_id: str
