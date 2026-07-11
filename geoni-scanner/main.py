@@ -167,12 +167,20 @@ def _suspended_message(lang: str) -> str:
 def get_client_ip(request: Request) -> str:
     """
     Resolve the real client IP, accounting for the ALB which sits in front
-    of this service. ALB appends the original client IP as the first entry
-    in X-Forwarded-For; fall back to request.client.host for local/dev runs.
+    of this service (no CloudFront in the chain).
+
+    AWS ALB APPENDS the real client IP to the END of X-Forwarded-For. The
+    LAST entry is therefore the only trustworthy one: any values to its left
+    can be spoofed by the client (e.g. sending "X-Forwarded-For: 1.2.3.4"
+    via Postman), so reading the FIRST entry would let an attacker rotate a
+    fake IP on every request and defeat the per-IP rate limit. Read the last
+    entry; fall back to request.client.host for local/dev runs.
     """
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+        if parts:
+            return parts[-1]
     return request.client.host if request.client else "unknown"
 
 
