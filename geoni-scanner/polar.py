@@ -51,19 +51,28 @@ def verify_webhook_signature(raw_body: bytes, webhook_id: str, timestamp: str, s
     try:
         if abs(time.time() - int(timestamp)) > WEBHOOK_TOLERANCE_SECONDS:
             return False
+        # Standard Webhooks der ki: anahtar, whsec_ sonrasi base64'un
+        # cozulmus hali. Polar pratikte gizi ham dize olarak da
+        # anahtarlayabiliyor - iki yorumu da deniyoruz (ikisi de yalnizca
+        # bizim ve Polar'in bildigi gizden turetildigi icin guvenli).
         secret = POLAR_WEBHOOK_SECRET
+        keys = [secret.encode()]
         if secret.startswith("whsec_"):
-            # Polar generates the base64 part without "=" padding.
             b64 = secret[len("whsec_"):]
-            key = base64.b64decode(b64 + "=" * (-len(b64) % 4))
-        else:
-            key = secret.encode()
+            try:
+                # Polar base64 kismi '=' dolgusuz uretiyor.
+                keys.append(base64.b64decode(b64 + "=" * (-len(b64) % 4)))
+            except Exception:
+                pass
         signed_content = f"{webhook_id}.{timestamp}.".encode() + raw_body
-        expected = base64.b64encode(hmac.new(key, signed_content, hashlib.sha256).digest()).decode()
+        expected = [
+            base64.b64encode(hmac.new(k, signed_content, hashlib.sha256).digest()).decode()
+            for k in keys
+        ]
         for candidate in signature_header.split(" "):
             # Each entry looks like "v1,<base64sig>"
             parts = candidate.split(",", 1)
-            if len(parts) == 2 and hmac.compare_digest(expected, parts[1]):
+            if len(parts) == 2 and any(hmac.compare_digest(e, parts[1]) for e in expected):
                 return True
     except Exception:
         return False
