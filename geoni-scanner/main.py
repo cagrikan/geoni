@@ -1060,7 +1060,14 @@ async def admin_experts(http_request: Request):
 
 @app.get("/api/credit-packages")
 async def credit_packages():
-    return await get_credit_packages(active_only=True)
+    # Public uc: yalniz vitrin alanlari. Odeme saglayici kimliklerini
+    # (lemonsqueezy_variant_id / polar_product_id) disari sizdirma -
+    # checkout zaten sunucu tarafinda package_id'den kurulur.
+    packages = await get_credit_packages(active_only=True)
+    return [
+        {k: p.get(k) for k in ("id", "name", "credits", "display_price", "currency")}
+        for p in packages
+    ]
 
 @app.get("/api/me/transactions")
 async def my_transactions(http_request: Request, limit: int = 20, offset: int = 0):
