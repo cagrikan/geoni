@@ -763,6 +763,14 @@ async def admin_sales_stats(http_request: Request, days: int = 14):
     stats["polar"] = await polar.get_sales_summary(days=days)
     return stats
 
+@app.get("/api/admin/polar/products")
+async def admin_polar_products(http_request: Request):
+    await _require_admin(http_request)
+    data = await polar.get_products_overview()
+    if data is None:
+        raise HTTPException(status_code=502, detail="Polar verisine ulaşılamadı")
+    return data
+
 class PricingTierRequest(BaseModel):
     platform: str = "web"
     min_credits: int

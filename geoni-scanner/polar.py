@@ -189,6 +189,49 @@ async def get_sales_summary(days: int = 14) -> dict | None:
         return None
 
 
+async def get_products_overview() -> dict | None:
+    """Admin fiyatlandirma karti: Polar'daki gercek urunler ve indirim
+    kodlari (eski Lemon Squeezy 'fiyat kademeleri' referans tablosunun
+    yerini alir - fiyatin kaynagi artik dogrudan Polar)."""
+    if not POLAR_ACCESS_TOKEN:
+        return None
+    out = {"products": [], "discounts": []}
+    try:
+        async with httpx.AsyncClient() as client:
+            pr = await client.get(f"{API_BASE}/products/?limit=50&is_archived=false", headers=HEADERS, timeout=20)
+            dr = await client.get(f"{API_BASE}/discounts/?limit=20", headers=HEADERS, timeout=20)
+        if pr.status_code != 200:
+            logger.warning(f"Polar products overview failed: {pr.status_code} {pr.text[:200]}")
+            return None
+        for p in pr.json().get("items", []):
+            price = next((x for x in p.get("prices", []) if not x.get("is_archived")), None)
+            meta = p.get("metadata") or {}
+            out["products"].append({
+                "name": p.get("name"),
+                "price": ((price or {}).get("price_amount") or 0) / 100,
+                "currency": ((price or {}).get("price_currency") or "usd").upper(),
+                "kind": "service" if meta.get("geoni_service_key") else "package",
+            })
+        if dr.status_code == 200:
+            for d in dr.json().get("items", []):
+                if d.get("type") == "fixed":
+                    label = f"-{(d.get('amount') or 0) / 100:.2f} {(d.get('currency') or 'usd').upper()}"
+                else:
+                    label = f"-%{(d.get('basis_points') or 0) / 100:g}"
+                out["discounts"].append({
+                    "code": d.get("code"),
+                    "label": label,
+                    "products": [x.get("name") for x in (d.get("products") or [])],
+                    "redemptions": d.get("redemptions_count"),
+                    "max_redemptions": d.get("max_redemptions"),
+                })
+        out["products"].sort(key=lambda x: (x["kind"], x["price"]))
+        return out
+    except Exception as e:
+        logger.warning(f"Polar products overview error: {e}")
+        return None
+
+
 def parse_order_webhook(payload: dict) -> dict | None:
     """Extracts what we need from an order.paid webhook payload. Returns
     None if this isn't a paid order or our metadata is missing (e.g. an
