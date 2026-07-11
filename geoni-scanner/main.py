@@ -50,6 +50,7 @@ from perplexity_admin import get_perplexity_cost_summary
 from gemini_admin import get_gemini_cost_summary
 from total_cost_admin import get_admin_total_cost_summary
 from lemonsqueezy import verify_webhook_signature, create_checkout, parse_order_webhook
+import polar
 from ticket_automation import fulfill_llms_robots_ticket
 
 class AuditRequest(BaseModel):
@@ -1061,10 +1062,16 @@ async def create_checkout_session(body: CheckoutRequest, http_request: Request):
 
     packages = await get_credit_packages(active_only=True)
     package = next((p for p in packages if p["id"] == body.package_id), None)
-    if not package or not package.get("lemonsqueezy_variant_id"):
+    if not package or not (package.get("polar_product_id") or package.get("lemonsqueezy_variant_id")):
         raise HTTPException(status_code=400, detail="Geçersiz paket")
 
-    url = await create_checkout(package["lemonsqueezy_variant_id"], user_id, package["credits"])
+    # Polar is the active provider; Lemon Squeezy stays as fallback until
+    # its account approval lands.
+    url = None
+    if package.get("polar_product_id") and polar.POLAR_ACCESS_TOKEN:
+        url = await polar.create_checkout(package["polar_product_id"], user_id, package["credits"])
+    if not url and package.get("lemonsqueezy_variant_id"):
+        url = await create_checkout(package["lemonsqueezy_variant_id"], user_id, package["credits"])
     if not url:
         raise HTTPException(status_code=502, detail="Ödeme sayfası oluşturulamadı")
     return {"checkout_url": url}
@@ -1087,6 +1094,30 @@ async def lemonsqueezy_webhook(http_request: Request):
         amount_paid=order["amount_paid"],
         currency_paid=order["currency_paid"],
         external_id=order["external_id"],
+    )
+    return {"success": ok}
+
+@app.post("/api/webhooks/polar")
+async def polar_webhook(http_request: Request):
+    raw_body = await http_request.body()
+    if not polar.verify_webhook_signature(
+        raw_body,
+        http_request.headers.get("webhook-id", ""),
+        http_request.headers.get("webhook-timestamp", ""),
+        http_request.headers.get("webhook-signature", ""),
+    ):
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
+    order = polar.parse_order_webhook(json.loads(raw_body))
+    if not order:
+        return {"ignored": True}
+
+    ok = await record_purchase(
+        user_id=order["user_id"],
+        credits=order["credits"],
+        amount_paid=order["amount_paid"],
+        currency_paid=order["currency_paid"],
+        external_id=f"polar_{order['external_id']}",
     )
     return {"success": ok}
 
