@@ -132,7 +132,10 @@ async def create_refund(order_id: str) -> dict | None:
             if rr.status_code not in (200, 201):
                 logger.warning(f"Polar refund create failed: {rr.status_code} {rr.text[:300]}")
                 return None
-            return rr.json()
+            refund = rr.json()
+            # Iade bilgilendirme maili icin: alici adresi siparisten gelir.
+            refund["customer_email"] = (order.get("customer") or {}).get("email")
+            return refund
     except Exception as e:
         logger.warning(f"Polar refund error: {e}")
         return None

@@ -312,6 +312,44 @@ async def send_ticket_email(to_email: str, subject: str, heading: str, lines: li
         return False
 
 
+async def send_purchase_email(to_email: str, credits: int, amount: float, currency: str) -> bool:
+    """Polar'in siparis onay maili kapali (org ayari) - onay mailini GEONI
+    markasiyla biz gonderiyoruz. Kullanici dili profilde tutulmadigindan
+    TR ana metin + tek satir EN ozet. Fatura Polar musteri portalinda."""
+    cur = (currency or "USD").upper()
+    return await send_ticket_email(
+        to_email,
+        f"Siparişiniz alındı — {credits} token yüklendi 🎉",
+        "Ödemeniz tamamlandı",
+        [
+            f"<strong style=\"color:#EDEFF5\">{credits} token</strong> GEONI cüzdanınıza yüklendi. "
+            f"Ödenen tutar: <strong style=\"color:#EDEFF5\">{amount:.2f} {cur}</strong>.",
+            "Faturanız ödeme sağlayıcımız Polar tarafından düzenlenir; makbuz e-postanıza ayrıca iletilir.",
+            f"<em>Payment received — {credits} tokens were added to your GEONI wallet.</em>",
+        ],
+        cta_label="Cüzdanı Aç",
+        cta_url="https://app.geoni.ai",
+    )
+
+
+async def send_refund_email(to_email: str, credits: int) -> bool:
+    """Admin iadesi sonrasi bilgilendirme; odeme iadesini Polar kendi
+    kanalindan ayrica bildirir."""
+    return await send_ticket_email(
+        to_email,
+        f"İadeniz tamamlandı — {credits} token düşüldü",
+        "İade işleminiz tamamlandı",
+        [
+            f"Satın almanız iade edildi: ödemeniz Polar üzerinden kartınıza geri gönderildi, "
+            f"<strong style=\"color:#EDEFF5\">{credits} token</strong> cüzdanınızdan düşüldü.",
+            "Tutarın kartınıza yansıması bankanıza bağlı olarak birkaç iş günü sürebilir.",
+            "<em>Your refund is complete — the payment was returned via Polar and the tokens were removed from your wallet.</em>",
+        ],
+        cta_label="Cüzdanı Aç",
+        cta_url="https://app.geoni.ai",
+    )
+
+
 async def send_monitor_email(to_email: str, label: str, old_score: int, new_score: int) -> bool:
     """
     Izleme v2: duzenli otomatik taramada skor anlamli degistiginde (±5)

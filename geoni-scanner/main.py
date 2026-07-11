@@ -24,7 +24,7 @@ from indexing import check_indexing_status
 from scoring import compute_ai_visibility_score
 from topics import generate_topics_and_opportunities
 from ratelimit import enforce_audit_rate_limits, RateLimitExceeded
-from mailer import send_audit_report_email
+from mailer import send_audit_report_email, send_purchase_email, send_refund_email
 from brand_recall import check_brand_recall, infer_brand_identity
 from db import (
     save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits,
@@ -1133,6 +1133,12 @@ async def polar_webhook(http_request: Request):
         external_id=f"polar_{order['external_id']}",
         description="Polar satın alma",
     )
+    # Onay maili bizden (Polar'in order_confirmation maili org ayarindan
+    # kapali). Fire-and-forget: mail gecikmesi webhook yanitini bekletmesin.
+    if ok and order.get("email"):
+        asyncio.create_task(send_purchase_email(
+            order["email"], order["credits"], order["amount_paid"], order["currency_paid"],
+        ))
     return {"success": ok}
 
 class AdminRefundRequest(BaseModel):
@@ -1157,6 +1163,8 @@ async def admin_refund(body: AdminRefundRequest, http_request: Request):
     if not refund:
         raise HTTPException(status_code=502, detail="Polar iadesi başarısız (sipariş zaten iade edilmiş olabilir)")
     ok = await record_refund(tx["user_id"], tx["amount"], refund_ext)
+    if ok and refund.get("customer_email"):
+        asyncio.create_task(send_refund_email(refund["customer_email"], tx["amount"]))
     return {"success": ok, "refund_id": refund.get("id")}
 
 @app.get("/api/admin/users")
