@@ -35,6 +35,7 @@ from db import (
     save_audit, save_brand_check, get_credit_balance,
 )
 from mailer import send_monitor_email
+from pushnotify import send_score_change_push
 from stability import build_stability
 from scanqueue import acquire_scan_slot, release_scan_slot
 
@@ -222,6 +223,8 @@ async def _process_item(item: dict):
         email = await get_auth_email(item.get("user_id"))
         if email:
             await send_monitor_email(email, label, int(old_score), int(new_score))
+        # Mobil push (kayitli cihazlara) - e-postaya ek olarak.
+        await send_score_change_push(item.get("user_id"), label, int(old_score), int(new_score))
 
 
 async def monitor_loop():
