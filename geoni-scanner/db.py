@@ -2498,7 +2498,7 @@ async def notify_ticket_event(ticket_id: int, event: str, actor_role: str = "") 
         types = await list_ticket_types(active_only=False)
         tt = next((t for t in types if t["id"] == ticket.get("ticket_type_id")), {})
         name = tt.get("name", "Hizmet")
-        ref = f"#{ticket_id} · {name}" + (f" ({ticket.get('target')})" if ticket.get("target") else "")
+        ref = f"{ticket.get('ref_code') or ('#' + str(ticket_id))} · {name}" + (f" ({ticket.get('target')})" if ticket.get("target") else "")
 
         sends = []  # (email, subject, heading, lines)
         if event == "message":
