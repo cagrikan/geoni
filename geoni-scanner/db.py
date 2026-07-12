@@ -684,6 +684,29 @@ async def transaction_exists(external_id: str) -> bool:
     return False
 
 
+async def update_user_social(user_id: str, linkedin_url: str, instagram_handle: str) -> bool:
+    """Kullanicinin LinkedIn/Instagram profillerini profiles'a yazar. Yazma
+    servis anahtariyla yapilir (musteri profiles'i dogrudan RLS ile
+    guncelleyebiliyor ama korumali kolonlari da acacagi icin tum profil
+    yazimlarini backend'e tasimak daha guvenli). Bos string -> null (temizler)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    payload = {
+        "linkedin_url": linkedin_url.strip() or None,
+        "instagram_handle": instagram_handle.strip().lstrip("@") or None,
+    }
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
+                headers=_headers(), json=payload, timeout=10,
+            )
+            return r.status_code in (200, 204)
+    except Exception as e:
+        logger.warning(f"update_user_social error: {e}")
+        return False
+
+
 async def delete_user_account(user_id: str) -> bool:
     """Kullanicinin hesabini ve kisisel verisini kalici siler (Apple 5.1.1(v)
     uygulama-ici hesap silme sarti). Once kullaniciya ait tablo satirlari, sonra

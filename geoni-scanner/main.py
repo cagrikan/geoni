@@ -33,6 +33,7 @@ from db import (
     get_manual_balances, set_manual_balance, get_manual_topups_total, list_manual_topups, add_manual_topup,
     get_credit_packages, record_purchase, get_admin_sales_stats, get_pricing_tiers, add_pricing_tier, delete_pricing_tier,
     get_credit_transaction, transaction_exists, record_refund, get_package_by_apple_product_id, delete_user_account,
+    update_user_social,
     get_ticket_type_by_apple_product_id, create_iap_intent, consume_iap_intent, create_paid_ticket,
     get_manual_cost, set_manual_cost, list_campaigns, create_campaign, delete_campaign,
     is_expert, list_ticket_types, purchase_ticket, list_user_tickets, list_expert_tickets,
@@ -1160,6 +1161,20 @@ async def my_transactions(http_request: Request, limit: int = 20, offset: int = 
     tarafindaki sorgunun kendi hesabina sinirli hali."""
     user_id = await _require_user(http_request)
     return await admin_get_user_transactions(user_id, limit=min(max(limit, 1), 50), offset=max(offset, 0))
+
+class SocialProfileRequest(BaseModel):
+    linkedin_url: Optional[str] = ""
+    instagram_handle: Optional[str] = ""
+
+@app.patch("/api/me/profile")
+async def update_me_profile(body: SocialProfileRequest, http_request: Request):
+    """Kullanicinin LinkedIn/Instagram profillerini kaydeder - kisi/sosyal
+    taramalarini zenginlestirmek icin veri."""
+    user_id = await _require_user(http_request)
+    ok = await update_user_social(user_id, body.linkedin_url or "", body.instagram_handle or "")
+    if not ok:
+        raise HTTPException(status_code=500, detail="Profil kaydedilemedi, lütfen tekrar deneyin.")
+    return {"success": True}
 
 @app.delete("/api/me")
 async def delete_me(http_request: Request):
