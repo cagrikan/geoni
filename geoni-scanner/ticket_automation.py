@@ -49,13 +49,23 @@ def generate_llms_txt(domain: str, audit: dict | None) -> str:
     if pages:
         lines.append("## Önemli Sayfalar")
         for p in pages[:15]:
+            if not isinstance(p, dict):
+                continue
+            url = p.get("url")
+            if not url:
+                continue
             desc = f": {p['meta_description']}" if p.get("meta_description") else ""
-            lines.append(f"- [{p.get('title') or p['url']}]({p['url']}){desc}")
+            lines.append(f"- [{p.get('title') or url}]({url}){desc}")
         lines.append("")
     if topics:
-        lines.append("## Öne Çıkan Konular")
-        for t in dict.fromkeys(topics):  # sirali, tekrarsiz
-            lines.append(f"- {t}")
+        # top_topics/opportunities STRING DEGIL {topic,...} nesnesi olabilir -
+        # dict hashlenemedigi icin once konu adini cikar, sonra tekrarsizlastir.
+        names = [(x.get("topic") if isinstance(x, dict) else x) for x in topics]
+        names = [n for n in dict.fromkeys(n for n in names if n)]
+        if names:
+            lines.append("## Öne Çıkan Konular")
+            for n in names:
+                lines.append(f"- {n}")
     return "\n".join(lines)
 
 
