@@ -684,6 +684,47 @@ async def transaction_exists(external_id: str) -> bool:
     return False
 
 
+async def delete_user_account(user_id: str) -> bool:
+    """Kullanicinin hesabini ve kisisel verisini kalici siler (Apple 5.1.1(v)
+    uygulama-ici hesap silme sarti). Once kullaniciya ait tablo satirlari, sonra
+    Supabase Auth kullanicisi silinir. En kritik adim auth kullanicisinin
+    silinmesidir; digerleri en iyi caba (biri basarisiz olsa da devam eder)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            # Biletlere bagli alt kayitlar (varsa) once temizlenir.
+            try:
+                tk = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/tickets?user_id=eq.{user_id}&select=id",
+                    headers=_headers(), timeout=10,
+                )
+                for t in (tk.json() if tk.status_code == 200 else []):
+                    tid = t.get("id")
+                    await client.delete(f"{SUPABASE_URL}/rest/v1/ticket_tasks?ticket_id=eq.{tid}", headers=_headers(), timeout=10)
+                    await client.delete(f"{SUPABASE_URL}/rest/v1/ticket_messages?ticket_id=eq.{tid}", headers=_headers(), timeout=10)
+            except Exception:
+                pass
+            for tbl, col in [
+                ("tickets", "user_id"), ("audits", "user_id"), ("credit_transactions", "user_id"),
+                ("watchlist", "user_id"), ("push_tokens", "user_id"), ("iap_intents", "user_id"),
+                ("profiles", "id"),
+            ]:
+                try:
+                    await client.delete(f"{SUPABASE_URL}/rest/v1/{tbl}?{col}=eq.{user_id}", headers=_headers(), timeout=10)
+                except Exception:
+                    pass
+            # Supabase Auth kullanicisini sil (admin API) - asil hesap silme adimi.
+            r = await client.delete(
+                f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}",
+                headers=_headers(), timeout=15,
+            )
+            return r.status_code in (200, 204)
+    except Exception as e:
+        logger.warning(f"delete_user_account error: {e}")
+    return False
+
+
 async def record_refund(user_id: str, credits: int, external_id: str, description: str = "İade: Polar satın alma") -> bool:
     """Iade sonrasi tokenlari geri duser. Bakiye eksiye dusebilir (kullanici
     tokenlari coktan harcadiysa) - iade karari admin'in, engellemiyoruz.

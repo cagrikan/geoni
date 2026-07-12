@@ -32,7 +32,7 @@ from db import (
     admin_list_users, admin_list_audits, admin_get_audit, admin_adjust_credits, admin_set_is_admin,
     get_manual_balances, set_manual_balance, get_manual_topups_total, list_manual_topups, add_manual_topup,
     get_credit_packages, record_purchase, get_admin_sales_stats, get_pricing_tiers, add_pricing_tier, delete_pricing_tier,
-    get_credit_transaction, transaction_exists, record_refund, get_package_by_apple_product_id,
+    get_credit_transaction, transaction_exists, record_refund, get_package_by_apple_product_id, delete_user_account,
     get_ticket_type_by_apple_product_id, create_iap_intent, consume_iap_intent, create_paid_ticket,
     get_manual_cost, set_manual_cost, list_campaigns, create_campaign, delete_campaign,
     is_expert, list_ticket_types, purchase_ticket, list_user_tickets, list_expert_tickets,
@@ -1147,6 +1147,16 @@ async def my_transactions(http_request: Request, limit: int = 20, offset: int = 
     tarafindaki sorgunun kendi hesabina sinirli hali."""
     user_id = await _require_user(http_request)
     return await admin_get_user_transactions(user_id, limit=min(max(limit, 1), 50), offset=max(offset, 0))
+
+@app.delete("/api/me")
+async def delete_me(http_request: Request):
+    """Kullanicinin kendi hesabini ve kisisel verisini kalici siler
+    (Apple 5.1.1(v) uygulama-ici hesap silme sarti)."""
+    user_id = await _require_user(http_request)
+    ok = await delete_user_account(user_id)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Hesap silinemedi, lütfen tekrar deneyin.")
+    return {"success": True}
 
 class CheckoutRequest(BaseModel):
     package_id: str
