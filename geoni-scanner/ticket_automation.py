@@ -16,6 +16,7 @@ from indexing import TRAINING_CRAWLER_AGENTS, SEARCH_CRAWLER_AGENTS
 from db import (
     get_latest_web_audit_by_domain, list_ticket_tasks, toggle_ticket_task,
     add_ticket_message, get_ticket_type_by_key, mark_ticket_submitted,
+    upload_ticket_file,
 )
 
 logger = logging.getLogger(__name__)
@@ -103,6 +104,19 @@ async def fulfill_llms_robots_ticket(ticket_id: int, domain: str) -> bool:
             )
 
         await add_ticket_message(ticket_id, None, "system", body=message)
+
+        # Uretilen dosyalari indirilebilir/paylasilabilir ek olarak da ekle -
+        # musteri metni kopyalamak yerine dosyayi dogrudan siteyi yapan kisiye
+        # yollayabilir. Yukleme basarisiz olursa metin zaten mesajda mevcut.
+        robots_url = await upload_ticket_file(ticket_id, "robots.txt", robots_txt)
+        if robots_url:
+            await add_ticket_message(ticket_id, None, "system",
+                                     attachment_url=robots_url, attachment_name="robots.txt")
+        llms_url = await upload_ticket_file(ticket_id, "llms.txt", llms_txt)
+        if llms_url:
+            await add_ticket_message(ticket_id, None, "system",
+                                     attachment_url=llms_url, attachment_name="llms.txt")
+
         await mark_ticket_submitted(ticket_id)
         return True
     except Exception as e:

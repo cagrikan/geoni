@@ -2424,6 +2424,37 @@ async def create_ticket_upload_url(ticket_id: int, filename: str) -> dict | None
     return None
 
 
+async def upload_ticket_file(ticket_id: int, filename: str, content: str,
+                             content_type: str = "text/plain; charset=utf-8") -> str | None:
+    """Sunucu tarafindan uretilen bir dosyayi (or. otomatik teslimdeki
+    robots.txt/llms.txt) ticket-attachments bucket'ina yukler ve herkese
+    acik URL'ini dondurur - musteri bunu siteyi yapan kisiyle paylasabilir.
+    Bucket public oldugundan URL kimlik dogrulamasi gerektirmez."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return None
+    safe_name = "".join(c for c in filename if c.isalnum() or c in "._-") or "file"
+    path = f"{ticket_id}/{int(datetime.now(timezone.utc).timestamp() * 1000)}_{safe_name}"
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                f"{SUPABASE_URL}/storage/v1/object/ticket-attachments/{path}",
+                headers={
+                    "apikey": SUPABASE_SERVICE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+                    "Content-Type": content_type,
+                    "x-upsert": "true",
+                },
+                content=content.encode("utf-8"),
+                timeout=15,
+            )
+            if r.status_code in (200, 201):
+                return f"{SUPABASE_URL}/storage/v1/object/public/ticket-attachments/{path}"
+            logger.warning(f"upload_ticket_file bad status {r.status_code}: {r.text[:200]}")
+    except Exception as e:
+        logger.warning(f"upload_ticket_file error: {e}")
+    return None
+
+
 # ── Bilet e-posta bildirimleri ───────────────────────────────────────────
 # Bilet sistemindeki en kritik islevsel eksik buydu: mesaj/atama/teslim/
 # onay olaylarinda kimseye haber gitmiyordu, herkes panele girip kirmizi
