@@ -1130,12 +1130,14 @@ async def admin_experts(http_request: Request):
 
 @app.get("/api/credit-packages")
 async def credit_packages():
-    # Public uc: yalniz vitrin alanlari. Odeme saglayici kimliklerini
-    # (lemonsqueezy_variant_id / polar_product_id) disari sizdirma -
-    # checkout zaten sunucu tarafinda package_id'den kurulur.
+    # Public uc: yalniz vitrin alanlari + Apple urun kimligi. Web odeme
+    # saglayici kimliklerini (lemonsqueezy_variant_id / polar_product_id)
+    # disari sizdirma - web checkout sunucu tarafinda package_id'den kurulur.
+    # apple_product_id hassas degil (App Store'da zaten herkese acik) ve
+    # mobil IAP'nin hangi urunu satin alacagini bilmesi icin gerekli.
     packages = await get_credit_packages(active_only=True)
     return [
-        {k: p.get(k) for k in ("id", "name", "credits", "display_price", "currency")}
+        {k: p.get(k) for k in ("id", "name", "credits", "display_price", "currency", "apple_product_id")}
         for p in packages
     ]
 
