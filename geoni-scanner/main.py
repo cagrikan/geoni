@@ -906,8 +906,8 @@ async def admin_delete_campaign(campaign_id: str, http_request: Request):
 # eder -> admin dogrular.
 
 @app.get("/api/ticket-types")
-async def ticket_types():
-    return await list_ticket_types(active_only=True)
+async def ticket_types(lang: str = "tr"):
+    return await list_ticket_types(active_only=True, lang="en" if lang == "en" else "tr")
 
 class TicketPurchaseRequest(BaseModel):
     ticket_type_id: int

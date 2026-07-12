@@ -1644,7 +1644,7 @@ async def admin_list_audits(
 # ticket_type adi ve alici/uzman e-postasi ayri sorgularla eklenir (ticket'lar
 # tablosu FK'lari sadece id tutuyor, e-posta Supabase Auth'ta ayri yasiyor).
 
-async def list_ticket_types(active_only: bool = True) -> list:
+async def list_ticket_types(active_only: bool = True, lang: str = "tr") -> list:
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return []
     try:
@@ -1654,7 +1654,16 @@ async def list_ticket_types(active_only: bool = True) -> list:
                 url += "&is_active=eq.true"
             r = await client.get(url, headers=_headers(), timeout=10)
             if r.status_code == 200:
-                return r.json()
+                rows = r.json()
+                # İngilizce istenirse name/description'i EN karsiligiyla degistir
+                # (yoksa TR'ye geri duser). Boylece istemci tarafinda ek is yok.
+                if lang == "en":
+                    for row in rows:
+                        if row.get("name_en"):
+                            row["name"] = row["name_en"]
+                        if row.get("description_en"):
+                            row["description"] = row["description_en"]
+                return rows
     except Exception as e:
         logger.warning(f"list_ticket_types error: {e}")
     return []
