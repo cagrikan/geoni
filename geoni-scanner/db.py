@@ -2027,6 +2027,9 @@ async def list_user_tickets(user_id: str) -> list:
                 tickets = await _enrich_tickets(r.json(), user_id)
                 for t in tickets:
                     t.pop("delivery_template", None)
+                    # Uzmanin kimligini (e-posta) musteriye ASLA sizdirma - sadece
+                    # admin/uzman endpoint'leri expert_email dondurur.
+                    t.pop("expert_email", None)
                 return tickets
     except Exception as e:
         logger.warning(f"list_user_tickets error: {e}")
