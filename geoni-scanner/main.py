@@ -389,7 +389,8 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
                 await deduct_credits(user_id, 10, f"{request.type or 'person'}_check_private", job_id)
             logger.info(f"Private brand check job {job_id} completed for '{request.name}', not saved")
         else:
-            await save_brand_check(job_id, request.__dict__, brand_checks_store[job_id]["result"], user_id)
+            # Sosyal taramalar ucretsiz (website audit gibi) - kaydet ama kredi dusme.
+            await save_brand_check(job_id, request.__dict__, brand_checks_store[job_id]["result"], user_id, deduct=not bool(getattr(request, "social", False)))
             logger.info(f"Brand check job {job_id} completed for '{request.name}'"  )
     except Exception as e:
         logger.error(f"Brand check job {job_id} failed: {str(e)}")
@@ -597,19 +598,24 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
         )
 
     handle = request.handle.strip().lstrip("@")
+    # Giris varsa token'i gecir: tarama kullanicinin Gecmis'ine dususn (website
+    # audit ile ayni desen). social=True oldugu icin kredi DUSMEZ (bkz.
+    # run_brand_check_job -> deduct=not social); ucretsiz + rate-limitli kalir.
+    auth_header = http_request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
     brand_req = BrandCheckRequest(
         type="brand",
         name=f"@{handle}",
         topic=(request.niche or "").strip(),
         email=request.email,
         lang=request.lang or "tr",
-        private=True,  # anonim: DB'ye kaydetme, sadece bellekte poll'lanir
-        social=True,   # SOV rakiplerini @handle/hesap olarak cikar
+        private=False,  # kaydet (giris varsa user'a bagli), kredi social oldugu icin dusmez
+        social=True,    # SOV rakiplerini @handle/hesap olarak cikar
     )
     job_id = str(uuid.uuid4())
     brand_checks_store[job_id] = {"job_id": job_id, "status": "queued", "name": brand_req.name, "topic": brand_req.topic, "created_at": datetime.now().isoformat(), "result": None, "error": None}
     brand_check_events[job_id] = asyncio.Queue()
-    background_tasks.add_task(run_brand_check_job, job_id, brand_req, "")  # token yok = anonim, kredi dusulmez
+    background_tasks.add_task(run_brand_check_job, job_id, brand_req, token)
     logger.info(f"Social check job {job_id} created for '@{handle}' (ip={client_ip})")
     return BrandCheckResponse(job_id=job_id, status="queued")
 
