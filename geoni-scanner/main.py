@@ -32,7 +32,7 @@ from db import (
     admin_list_users, admin_list_audits, admin_get_audit, admin_adjust_credits, admin_set_is_admin,
     get_manual_balances, set_manual_balance, get_manual_topups_total, list_manual_topups, add_manual_topup,
     get_credit_packages, record_purchase, get_admin_sales_stats, get_pricing_tiers, add_pricing_tier, delete_pricing_tier,
-    get_credit_transaction, transaction_exists, record_refund,
+    get_credit_transaction, transaction_exists, record_refund, get_package_by_apple_product_id,
     get_manual_cost, set_manual_cost, list_campaigns, create_campaign, delete_campaign,
     is_expert, list_ticket_types, purchase_ticket, list_user_tickets, list_expert_tickets,
     submit_ticket_evidence, start_ticket_work, admin_list_tickets, admin_assign_ticket, admin_verify_ticket,
@@ -52,6 +52,7 @@ from gemini_admin import get_gemini_cost_summary
 from total_cost_admin import get_admin_total_cost_summary
 from lemonsqueezy import verify_webhook_signature, create_checkout, parse_order_webhook
 import polar
+import iap
 from ticket_automation import fulfill_llms_robots_ticket
 
 class AuditRequest(BaseModel):
@@ -1222,6 +1223,46 @@ async def polar_webhook(http_request: Request):
         asyncio.create_task(send_purchase_email(
             order["email"], order["credits"], order["amount_paid"], order["currency_paid"],
         ))
+    return {"success": ok}
+
+@app.post("/api/webhooks/revenuecat")
+async def revenuecat_webhook(http_request: Request):
+    """RevenueCat server-to-server webhook: credits the GEONI wallet when an
+    iOS/Android user buys a token pack through In-App Purchase. Idempotent on
+    the RevenueCat event id, so retried deliveries never double-credit."""
+    if not iap.verify_webhook_auth(http_request.headers.get("authorization", "")):
+        raise HTTPException(status_code=401, detail="Invalid authorization")
+
+    event = iap.parse_event(json.loads(await http_request.body()))
+    if not event:
+        return {"ignored": True}
+
+    package = await get_package_by_apple_product_id(event["product_id"])
+    if not package:
+        logger.warning("revenuecat: unknown product_id %s", event["product_id"])
+        return {"ignored": True, "reason": "unknown_product"}
+    credits = package["credits"]
+    sandbox = event["environment"] != "PRODUCTION"
+    channel = "ios_sandbox" if sandbox else "ios"
+
+    if event["kind"] == "refund":
+        if await transaction_exists(event["external_id"]):
+            return {"success": True}
+        ok = await record_refund(
+            event["user_id"], credits, event["external_id"],
+            description="İade: App Store satın alma",
+        )
+        return {"success": ok, "refund": True}
+
+    ok = await record_purchase(
+        user_id=event["user_id"],
+        credits=credits,
+        amount_paid=event["price"],
+        currency_paid=event["currency"],
+        external_id=event["external_id"],
+        channel=channel,
+        description="App Store satın alma" + (" (sandbox)" if sandbox else ""),
+    )
     return {"success": ok}
 
 class AdminRefundRequest(BaseModel):

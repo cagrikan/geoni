@@ -579,6 +579,24 @@ async def get_credit_packages(active_only: bool = True) -> list:
     return []
 
 
+async def get_package_by_apple_product_id(product_id: str) -> dict | None:
+    """Look up a credit package by its App Store / RevenueCat product id, so
+    the IAP webhook knows how many credits a purchase grants."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not product_id:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/credit_packages?select=id,name,credits&apple_product_id=eq.{product_id}",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code == 200 and r.json():
+                return r.json()[0]
+    except Exception as e:
+        logger.warning(f"get_package_by_apple_product_id error: {e}")
+    return None
+
+
 async def record_purchase(user_id: str, credits: int, amount_paid: float, currency_paid: str, external_id: str, channel: str = "web", description: str = "Satın alma") -> bool:
     """Credits a user's balance for a REAL payment (Polar / Lemon Squeezy
     webhook). Idempotent on external_id - a retried/duplicate webhook
