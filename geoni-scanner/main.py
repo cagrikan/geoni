@@ -42,7 +42,7 @@ from db import (
     admin_get_user_audits, admin_get_user_transactions, admin_get_user_tickets, admin_set_user_notes,
     admin_set_suspended, admin_set_admin_scopes,
     get_ticket_role, list_ticket_messages, add_ticket_message, create_ticket_upload_url, mark_ticket_read, notify_ticket_event,
-    list_ticket_tasks, toggle_ticket_task, dispute_ticket,
+    list_ticket_tasks, toggle_ticket_task, dispute_ticket, confirm_ticket,
 )
 from anthropic_admin import get_anthropic_cost_summary
 from aws_cost import get_aws_cost_summary
@@ -1019,6 +1019,18 @@ async def ticket_upload_url_ep(ticket_id: int, body: TicketUploadUrlRequest, htt
 
 class TicketDisputeRequest(BaseModel):
     reason: str
+
+@app.post("/api/tickets/{ticket_id}/confirm")
+async def ticket_confirm_ep(ticket_id: int, http_request: Request):
+    user_id = await _require_user(http_request)
+    result = await confirm_ticket(ticket_id, user_id)
+    if not result["success"]:
+        messages = {"not_found": "Bilet bulunamadı", "not_owner": "Bu bilet size ait değil",
+                    "invalid_status": "Yalnızca teslim edilmiş işi onaylayabilirsiniz"}
+        raise HTTPException(status_code=400, detail=messages.get(result["error"], "Onaylanamadı"))
+    await notify_ticket_event(ticket_id, "verified")
+    return {"success": True}
+
 
 @app.post("/api/tickets/{ticket_id}/dispute")
 async def ticket_dispute_ep(ticket_id: int, body: TicketDisputeRequest, http_request: Request):

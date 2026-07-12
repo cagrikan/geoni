@@ -2548,6 +2548,46 @@ async def notify_ticket_event(ticket_id: int, event: str, actor_role: str = "") 
         logger.warning(f"notify_ticket_event error: {e}")
 
 
+async def confirm_ticket(ticket_id: int, user_id: str) -> dict:
+    """Musteri teslimi onaylar: yalnizca bilet sahibi, yalnizca 'submitted'
+    durumda -> 'verified' (is biter). Admin onayini beklemeden musteri kendi
+    kapatir; sorun olursa 'verified' uzerinden itiraz edip admin'e tasiyabilir
+    (kullanici karari: "musteri tamam aldim desin is bitsin; itiraz varsa
+    admin bakar"). verified_by'a musterinin kendi id'si yazilir."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return {"success": False, "error": "not_configured"}
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}&select=user_id,status",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code != 200 or not r.json():
+                return {"success": False, "error": "not_found"}
+            row = r.json()[0]
+            if row.get("user_id") != user_id:
+                return {"success": False, "error": "not_owner"}
+            if row.get("status") != "submitted":
+                return {"success": False, "error": "invalid_status"}
+            patch = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}",
+                headers=_headers(),
+                json={
+                    "status": "verified",
+                    "verified_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "verified_by": user_id,
+                },
+                timeout=10,
+            )
+            if patch.status_code not in (200, 204):
+                return {"success": False, "error": "update_failed"}
+        await add_ticket_message(ticket_id, user_id, "customer", body="✅ Teslimi onayladım, teşekkürler.")
+        return {"success": True, "error": None}
+    except Exception as e:
+        logger.warning(f"confirm_ticket error: {e}")
+        return {"success": False, "error": "exception"}
+
+
 async def dispute_ticket(ticket_id: int, user_id: str, reason: str) -> dict:
     """Musteri itirazi: yalnizca bilet sahibi, yalnizca 'verified' durumda.
     Itiraz gerekcesi konusma akisina musteri mesaji olarak da duser -
