@@ -1396,7 +1396,7 @@ async def admin_get_user_audits(user_id: str, limit: int = 8, offset: int = 0) -
 
 async def admin_get_user_transactions(user_id: str, limit: int = 8, offset: int = 0) -> dict:
     rows, total = await _paginated_get(
-        f"{SUPABASE_URL}/rest/v1/credit_transactions?user_id=eq.{user_id}&select=id,amount,type,description,external_id,created_at"
+        f"{SUPABASE_URL}/rest/v1/credit_transactions?user_id=eq.{user_id}&select=id,amount,type,description,external_id,amount_paid,currency_paid,created_at"
         f"&order=created_at.desc&limit={limit}&offset={offset}",
         {**_headers(), "Prefer": "count=exact"},
     )
@@ -1798,56 +1798,37 @@ async def consume_iap_intent(user_id: str, product_id: str) -> str | None:
 
 async def create_paid_ticket(user_id: str, ticket_type_id: int, target: str, external_id: str,
                              amount_paid: float, currency: str, channel: str = "ios") -> dict:
-    """Creates a service ticket paid for directly with money (IAP), WITHOUT
-    deducting any tokens. Idempotent on external_id via a money-transaction
-    ledger row, so a retried webhook never opens a second ticket."""
+    """A service bought directly with money (IAP). Modelled as two ledger
+    steps so the wallet reads clearly: (1) the money grants the service's
+    token value (+token_cost, a 'purchase' row carrying the real amount paid),
+    then (2) those tokens are immediately spent on the ticket (-token_cost,
+    which also opens the ticket). Net balance change is zero, but the history
+    shows a transparent '+N token / -N hizmet' pair instead of a bare 0.
+
+    Idempotent on external_id: the grant row carries it, so a retried webhook
+    finds it and skips BOTH steps (no double credit, no second ticket)."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return {"success": False, "error": "not_configured"}
+    if await transaction_exists(external_id):
+        logger.info(f"create_paid_ticket: external_id {external_id} already recorded, skipping")
+        return {"success": True, "duplicate": True}
     ticket_type = await _get_ticket_type(ticket_type_id)
     if not ticket_type or not ticket_type.get("is_active"):
         return {"success": False, "error": "invalid_ticket_type"}
-    try:
-        async with httpx.AsyncClient() as client:
-            dup = await client.get(
-                f"{SUPABASE_URL}/rest/v1/credit_transactions?select=id&external_id=eq.{external_id}",
-                headers=_headers(), timeout=10,
-            )
-            if dup.status_code == 200 and dup.json():
-                logger.info(f"create_paid_ticket: external_id {external_id} already recorded, skipping")
-                return {"success": True, "duplicate": True}
+    credits = ticket_type["token_cost"]
 
-            ticket_r = await client.post(
-                f"{SUPABASE_URL}/rest/v1/tickets",
-                headers={**_headers(), "Prefer": "return=representation"},
-                json={
-                    "user_id": user_id, "ticket_type_id": ticket_type_id,
-                    "target": target or None, "token_cost": ticket_type["token_cost"],
-                },
-                timeout=10,
-            )
-            if ticket_r.status_code not in (200, 201) or not ticket_r.json():
-                return {"success": False, "error": "ticket_create_failed"}
-            new_ticket = ticket_r.json()[0]
-            await _clone_ticket_tasks(client, new_ticket["id"], ticket_type_id)
+    # 1) Para -> token: cuzdana kredi (ledger'da +token, odenen tutarla).
+    ok = await record_purchase(
+        user_id, credits, amount_paid, currency, external_id, channel=channel,
+        description=f"App Store hizmet: {ticket_type['name']}",
+    )
+    if not ok:
+        return {"success": False, "error": "credit_failed"}
 
-            # Para hareketi kaydi: token bakiyesini degistirmez (amount=0), ama
-            # idempotency + admin satis gorunurlugu icin external_id ve odenen
-            # tutari tasir.
-            await client.post(
-                f"{SUPABASE_URL}/rest/v1/credit_transactions",
-                headers=_headers(),
-                json={
-                    "user_id": user_id, "amount": 0, "type": "service_purchase",
-                    "description": f"Hizmet satın alma: {ticket_type['name']}",
-                    "channel": channel, "amount_paid": amount_paid,
-                    "currency_paid": currency, "external_id": external_id,
-                },
-                timeout=10,
-            )
-            return {"success": True, "ticket_id": new_ticket["id"], "ticket_type_key": ticket_type.get("key")}
-    except Exception as e:
-        logger.warning(f"create_paid_ticket error: {e}")
-        return {"success": False, "error": "exception"}
+    # 2) Token -> hizmet: bileti ac ve token'i dus (ledger'da -token).
+    #    Yeni kredilenmis bakiye maliyeti karsilar; ayni bilet-acma + checklist
+    #    + auto-fulfill (llms_robots) yolunu tekrar kullanir.
+    return await purchase_ticket(user_id, ticket_type_id, None, target)
 
 
 async def _clone_ticket_tasks(client: httpx.AsyncClient, ticket_id: int, ticket_type_id: int) -> None:
