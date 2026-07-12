@@ -7,8 +7,8 @@ later without changing call sites (see RATE_LIMIT_STORE).
 
 Limits (tunable via environment variables):
 - Per IP:     5 requests / 10 minutes  (catches scripted abuse from one source)
-- Per email:  3 requests / 60 minutes  (catches one person spamming audits)
-- Per domain: 3 requests / 60 minutes  (catches repeated scans of the same target,
+- Per email:  2 requests / 60 minutes  (catches one person spamming audits)
+- Per domain: 2 requests / 60 minutes  (catches repeated scans of the same target,
                                          which is wasted Anthropic/crawl spend)
 """
 
@@ -23,10 +23,10 @@ logger = logging.getLogger(__name__)
 IP_LIMIT = int(os.environ.get("RATE_LIMIT_IP_COUNT", "5"))
 IP_WINDOW_SECONDS = int(os.environ.get("RATE_LIMIT_IP_WINDOW", "600"))  # 10 min
 
-EMAIL_LIMIT = int(os.environ.get("RATE_LIMIT_EMAIL_COUNT", "3"))
+EMAIL_LIMIT = int(os.environ.get("RATE_LIMIT_EMAIL_COUNT", "2"))
 EMAIL_WINDOW_SECONDS = int(os.environ.get("RATE_LIMIT_EMAIL_WINDOW", "3600"))  # 60 min
 
-DOMAIN_LIMIT = int(os.environ.get("RATE_LIMIT_DOMAIN_COUNT", "3"))
+DOMAIN_LIMIT = int(os.environ.get("RATE_LIMIT_DOMAIN_COUNT", "2"))
 DOMAIN_WINDOW_SECONDS = int(os.environ.get("RATE_LIMIT_DOMAIN_WINDOW", "3600"))  # 60 min
 
 
