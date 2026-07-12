@@ -92,6 +92,7 @@ class BrandCheckRequest(BaseModel):
     lang: Optional[str] = "tr"
     private: Optional[bool] = False
     custom_queries: Optional[List[str]] = None  # kullanici tanimli SOV sorgulari
+    social: Optional[bool] = False  # sosyal mod: SOV rakipleri @handle/hesap olarak
 
 class BrandCheckResponse(BaseModel):
     job_id: str
@@ -344,6 +345,7 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
             on_progress=emit,
             lang=request.lang or "tr",
             custom_queries=request.custom_queries,
+            social=bool(getattr(request, "social", False)),
         )
         brand_checks_store[job_id].update({
             "status": "complete",
@@ -599,6 +601,7 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
         email=request.email,
         lang=request.lang or "tr",
         private=True,  # anonim: DB'ye kaydetme, sadece bellekte poll'lanir
+        social=True,   # SOV rakiplerini @handle/hesap olarak cikar
     )
     job_id = str(uuid.uuid4())
     brand_checks_store[job_id] = {"job_id": job_id, "status": "queued", "name": brand_req.name, "topic": brand_req.topic, "created_at": datetime.now().isoformat(), "result": None, "error": None}

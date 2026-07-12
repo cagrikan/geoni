@@ -841,6 +841,7 @@ async def check_brand_recall(
     on_progress=None,  # optional callable(str) -> None, used to stream live status via SSE
     lang: str = "tr",
     custom_queries: list | None = None,  # kullanici tanimli SOV sorgulari (izleme listesi)
+    social: bool = False,  # sosyal mod: SOV rakipleri firma degil @handle/hesap olarak cikar
 ) -> dict:
     """
     Full brand recall pipeline (v2-judge):
@@ -1045,6 +1046,7 @@ async def check_brand_recall(
         ask_google=_ask_gemini_grounded if GOOGLE_API_KEY else None,
         custom_queries=custom_queries,
         own_domain=website or "",
+        social=social,
     )
     topics_task = _generate_brand_topics(name, topic, web_results, representative_texts)
     sov_result, topics = await asyncio.gather(sov_task, topics_task)
