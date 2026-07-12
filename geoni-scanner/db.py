@@ -1724,6 +1724,132 @@ async def purchase_ticket(user_id: str, ticket_type_id: int, audit_id: str | Non
         return {"success": False, "error": "exception"}
 
 
+async def get_ticket_type_by_apple_product_id(product_id: str) -> dict | None:
+    """Look up a service (ticket type) by its App Store / RevenueCat product
+    id, so the IAP webhook knows which service a direct purchase buys."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not product_id:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/ticket_types?select=*&apple_product_id=eq.{product_id}",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code == 200 and r.json():
+                return r.json()[0]
+    except Exception as e:
+        logger.warning(f"get_ticket_type_by_apple_product_id error: {e}")
+    return None
+
+
+async def create_iap_intent(user_id: str, product_id: str, target: str = "") -> bool:
+    """Records what a user is about to buy directly via IAP (product + target)
+    just before the store purchase, so the webhook can attach the resulting
+    ticket to the right target. Older pending intents for the same product are
+    superseded, keeping the lookup to the freshest one."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.patch(
+                f"{SUPABASE_URL}/rest/v1/iap_intents?user_id=eq.{user_id}&product_id=eq.{product_id}&status=eq.pending",
+                headers=_headers(),
+                json={"status": "superseded", "consumed_at": datetime.now(timezone.utc).isoformat()},
+                timeout=10,
+            )
+            r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/iap_intents",
+                headers=_headers(),
+                json={"user_id": user_id, "product_id": product_id, "target": target or None},
+                timeout=10,
+            )
+            return r.status_code in (200, 201)
+    except Exception as e:
+        logger.warning(f"create_iap_intent error: {e}")
+    return False
+
+
+async def consume_iap_intent(user_id: str, product_id: str) -> str | None:
+    """Claims the freshest pending intent for (user, product), marks it
+    consumed and returns its target (empty string if none was recorded)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/iap_intents?user_id=eq.{user_id}&product_id=eq.{product_id}"
+                f"&status=eq.pending&select=id,target&order=created_at.desc&limit=1",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code != 200 or not r.json():
+                return ""
+            row = r.json()[0]
+            await client.patch(
+                f"{SUPABASE_URL}/rest/v1/iap_intents?id=eq.{row['id']}",
+                headers=_headers(),
+                json={"status": "consumed", "consumed_at": datetime.now(timezone.utc).isoformat()},
+                timeout=10,
+            )
+            return row.get("target") or ""
+    except Exception as e:
+        logger.warning(f"consume_iap_intent error: {e}")
+    return ""
+
+
+async def create_paid_ticket(user_id: str, ticket_type_id: int, target: str, external_id: str,
+                             amount_paid: float, currency: str, channel: str = "ios") -> dict:
+    """Creates a service ticket paid for directly with money (IAP), WITHOUT
+    deducting any tokens. Idempotent on external_id via a money-transaction
+    ledger row, so a retried webhook never opens a second ticket."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return {"success": False, "error": "not_configured"}
+    ticket_type = await _get_ticket_type(ticket_type_id)
+    if not ticket_type or not ticket_type.get("is_active"):
+        return {"success": False, "error": "invalid_ticket_type"}
+    try:
+        async with httpx.AsyncClient() as client:
+            dup = await client.get(
+                f"{SUPABASE_URL}/rest/v1/credit_transactions?select=id&external_id=eq.{external_id}",
+                headers=_headers(), timeout=10,
+            )
+            if dup.status_code == 200 and dup.json():
+                logger.info(f"create_paid_ticket: external_id {external_id} already recorded, skipping")
+                return {"success": True, "duplicate": True}
+
+            ticket_r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/tickets",
+                headers={**_headers(), "Prefer": "return=representation"},
+                json={
+                    "user_id": user_id, "ticket_type_id": ticket_type_id,
+                    "target": target or None, "token_cost": ticket_type["token_cost"],
+                },
+                timeout=10,
+            )
+            if ticket_r.status_code not in (200, 201) or not ticket_r.json():
+                return {"success": False, "error": "ticket_create_failed"}
+            new_ticket = ticket_r.json()[0]
+            await _clone_ticket_tasks(client, new_ticket["id"], ticket_type_id)
+
+            # Para hareketi kaydi: token bakiyesini degistirmez (amount=0), ama
+            # idempotency + admin satis gorunurlugu icin external_id ve odenen
+            # tutari tasir.
+            await client.post(
+                f"{SUPABASE_URL}/rest/v1/credit_transactions",
+                headers=_headers(),
+                json={
+                    "user_id": user_id, "amount": 0, "type": "service_purchase",
+                    "description": f"Hizmet satın alma: {ticket_type['name']}",
+                    "channel": channel, "amount_paid": amount_paid,
+                    "currency_paid": currency, "external_id": external_id,
+                },
+                timeout=10,
+            )
+            return {"success": True, "ticket_id": new_ticket["id"], "ticket_type_key": ticket_type.get("key")}
+    except Exception as e:
+        logger.warning(f"create_paid_ticket error: {e}")
+        return {"success": False, "error": "exception"}
+
+
 async def _clone_ticket_tasks(client: httpx.AsyncClient, ticket_id: int, ticket_type_id: int) -> None:
     """Copies the standard checklist template onto this specific ticket at
     purchase time - a snapshot, not a live reference, so later edits to the

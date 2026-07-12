@@ -33,6 +33,7 @@ from db import (
     get_manual_balances, set_manual_balance, get_manual_topups_total, list_manual_topups, add_manual_topup,
     get_credit_packages, record_purchase, get_admin_sales_stats, get_pricing_tiers, add_pricing_tier, delete_pricing_tier,
     get_credit_transaction, transaction_exists, record_refund, get_package_by_apple_product_id,
+    get_ticket_type_by_apple_product_id, create_iap_intent, consume_iap_intent, create_paid_ticket,
     get_manual_cost, set_manual_cost, list_campaigns, create_campaign, delete_campaign,
     is_expert, list_ticket_types, purchase_ticket, list_user_tickets, list_expert_tickets,
     submit_ticket_evidence, start_ticket_work, admin_list_tickets, admin_assign_ticket, admin_verify_ticket,
@@ -1237,33 +1238,69 @@ async def revenuecat_webhook(http_request: Request):
     if not event:
         return {"ignored": True}
 
-    package = await get_package_by_apple_product_id(event["product_id"])
-    if not package:
-        logger.warning("revenuecat: unknown product_id %s", event["product_id"])
-        return {"ignored": True, "reason": "unknown_product"}
-    credits = package["credits"]
     sandbox = event["environment"] != "PRODUCTION"
     channel = "ios_sandbox" if sandbox else "ios"
+    suffix = " (sandbox)" if sandbox else ""
 
-    if event["kind"] == "refund":
-        if await transaction_exists(event["external_id"]):
-            return {"success": True}
-        ok = await record_refund(
-            event["user_id"], credits, event["external_id"],
-            description="İade: App Store satın alma",
+    # Iki urun ailesi: token paketleri (cuzdana kredi) ve dogrudan hizmet
+    # satin almalari (token dusmeden bilet acar).
+    package = await get_package_by_apple_product_id(event["product_id"])
+    if package:
+        if event["kind"] == "refund":
+            if await transaction_exists(event["external_id"]):
+                return {"success": True}
+            ok = await record_refund(
+                event["user_id"], package["credits"], event["external_id"],
+                description="İade: App Store satın alma",
+            )
+            return {"success": ok, "refund": True}
+        ok = await record_purchase(
+            user_id=event["user_id"], credits=package["credits"],
+            amount_paid=event["price"], currency_paid=event["currency"],
+            external_id=event["external_id"], channel=channel,
+            description="App Store satın alma" + suffix,
         )
-        return {"success": ok, "refund": True}
+        return {"success": ok}
 
-    ok = await record_purchase(
-        user_id=event["user_id"],
-        credits=credits,
-        amount_paid=event["price"],
-        currency_paid=event["currency"],
-        external_id=event["external_id"],
-        channel=channel,
-        description="App Store satın alma" + (" (sandbox)" if sandbox else ""),
-    )
-    return {"success": ok}
+    service = await get_ticket_type_by_apple_product_id(event["product_id"])
+    if service:
+        if event["kind"] == "refund":
+            # Hizmet iadesi otomatik degil (uzman is baslamis olabilir) -
+            # admin degerlendirir. Sadece logla.
+            logger.info("revenuecat: service refund for %s, needs admin review", event["product_id"])
+            return {"ignored": True, "reason": "service_refund_manual"}
+        # Uygulamanin satin almadan once biraktigi hedefi al.
+        target = await consume_iap_intent(event["user_id"], event["product_id"]) or ""
+        result = await create_paid_ticket(
+            user_id=event["user_id"], ticket_type_id=service["id"], target=target,
+            external_id=event["external_id"], amount_paid=event["price"],
+            currency=event["currency"], channel=channel,
+        )
+        if result.get("success") and not result.get("duplicate") \
+                and result.get("ticket_type_key") == "llms_robots" and result.get("ticket_id") and target:
+            async def _auto_fulfill(tid: int, tgt: str):
+                if await fulfill_llms_robots_ticket(tid, tgt):
+                    await notify_ticket_event(tid, "submitted")
+            asyncio.create_task(_auto_fulfill(result["ticket_id"], target))
+        return {"success": result.get("success", False), "service": True}
+
+    logger.warning("revenuecat: unknown product_id %s", event["product_id"])
+    return {"ignored": True, "reason": "unknown_product"}
+
+class IapIntentRequest(BaseModel):
+    product_id: str
+    target: Optional[str] = ""
+
+@app.post("/api/iap/intent")
+async def iap_intent(body: IapIntentRequest, http_request: Request):
+    """Mobil uygulama bir hizmeti dogrudan IAP ile almadan hemen once cagirir:
+    'hangi hedef icin' bilgisini kaydeder ki satin alma webhook'u bileti dogru
+    hedefle acabilsin."""
+    user_id = await _require_user(http_request)
+    ok = await create_iap_intent(user_id, body.product_id, (body.target or "").strip())
+    if not ok:
+        raise HTTPException(status_code=500, detail="Niyet kaydedilemedi")
+    return {"success": True}
 
 class AdminRefundRequest(BaseModel):
     transaction_id: str
