@@ -10,6 +10,7 @@ ekleyip bileti 'submitted' durumuna cekiyor - musteriye ulasmadan once
 hala bir INSAN admin onayi (admin_verify_ticket) gerekiyor, tamamen
 gozetimsiz degil.
 """
+import json
 import logging
 
 from indexing import TRAINING_CRAWLER_AGENTS, SEARCH_CRAWLER_AGENTS
@@ -68,6 +69,86 @@ def generate_llms_txt(domain: str, audit: dict | None) -> str:
             for n in names:
                 lines.append(f"- {n}")
     return "\n".join(lines)
+
+
+def generate_schema_html(domain: str, audit: dict | None) -> str:
+    """schema.org JSON-LD (Organization + WebSite) uretir - her sitede gecerli
+    olan, guvenli bir taban yapisal veri. Marka adi/konusu GEONI taramasindan
+    gelir, yoksa domain'e duser. Uzman/admin teslim oncesi genisletebilir."""
+    result = (audit or {}).get("result_json") or {}
+    brand = result.get("brand_recall") or {}
+    name = brand.get("inferred_name") or domain
+    desc = brand.get("inferred_topic") or ""
+    url = f"https://{domain}"
+
+    org = {"@context": "https://schema.org", "@type": "Organization", "name": name, "url": url}
+    if desc:
+        org["description"] = desc
+    website = {"@context": "https://schema.org", "@type": "WebSite", "name": name, "url": url}
+
+    blocks = []
+    for obj in (org, website):
+        blocks.append(
+            '<script type="application/ld+json">\n'
+            + json.dumps(obj, ensure_ascii=False, indent=2)
+            + "\n</script>"
+        )
+    return "\n".join(blocks)
+
+
+async def fulfill_schema_ticket(ticket_id: int, domain: str) -> bool:
+    """schema_setup icin otomatik teslim - llms_robots ile ayni desen: JSON-LD
+    uretir, checklist'i isaretler, teslim mesaji + indirilebilir schema.html
+    ekler, bileti 'submitted'a ceker (admin onayi hala gerekli)."""
+    try:
+        audit = await get_latest_web_audit_by_domain(domain)
+        schema_html = generate_schema_html(domain, audit)
+
+        tasks = await list_ticket_tasks(ticket_id)
+        for task in tasks:
+            await toggle_ticket_task(task["id"], ticket_id, True)
+
+        ticket_type = await get_ticket_type_by_key("schema_setup")
+        template = (ticket_type or {}).get("delivery_template") or ""
+        message = (
+            template.replace("{target}", domain).replace("{schema_code}", schema_html)
+        ) if template else schema_html
+        if not audit:
+            message += (
+                "\n\n> Not: Bu alan adı için henüz bir GEONI taraması bulunmadığından şema "
+                "temel bilgilerle (Organization + WebSite) oluşturuldu. Bir web taraması "
+                "yaptırıp buradan bize yazarsanız, marka adı ve konu bilgisiyle "
+                "zenginleştirilmiş sürümünü bu bilete ücretsiz ekleriz."
+            )
+
+        await add_ticket_message(ticket_id, None, "system", body=message)
+
+        schema_url = await upload_ticket_file(
+            ticket_id, "schema.html", schema_html, content_type="text/html; charset=utf-8"
+        )
+        if schema_url:
+            await add_ticket_message(ticket_id, None, "system",
+                                     attachment_url=schema_url, attachment_name="schema.html")
+
+        await mark_ticket_submitted(ticket_id)
+        return True
+    except Exception as e:
+        logger.warning(f"fulfill_schema_ticket error: {e}")
+        return False
+
+
+# Insan-uzman gerektirmeyen, satin alinir alinmaz otomatik teslim edilen
+# hizmet key'leri. Yeni bir otomatik hizmet eklerken buraya + dispatch'e ekle.
+AUTO_FULFILL_KEYS = {"llms_robots", "schema_setup"}
+
+
+async def fulfill_auto_ticket(key: str, ticket_id: int, domain: str) -> bool:
+    """ticket_type_key'e gore dogru otomatik teslim fonksiyonuna yonlendirir."""
+    if key == "llms_robots":
+        return await fulfill_llms_robots_ticket(ticket_id, domain)
+    if key == "schema_setup":
+        return await fulfill_schema_ticket(ticket_id, domain)
+    return False
 
 
 async def fulfill_llms_robots_ticket(ticket_id: int, domain: str) -> bool:

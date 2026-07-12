@@ -54,7 +54,7 @@ from total_cost_admin import get_admin_total_cost_summary
 from lemonsqueezy import verify_webhook_signature, create_checkout, parse_order_webhook
 import polar
 import iap
-from ticket_automation import fulfill_llms_robots_ticket
+from ticket_automation import fulfill_auto_ticket, AUTO_FULFILL_KEYS
 
 class AuditRequest(BaseModel):
     domain: str
@@ -925,15 +925,16 @@ async def create_ticket(body: TicketPurchaseRequest, http_request: Request):
             "user_not_found": "Kullanıcı bulunamadı",
         }
         raise HTTPException(status_code=400, detail=messages.get(result["error"], "Bilet satın alınamadı"))
-    if result.get("ticket_type_key") == "llms_robots" and result.get("ticket_id") and body.target:
-        # Tek insan-uzman gerektirmeyen hizmet - satin alinir alinmaz
-        # otomatik teslim edilir (admin hala 'submitted'i onaylamali).
-        # Arkaplanda kosar: tarama sorgusu + dosya uretimi satin alma
-        # yanitini geciktirmesin.
-        async def _auto_fulfill(tid: int, target: str):
-            if await fulfill_llms_robots_ticket(tid, target):
+    key = result.get("ticket_type_key")
+    if key in AUTO_FULFILL_KEYS and result.get("ticket_id") and body.target:
+        # Insan-uzman gerektirmeyen hizmetler (llms_robots, schema_setup) satin
+        # alinir alinmaz otomatik teslim edilir (admin hala 'submitted'i
+        # onaylamali). Arkaplanda kosar: tarama sorgusu + dosya uretimi satin
+        # alma yanitini geciktirmesin.
+        async def _auto_fulfill(tid: int, target: str, tkey: str):
+            if await fulfill_auto_ticket(tkey, tid, target):
                 await notify_ticket_event(tid, "submitted")
-        asyncio.create_task(_auto_fulfill(result["ticket_id"], body.target))
+        asyncio.create_task(_auto_fulfill(result["ticket_id"], body.target, key))
     return {"success": True}
 
 @app.get("/api/tickets")
@@ -1288,12 +1289,13 @@ async def revenuecat_webhook(http_request: Request):
             external_id=event["external_id"], amount_paid=event["price"],
             currency=event["currency"], channel=channel,
         )
+        key = result.get("ticket_type_key")
         if result.get("success") and not result.get("duplicate") \
-                and result.get("ticket_type_key") == "llms_robots" and result.get("ticket_id") and target:
-            async def _auto_fulfill(tid: int, tgt: str):
-                if await fulfill_llms_robots_ticket(tid, tgt):
+                and key in AUTO_FULFILL_KEYS and result.get("ticket_id") and target:
+            async def _auto_fulfill(tid: int, tgt: str, tkey: str):
+                if await fulfill_auto_ticket(tkey, tid, tgt):
                     await notify_ticket_event(tid, "submitted")
-            asyncio.create_task(_auto_fulfill(result["ticket_id"], target))
+            asyncio.create_task(_auto_fulfill(result["ticket_id"], target, key))
         return {"success": result.get("success", False), "service": True}
 
     logger.warning("revenuecat: unknown product_id %s", event["product_id"])
