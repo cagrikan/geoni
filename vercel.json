@@ -1,15 +1,49 @@
 {
   "version": 2,
   "rewrites": [
-    { "source": "/r/:slug", "destination": "/api/r/:slug" },
-    { "source": "/s/:id", "destination": "/api/s/:id" },
-    { "source": "/privacy", "destination": "/privacy.html" },
-    { "source": "/terms", "destination": "/terms.html" },
-    { "source": "/social-callback", "destination": "/social-callback.html" },
-    { "source": "/rehber", "destination": "/rehber.html" },
-    { "source": "/rehber/aeo-nedir", "destination": "/rehber/aeo-nedir.html" },
-    { "source": "/rehber/llms-txt-nedir", "destination": "/rehber/llms-txt-nedir.html" },
-    { "source": "/rehber/chatgpt-gorunurlugu", "destination": "/rehber/chatgpt-gorunurlugu.html" },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    {
+      "source": "/r/:slug",
+      "destination": "/api/r/:slug"
+    },
+    {
+      "source": "/s/:id",
+      "destination": "/api/s/:id"
+    },
+    {
+      "source": "/privacy",
+      "destination": "/privacy.html"
+    },
+    {
+      "source": "/terms",
+      "destination": "/terms.html"
+    },
+    {
+      "source": "/social-callback",
+      "destination": "/social-callback.html"
+    },
+    {
+      "source": "/rehber",
+      "destination": "/rehber.html"
+    },
+    {
+      "source": "/rehber/aeo-nedir",
+      "destination": "/rehber/aeo-nedir.html"
+    },
+    {
+      "source": "/rehber/llms-txt-nedir",
+      "destination": "/rehber/llms-txt-nedir.html"
+    },
+    {
+      "source": "/rehber/chatgpt-gorunurlugu",
+      "destination": "/rehber/chatgpt-gorunurlugu.html"
+    },
+    {
+      "source": "/indir",
+      "destination": "/indir.html"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
   ]
 }
