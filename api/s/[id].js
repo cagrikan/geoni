@@ -30,12 +30,36 @@ export default async function handler(req, res) {
   const label = esc(data.label || '');
   const score = Math.round(data.score);
   const isWeb = data.type === 'web';
-  const title = `AI Görünürlük Skoru: ${score}/100 — ${label}`;
-  const desc = 'Senin skorun kaç? Markanın, adının veya sitenin ChatGPT, Gemini ve Perplexity\'deki görünürlüğünü 60 saniyede ücretsiz ölç.';
   const scoreColor = score >= 70 ? '#2fbd84' : score >= 40 ? '#F5A623' : '#f0616d';
 
+  // Dil: ?lang= parametresi > tarayici dili (Accept-Language) > EN
+  const q = String(req.query.lang || '').toLowerCase();
+  const accept = String(req.headers['accept-language'] || '').toLowerCase();
+  const lang = q === 'tr' || q === 'en' ? q : (accept.startsWith('tr') || accept.includes(',tr') ? 'tr' : 'en');
+  const L = lang === 'tr' ? {
+    title: `AI Görünürlük Skoru: ${score}/100 — ${label}`,
+    desc: "Senin skorun kaç? Markanın, adının veya sitenin ChatGPT, Gemini ve Perplexity'deki görünürlüğünü 60 saniyede ücretsiz ölç.",
+    kind: data.type === 'person' ? 'kişi' : 'marka',
+    scoreLabel: 'AI Görünürlük Skoru',
+    hook: 'AI seni tanıyor mu?',
+    sub: `Bu skor; ChatGPT, Gemini ve Perplexity'nin bu ${isWeb ? 'siteyi' : 'ismi'} ne kadar tanıdığını gösteriyor. Peki seninki kaç?`,
+    cta: 'Kendi skorunu ölç →',
+    free: '60 saniye · ücretsiz · üyelik gerekmez',
+  } : {
+    title: `AI Visibility Score: ${score}/100 — ${label}`,
+    desc: "What's yours? Measure how your brand, name or site shows up in ChatGPT, Gemini and Perplexity — free, in 60 seconds.",
+    kind: data.type === 'person' ? 'person' : 'brand',
+    scoreLabel: 'AI Visibility Score',
+    hook: 'Does AI know you?',
+    sub: `This score shows how well ChatGPT, Gemini and Perplexity know this ${isWeb ? 'site' : 'name'}. So — what's yours?`,
+    cta: 'Measure your score →',
+    free: '60 seconds · free · no sign-up',
+  };
+  const title = L.title;
+  const desc = L.desc;
+
   const html = `<!DOCTYPE html>
-<html lang="tr">
+<html lang="${lang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -71,25 +95,30 @@ body{min-height:100vh;display:grid;place-items:center;background:#0A0B10;color:#
 .cta{display:inline-block;background:#7C86F5;color:#fff;text-decoration:none;font-weight:700;font-size:1rem;padding:14px 34px;border-radius:10px}
 .cta:hover{opacity:.9}
 .free{color:#6E7391;font-size:.78rem;margin-top:12px}
+.lang{position:absolute;top:16px;right:20px;font-size:.8rem;color:#6E7391}
+.lang a{color:#A8ADC4;text-decoration:none}
+.lang b{color:#E7E9F2;font-weight:600}
 </style>
 </head>
 <body>
+<div class="lang">${lang === 'tr' ? `<b>TR</b> · <a href="?lang=en">EN</a>` : `<a href="?lang=tr">TR</a> · <b>EN</b>`}</div>
 <main class="card">
   <a class="logo" href="https://geoni.ai"><img src="/favicon.png" width="24" height="24" alt="">geoni</a>
-  <div class="label">${label}${isWeb ? '' : ' · ' + (data.type === 'person' ? 'kişi' : 'marka')}</div>
+  <div class="label">${label}${isWeb ? '' : ' · ' + L.kind}</div>
   <div class="score">${score}<small>/100</small></div>
-  <div class="of">AI Görünürlük Skoru</div>
+  <div class="of">${L.scoreLabel}</div>
   <div class="bar"><i></i></div>
-  <div class="q">AI seni tanıyor mu?</div>
-  <p class="sub">Bu skor; ChatGPT, Gemini ve Perplexity'nin bu ${isWeb ? 'siteyi' : 'ismi'} ne kadar tanıdığını gösteriyor. Peki seninki kaç?</p>
-  <a class="cta" href="https://app.geoni.ai?utm_source=share&utm_medium=scorecard">Kendi skorunu ölç →</a>
-  <div class="free">60 saniye · ücretsiz · üyelik gerekmez</div>
+  <div class="q">${L.hook}</div>
+  <p class="sub">${L.sub}</p>
+  <a class="cta" href="https://app.geoni.ai?utm_source=share&utm_medium=scorecard">${L.cta}</a>
+  <div class="free">${L.free}</div>
 </main>
 </body>
 </html>`;
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
+  res.setHeader('Vary', 'Accept-Language');
   res.statusCode = 200;
   return res.end(html);
 }
