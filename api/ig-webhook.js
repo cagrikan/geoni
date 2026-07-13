@@ -147,10 +147,10 @@ async function aiReply(senderId, userText, cfg, extraSystem = '') {
   return text || null;
 }
 
-/** Dun gunluk tavanda veda mesaji gonderilmis mi? (donus hatirlatmasi icin) */
-async function cappedYesterday(senderId) {
-  const y = new Date(Date.now() - 86400000).toISOString().slice(0, 10).replace(/-/g, '');
-  const r = await sb(`ig_replies?target_id=eq.${encodeURIComponent(`cap:${senderId}:${y}`)}&select=target_id`);
+/** Bu gonderenle bugunden ONCE konusmusluk var mi? (donus karsilamasi icin) */
+async function talkedBeforeToday(senderId) {
+  const t = new Date(); t.setUTCHours(0, 0, 0, 0);
+  const r = await sb(`ig_dm_log?sender_id=eq.${encodeURIComponent(senderId)}&role=eq.assistant&created_at=lt.${t.toISOString()}&select=id&limit=1`);
   const rows = r.ok ? await r.json() : [];
   return rows.length > 0;
 }
@@ -180,12 +180,13 @@ async function handleDm(senderId, msg, cfg) {
       return;
     }
 
-    // Dun tavanda vedalastiysak ve bu, bugunun ilk cevabiysa: donus hatirlatmasi
+    // Daha once konustugumuz biri yeni gun ilk mesajini attiysa: sicak karsilama
     let extra = '';
-    if (count === 0 && (await cappedYesterday(senderId))) {
-      extra = 'NOT: Bu kullaniciya dun gunluk sinira gelindigi icin veda edilip GEONI '
-        + 'uygulamasi onerilmisti. Simdi geri geldi. Cevabinin BASINDA samimi tek cumleyle '
-        + 'sor: uygulamayi indirip skoruna bakti mi? Sonra mesajina normal sekilde cevap ver.';
+    if (count === 0 && (await talkedBeforeToday(senderId))) {
+      extra = 'NOT: Bu kullaniciyla onceki gun(ler)de konusmustuk, simdi geri geldi. '
+        + 'Cevabinin BASINDA samimi TEK cumleyle karsila ve gecmise uygun takip sorusu sor '
+        + '(or. taramayi yaptin mi / skoruna bakabildin mi / uygulamayi indirdin mi — '
+        + 'gecmis konusmaya hangisi uyuyorsa). Sonra mesajina normal cevap ver.';
     }
     const reply = await aiReply(senderId, userText, cfg, extra);
     if (reply) {
