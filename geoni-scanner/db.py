@@ -718,6 +718,36 @@ async def get_share_result(job_id: str) -> dict | None:
         return None
 
 
+async def get_ai_friendly_list(limit: int = 50) -> list:
+    """AI Friendly Ligi: 70+ skorlu SITELER (type=web) — domain basina en iyi
+    tarama. Kisi/marka taramalari KVKK hassasiyeti nedeniyle listelenmez;
+    e-posta/kullanici bilgisi asla donmez."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return []
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/audits?type=eq.web&status=eq.complete&score=gte.70"
+                f"&select=id,domain,score,created_at&order=score.desc,created_at.desc&limit=300",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code != 200:
+                return []
+            best: dict[str, dict] = {}
+            for row in r.json():
+                d = (row.get("domain") or "").lower().strip()
+                if not d:
+                    continue
+                if d not in best or row["score"] > best[d]["score"]:
+                    best[d] = {"domain": d, "score": row["score"],
+                               "job_id": row["id"], "date": row.get("created_at", "")[:10]}
+            ranked = sorted(best.values(), key=lambda x: -x["score"])[:limit]
+            return ranked
+    except Exception as e:
+        logger.warning(f"get_ai_friendly_list error: {e}")
+        return []
+
+
 async def update_user_social(user_id: str, linkedin_url: str, instagram_handle: str) -> bool:
     """Kullanicinin LinkedIn/Instagram profillerini profiles'a yazar. Yazma
     servis anahtariyla yapilir (musteri profiles'i dogrudan RLS ile
