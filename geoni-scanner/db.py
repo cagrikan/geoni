@@ -684,6 +684,40 @@ async def transaction_exists(external_id: str) -> bool:
     return False
 
 
+async def get_share_result(job_id: str) -> dict | None:
+    """Viral paylasim karti (geoni.ai/s/<id>) icin minimal, kisisel-verisiz
+    alan seti. id tahmin edilemez uuid oldugu icin public erisim kabul; email,
+    user_id gibi alanlar ASLA donmez. Yalnizca tamamlanmis taramalar."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/audits?id=eq.{job_id}&status=eq.complete"
+                f"&select=id,type,domain,name,score,result_json,created_at&limit=1",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code != 200 or not r.json():
+                return None
+            row = r.json()[0]
+            rj = row.get("result_json") or {}
+            atype = row.get("type") or "web"
+            recognized = None
+            if atype != "web":
+                recognized = rj.get("recognized")
+            return {
+                "job_id": row["id"],
+                "type": atype,
+                "label": row.get("domain") if atype == "web" else row.get("name"),
+                "score": row.get("score"),
+                "recognized": recognized,
+                "created_at": row.get("created_at"),
+            }
+    except Exception as e:
+        logger.warning(f"get_share_result error: {e}")
+        return None
+
+
 async def update_user_social(user_id: str, linkedin_url: str, instagram_handle: str) -> bool:
     """Kullanicinin LinkedIn/Instagram profillerini profiles'a yazar. Yazma
     servis anahtariyla yapilir (musteri profiles'i dogrudan RLS ile
