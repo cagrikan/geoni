@@ -2,6 +2,7 @@
   "version": 2,
   "rewrites": [
     { "source": "/r/:slug", "destination": "/api/r/:slug" },
+    { "source": "/s/:id", "destination": "/api/s/:id" },
     { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/terms", "destination": "/terms.html" },
     { "source": "/social-callback", "destination": "/social-callback.html" },
