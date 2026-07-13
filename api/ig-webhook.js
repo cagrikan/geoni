@@ -123,9 +123,10 @@ async function todaysCount(senderId) {
   return Number.isFinite(total) ? total : 0;
 }
 
-async function aiReply(senderId, userText, cfg) {
+async function aiReply(senderId, userText, cfg, extraSystem = '') {
   const history = await loadHistory(senderId);
   const messages = [...history, { role: 'user', content: userText }];
+  const system = extraSystem ? `${DM_SYSTEM}\n\n${extraSystem}` : DM_SYSTEM;
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -136,7 +137,7 @@ async function aiReply(senderId, userText, cfg) {
     body: JSON.stringify({
       model: 'claude-sonnet-5',
       max_tokens: 200,
-      system: DM_SYSTEM,
+      system,
       messages,
     }),
   });
@@ -144,6 +145,14 @@ async function aiReply(senderId, userText, cfg) {
   const data = await r.json();
   const text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join(' ').trim();
   return text || null;
+}
+
+/** Dun gunluk tavanda veda mesaji gonderilmis mi? (donus hatirlatmasi icin) */
+async function cappedYesterday(senderId) {
+  const y = new Date(Date.now() - 86400000).toISOString().slice(0, 10).replace(/-/g, '');
+  const r = await sb(`ig_replies?target_id=eq.${encodeURIComponent(`cap:${senderId}:${y}`)}&select=target_id`);
+  const rows = r.ok ? await r.json() : [];
+  return rows.length > 0;
 }
 
 async function handleDm(senderId, msg, cfg) {
@@ -155,9 +164,11 @@ async function handleDm(senderId, msg, cfg) {
   if (cfg.ig_autoreply_mode === 'ai' && process.env.ANTHROPIC_API_KEY && userText) {
     await logDm(senderId, 'user', userText);
 
+    const count = await todaysCount(senderId);
+
     // Gunluk tavana gelindiyse: sessiz kesme yerine BIR KEZ kibar veda +
     // uygulamaya davet; sonraki mesajlarda o gun sessiz kal.
-    if ((await todaysCount(senderId)) >= DAILY_DM_CAP) {
+    if (count >= DAILY_DM_CAP) {
       const day = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       if (await claim(`cap:${senderId}:${day}`, 'dm')) {
         const closing = cfg.ig_autoreply_close_text || '';
@@ -169,7 +180,14 @@ async function handleDm(senderId, msg, cfg) {
       return;
     }
 
-    const reply = await aiReply(senderId, userText, cfg);
+    // Dun tavanda vedalastiysak ve bu, bugunun ilk cevabiysa: donus hatirlatmasi
+    let extra = '';
+    if (count === 0 && (await cappedYesterday(senderId))) {
+      extra = 'NOT: Bu kullaniciya dun gunluk sinira gelindigi icin veda edilip GEONI '
+        + 'uygulamasi onerilmisti. Simdi geri geldi. Cevabinin BASINDA samimi tek cumleyle '
+        + 'sor: uygulamayi indirip skoruna bakti mi? Sonra mesajina normal sekilde cevap ver.';
+    }
+    const reply = await aiReply(senderId, userText, cfg, extra);
     if (reply) {
       await sendDm(senderId, reply, cfg.ig_access_token);
       await logDm(senderId, 'assistant', reply);
