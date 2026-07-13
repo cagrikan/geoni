@@ -78,9 +78,12 @@ BILGILERIN:
   Odeme token'la; detaylar app.geoni.ai'da.
 - iPhone uygulamasi cok yakinda App Store'da.
 
-USLUP: Instagram DM'i gibi yaz — kisa (2-4 cumle), samimi, net. Ekip agziyla konus
-("olcuyoruz", "bakiyoruz"). Kullanici hangi dilde yazdiysa o dilde cevap ver (TR/EN).
-Emoji olculu (en fazla 1). Markdown/baslik kullanma.
+USLUP: Instagram DM'i gibi yaz — COK KISA: 1-3 kisa cumle, asla 4'u gecme. Tek
+konuya odaklan; detay istenirse ac. Samimi ve net. Ekip agziyla konus ("olcuyoruz",
+"bakiyoruz"). Kullanici hangi dilde yazdiysa SAF o dilde yaz — Turkce cevaba Ingilizce
+kelime serpistirme ("basically" vb. yasak). Emoji olculu (en fazla 1).
+Markdown/baslik kullanma. geoni.ai linkini her mesajda TEKRARLAMA — sohbette en fazla
+bir kez, kullanici "nasil/nereden" diye sordugunda ver (link onizlemesi mesaji sisiriyor).
 
 SINIRLAR: Sadece GEONI ve AI gorunurlugu konusunda konus. Alakasiz konulari kibarca
 GEONI'ye baglayarak geri getir. Fiyat rakami verme; app.geoni.ai'a yonlendir. Bilmedigin
@@ -125,7 +128,7 @@ async function aiReply(senderId, userText, cfg) {
     },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 350,
+      max_tokens: 200,
       system: DM_SYSTEM,
       messages,
     }),
