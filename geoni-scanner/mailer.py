@@ -7,7 +7,8 @@ so email delivery issues never block or fail the audit job itself.
 
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -90,11 +91,15 @@ _EMAIL_TEXT = {
 
 
 def _format_datetime(iso_str: str | None, lang: str = "tr") -> str:
-    """'3 Temmuz 2026, 15:30' / 'July 3, 2026, 15:30' bicimine cevirir; ayristirilamazsa simdiki zamani kullanir."""
+    """'3 Temmuz 2026, 15:30' / 'July 3, 2026, 15:30' bicimine cevirir; ayristirilamazsa simdiki zamani kullanir.
+    Sunucu UTC calisir; kullaniciya Turkiye saatiyle gosterilir (naive degerler UTC varsayilir)."""
     try:
-        dt = datetime.fromisoformat(iso_str) if iso_str else datetime.now()
+        dt = datetime.fromisoformat(iso_str) if iso_str else datetime.now(timezone.utc)
     except ValueError:
-        dt = datetime.now()
+        dt = datetime.now(timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    dt = dt.astimezone(ZoneInfo("Europe/Istanbul"))
     if lang == "en":
         return f"{_EN_MONTHS[dt.month - 1]} {dt.day}, {dt.year}, {dt.strftime('%H:%M')}"
     return f"{dt.day} {_TR_MONTHS[dt.month - 1]} {dt.year}, {dt.strftime('%H:%M')}"
