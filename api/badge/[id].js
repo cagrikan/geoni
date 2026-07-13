@@ -29,7 +29,13 @@ export default async function handler(req, res) {
   }
 
   const score = Math.round(data.score);
-  const color = score >= 70 ? '#2fbd84' : score >= 40 ? '#F5A623' : '#f0616d';
+  // Rozet yalnizca "yesil" (70+) skorlara verilir — dusuk skoru kimse
+  // sitesine asmaz; asilsa da iki taraf icin kotu vitrin olur.
+  if (score < 70) {
+    res.statusCode = 404;
+    return res.end('badge available for scores 70+');
+  }
+  const color = '#2fbd84';
   const label = esc((data.label || '').slice(0, 30));
 
   // Sabit genislikli, koyu marka temali "shield" rozet
