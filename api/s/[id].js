@@ -62,6 +62,7 @@ body{min-height:100vh;display:grid;place-items:center;background:#0A0B10;color:#
 .logo img{border-radius:7px}
 .label{font-size:1.05rem;font-weight:600;color:#A8ADC4;word-break:break-word}
 .score{font-size:4.6rem;font-weight:800;letter-spacing:-.03em;line-height:1.1;color:${scoreColor};margin:6px 0 2px}
+.score small{font-size:1.7rem;font-weight:700;color:#6E7391;letter-spacing:0;margin-left:2px}
 .of{color:#6E7391;font-size:.95rem;margin-bottom:18px}
 .bar{height:8px;border-radius:99px;background:#1c1f2e;overflow:hidden;margin-bottom:26px}
 .bar i{display:block;height:100%;width:${Math.max(score, 4)}%;background:${scoreColor};border-radius:99px}
@@ -76,8 +77,8 @@ body{min-height:100vh;display:grid;place-items:center;background:#0A0B10;color:#
 <main class="card">
   <a class="logo" href="https://geoni.ai"><img src="/favicon.png" width="24" height="24" alt="">geoni</a>
   <div class="label">${label}${isWeb ? '' : ' · ' + (data.type === 'person' ? 'kişi' : 'marka')}</div>
-  <div class="score">${score}</div>
-  <div class="of">/ 100 · AI Görünürlük Skoru</div>
+  <div class="score">${score}<small>/100</small></div>
+  <div class="of">AI Görünürlük Skoru</div>
   <div class="bar"><i></i></div>
   <div class="q">AI seni tanıyor mu?</div>
   <p class="sub">Bu skor; ChatGPT, Gemini ve Perplexity'nin bu ${isWeb ? 'siteyi' : 'ismi'} ne kadar tanıdığını gösteriyor. Peki seninki kaç?</p>
