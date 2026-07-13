@@ -37,12 +37,10 @@ export default async function handler(req, res) {
   }
   const color = '#2fbd84';
   const label = esc((data.label || '').slice(0, 30));
-  const lang = String(req.query.lang || 'tr').toLowerCase() === 'en' ? 'en' : 'tr';
-  const eyebrow = lang === 'en' ? 'CHECKED BY GEONI' : 'AI B\u0130Z\u0130 G\u00d6R\u00dcYOR';
 
   // Sabit genislikli, koyu marka temali "shield" rozet
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="232" height="44" role="img" aria-label="AI-visible — checked by GEONI">
-  <title>${label} — ${lang === 'en' ? 'AI-visible, checked by GEONI' : 'AI bizi görüyor — GEONI doğruladı'}</title>
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="232" height="44" role="img" aria-label="AI Friendly — checked by GEONI">
+  <title>${label} — AI Friendly · Checked by GEONI</title>
   <defs>
     <clipPath id="r"><rect width="232" height="44" rx="9"/></clipPath>
   </defs>
@@ -57,8 +55,8 @@ export default async function handler(req, res) {
       <circle cx="21.5" cy="15" r="2" fill="#F5A623"/>
       <line x1="20" y1="7" x2="21.5" y2="15" stroke="#7C86F5" stroke-width="1" opacity=".6"/>
     </g>
-    <text x="46" y="18" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#A8ADC4" letter-spacing=".4">${eyebrow}</text>
-    <text x="46" y="33" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="600" fill="#E7E9F2">geoni.ai</text>
+    <text x="46" y="18" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#A8ADC4" letter-spacing=".6">AI FRIENDLY</text>
+    <text x="46" y="33" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="700" fill="#E7E9F2">Checked by GEONI</text>
     <path d="M188 22.5 l5.5 5.5 l11 -12" fill="none" stroke="${color}" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
 </svg>`;
