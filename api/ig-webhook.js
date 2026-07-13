@@ -1,13 +1,16 @@
-// Instagram webhook alicisi + kuralli otomatik cevaplayici: geoni.ai/api/ig-webhook
-// - GET: Meta abonelik dogrulamasi (hub.challenge yankilanir)
-// - POST: imza dogrulanir (X-Hub-Signature-256), olay ig_events'e yazilir;
-//   ig_autoreply_enabled='true' ise yorum/DM'lere SABLONLU tek-seferlik cevap.
-// Tum ayarlar Supabase app_config'te (service-role only): acma/kapama anahtari,
-// sablon metinler, IG token — deploy'suz degistirilebilir. Tekillestirme
-// ig_replies tablosuyla: ayni yoruma bir kez, ayni gonderene gunde bir DM.
+// Instagram webhook alicisi + AI DM asistani: geoni.ai/api/ig-webhook
+// - GET: Meta abonelik dogrulamasi
+// - POST: imza dogrulanir, olay ig_events'e yazilir; ig_autoreply_enabled='true' ise:
+//   * DM'ler: ig_autoreply_mode='ai' -> Claude ile GERCEK SOHBET (gecmis turlar
+//     ig_dm_log'dan; AI gorunurlugu/GEONI konusunda bilgili, kisa IG uslubu).
+//     mode='template' -> tek satir sablon (yedek).
+//   * Yorumlar: tek-seferlik kisa sablon (sohbet DM'de yasar).
+// Ayarlar app_config'te (deploy'suz degisir). Idempotency: mesaj mid'i ve
+// yorum id'si ig_replies ile tekillestirilir (Meta yeniden gonderimlerine dayanikli).
 import crypto from 'crypto';
 
 const GRAPH = 'https://graph.instagram.com/v23.0';
+const DAILY_DM_CAP = 30; // gonderen basina gunluk AI cevap tavani (dongü/istismar freni)
 
 function sb(path, init = {}) {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -23,14 +26,14 @@ function sb(path, init = {}) {
 }
 
 async function getConfig() {
-  const keys = 'ig_verify_token,ig_app_secret,ig_access_token,ig_self_id,ig_autoreply_enabled,ig_autoreply_comment_text,ig_autoreply_dm_text';
+  const keys = 'ig_verify_token,ig_app_secret,ig_access_token,ig_self_id,ig_autoreply_enabled,ig_autoreply_mode,ig_autoreply_comment_text,ig_autoreply_dm_text';
   const r = await sb(`app_config?key=in.(${keys})&select=key,value`);
   const rows = r.ok ? await r.json() : [];
   return Object.fromEntries(rows.map((x) => [x.key, x.value]));
 }
 
-/** Ilk kez mi? ig_replies'e ekler; zaten varsa false doner (ikinci cevap yok). */
-async function claimReply(targetId, kind) {
+/** Idempotency: ayni hedefe ikinci islem yok. Ilk kez ise true. */
+async function claim(targetId, kind) {
   const r = await sb('ig_replies?on_conflict=target_id', {
     method: 'POST',
     headers: { Prefer: 'resolution=ignore-duplicates,return=representation' },
@@ -57,11 +60,104 @@ async function sendDm(recipientId, text, token) {
   }).catch(() => {});
 }
 
-function today() {
-  return new Date().toISOString().slice(0, 10).replace(/-/g, '');
+// ── AI DM asistani ─────────────────────────────────────────────────────────
+
+const DM_SYSTEM = `Sen GEONI'nin Instagram DM asistanisin. GEONI (geoni.ai), markalarin,
+kisilerin ve web sitelerinin AI cevap motorlarindaki (ChatGPT, Gemini, Perplexity, Claude)
+gorunurlugunu olcen ve iyilestiren bir platformdur.
+
+BILGILERIN:
+- Nasil olculur: Gercek kullanicilarin soracagi sorular 4 AI motoruna ayni anda sorulur;
+  marka/kisi cevaplarda geciyor mu, nasil tanimlaniyor, hangi rakipler oneriliyor bakilir.
+- Skorun boyutlari: taninirlik, kategori gorunurlugu (SoV), AI botlarina teknik erisim
+  (robots.txt/llms.txt), yapisal veri (schema), dizin kapsami, kaynak guveni. 0-100 skor.
+- Ucretsiz tarama: geoni.ai adresinde 60 saniyede — site, kisi, marka veya sosyal hesap.
+  Uyelik gerekmeden baslar.
+- Iyilestirme: uzman hizmetleri var (AI botlarina erisim dosyalari, schema kurulumu,
+  AI'larin alintilayacagi icerik, guvenilir kaynaklarda gorunurluk, bilgi tabani kaydi).
+  Odeme token'la; detaylar app.geoni.ai'da.
+- iPhone uygulamasi cok yakinda App Store'da.
+
+USLUP: Instagram DM'i gibi yaz — kisa (2-4 cumle), samimi, net. Ekip agziyla konus
+("olcuyoruz", "bakiyoruz"). Kullanici hangi dilde yazdiysa o dilde cevap ver (TR/EN).
+Emoji olculu (en fazla 1). Markdown/baslik kullanma.
+
+SINIRLAR: Sadece GEONI ve AI gorunurlugu konusunda konus. Alakasiz konulari kibarca
+GEONI'ye baglayarak geri getir. Fiyat rakami verme; app.geoni.ai'a yonlendir. Bilmedigin
+seyde durust ol ve ekibin donecegini soyle. Asla baska bir arac/rakip onerme.
+Sohbetin dogal yerinde ucretsiz taramayi hatirlat ama her mesajda tekrarlamaktan kacin.`;
+
+async function loadHistory(senderId, limit = 10) {
+  const r = await sb(`ig_dm_log?sender_id=eq.${encodeURIComponent(senderId)}&select=role,text&order=id.desc&limit=${limit}`);
+  const rows = r.ok ? await r.json() : [];
+  return rows.reverse().map((m) => ({ role: m.role, content: m.text }));
 }
 
-/** Olaylari isle: yorumlara ve DM'lere korumali otomatik cevap. */
+async function logDm(senderId, role, text) {
+  await sb('ig_dm_log', {
+    method: 'POST',
+    headers: { Prefer: 'return=minimal' },
+    body: JSON.stringify({ sender_id: senderId, role, text: String(text).slice(0, 4000) }),
+  }).catch(() => {});
+}
+
+async function todaysCount(senderId) {
+  const since = new Date();
+  since.setUTCHours(0, 0, 0, 0);
+  const r = await sb(`ig_dm_log?sender_id=eq.${encodeURIComponent(senderId)}&role=eq.assistant&created_at=gte.${since.toISOString()}&select=id`, {
+    headers: { Prefer: 'count=exact', Range: '0-0' },
+  });
+  const cr = r.headers.get('content-range') || '';
+  const total = parseInt(cr.split('/')[1] || '0', 10);
+  return Number.isFinite(total) ? total : 0;
+}
+
+async function aiReply(senderId, userText, cfg) {
+  if ((await todaysCount(senderId)) >= DAILY_DM_CAP) return null;
+  const history = await loadHistory(senderId);
+  const messages = [...history, { role: 'user', content: userText }];
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 350,
+      system: DM_SYSTEM,
+      messages,
+    }),
+  });
+  if (!r.ok) return null;
+  const data = await r.json();
+  const text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join(' ').trim();
+  return text || null;
+}
+
+async function handleDm(senderId, msg, cfg) {
+  const mid = msg.mid ? String(msg.mid) : null;
+  const userText = (msg.text || '').trim();
+  // Ayni mesaji (Meta tekrar gonderimi) iki kez isleme
+  if (mid && !(await claim(`mid:${mid}`, 'dm'))) return;
+
+  if (cfg.ig_autoreply_mode === 'ai' && process.env.ANTHROPIC_API_KEY && userText) {
+    await logDm(senderId, 'user', userText);
+    const reply = await aiReply(senderId, userText, cfg);
+    if (reply) {
+      await sendDm(senderId, reply, cfg.ig_access_token);
+      await logDm(senderId, 'assistant', reply);
+      return;
+    }
+  }
+  // Yedek: sablon (AI kapali/hata/bos mesaj) — gonderene gunde bir kez
+  const day = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  if (await claim(`dm:${senderId}:${day}`, 'dm')) {
+    await sendDm(senderId, cfg.ig_autoreply_dm_text || '', cfg.ig_access_token);
+  }
+}
+
 async function autoReply(body, cfg) {
   if (cfg.ig_autoreply_enabled !== 'true') return;
   const token = cfg.ig_access_token;
@@ -79,21 +175,18 @@ async function autoReply(body, cfg) {
     for (const m of dmEvents) {
       const sender = m.sender?.id && String(m.sender.id);
       const isEcho = !!m.message?.is_echo;
-      const hasText = !!m.message?.text || !!m.message?.mid;
-      if (!sender || sender === self || isEcho || !hasText) continue;
-      if (await claimReply(`dm:${sender}:${today()}`, 'dm')) {
-        await sendDm(sender, cfg.ig_autoreply_dm_text || '', token);
-      }
+      if (!sender || sender === self || isEcho || !m.message) continue;
+      await handleDm(sender, m.message, cfg);
     }
 
-    // Yorumlar
+    // Yorumlar: kisa tek-seferlik sablon (sohbet DM'de)
     for (const c of entry.changes || []) {
       if (c.field !== 'comments' || !c.value) continue;
       const v = c.value;
       const commentId = v.id && String(v.id);
       const from = v.from?.id && String(v.from.id);
-      if (!commentId || !from || from === self) continue; // kendi yorumlarimiza cevap yok
-      if (await claimReply(`cm:${commentId}`, 'comment')) {
+      if (!commentId || !from || from === self) continue;
+      if (await claim(`cm:${commentId}`, 'comment')) {
         await replyToComment(commentId, cfg.ig_autoreply_comment_text || '', token);
       }
     }
@@ -143,7 +236,6 @@ export default async function handler(req, res) {
   let body = {};
   try { body = JSON.parse(raw.toString('utf8')); } catch { /* bos birak */ }
 
-  // Ham olaylari sakla
   const rows = [];
   for (const entry of body.entry || []) {
     const fields = (entry.changes || []).map((c) => c.field);
@@ -158,8 +250,7 @@ export default async function handler(req, res) {
     }).catch(() => {});
   }
 
-  // Otomatik cevap — hata verse bile 200 doneriz (Meta tekrar denemesin)
-  try { await autoReply(body, cfg); } catch { /* sessiz */ }
+  try { await autoReply(body, cfg); } catch { /* cevap hatasi 200'u engellemez */ }
 
   res.statusCode = 200;
   return res.end('ok');
