@@ -4,6 +4,7 @@
     { "source": "/r/:slug", "destination": "/api/r/:slug" },
     { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/terms", "destination": "/terms.html" },
+    { "source": "/social-callback", "destination": "/social-callback.html" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
