@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>llms.txt Nedir, Nasıl Eklenir? — GEONI Rehber</title>
+<meta name="description" content="llms.txt, sitenizin kök dizininde duran ve AI modellerine sitenizi özetleyen metin dosyasıdır. Formatı, örneği ve 3 adımda nasıl ekleneceği bu rehberde. robots.txt'te AI botlarına izin verme listesiyle birlikte.">
+<link rel="canonical" href="https://geoni.ai/rehber/llms-txt-nedir">
+<link rel="icon" href="/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/rehber.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "llms.txt Nedir, Nasıl Eklenir?",
+      "description": "llms.txt, sitenizin kök dizininde duran ve AI modellerine sitenizi özetleyen metin dosyasıdır. Formatı, örneği ve nasıl ekleneceği.",
+      "author": { "@type": "Organization", "name": "GEONI", "url": "https://geoni.ai" },
+      "publisher": { "@id": "https://geoni.ai/#organization" },
+      "mainEntityOfPage": "https://geoni.ai/rehber/llms-txt-nedir",
+      "inLanguage": "tr"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "llms.txt zorunlu mu?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Hayır, gönüllü bir standarttır. Ancak maliyeti sıfıra yakın, potansiyel getirisi yüksektir: AI modellerine sitenizi doğru özetleme şansı verirsiniz ve alan hızla standartlaşmaktadır." }
+        },
+        {
+          "@type": "Question",
+          "name": "llms.txt ile robots.txt arasındaki fark nedir?",
+          "acceptedAnswer": { "@type": "Answer", "text": "robots.txt botlara neye erişebileceklerini söyler (izin/yasak); llms.txt ise AI modellerine sitenin ne olduğunu anlatır (özet, önemli sayfalar, konular). Biri kapı görevlisi, diğeri tanıtım broşürüdür." }
+        },
+        {
+          "@type": "Question",
+          "name": "llms.txt dosyamın çalıştığını nasıl doğrularım?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Tarayıcıda siteniz.com/llms.txt adresini açın: düz metin görünmeli, HTML sayfası değil. GEONI'nin ücretsiz taraması da llms.txt varlığını ve AI bot erişimini otomatik kontrol eder." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<nav class="nav">
+  <a href="/"><img src="/favicon.png" alt="" width="26" height="26" style="border-radius:6px">geoni</a>
+  <span class="crumb"><a href="/rehber">Rehber</a> / llms.txt</span>
+</nav>
+<main>
+  <span class="eyebrow">// GEONI Rehber</span>
+  <h1>llms.txt Nedir, Nasıl Eklenir?</h1>
+  <p class="updated">Son güncelleme: Temmuz 2026 · GEONI Ekibi</p>
+
+  <p class="lead"><b>llms.txt</b>, web sitenizin kök dizininde duran ve AI modellerine <b>sitenizin ne olduğunu, önemli sayfalarını ve öne çıkan konularını</b> özetleyen düz metin (Markdown) dosyasıdır. robots.txt botlara <i>nereye girebileceklerini</i> söylerken, llms.txt <i>sizi nasıl anlamaları gerektiğini</i> anlatır.</p>
+
+  <h2>Neden eklemelisiniz?</h2>
+  <p>AI motorları bir siteyi işlerken sınırlı bir bağlam bütçesiyle çalışır. llms.txt, bu bütçeyi sizin lehinize kullanır: modeli, sizin yazdığınız doğru özete ve en önemli sayfalarınıza yönlendirir. Dosya yoksa model sitenizi kendi tahminleriyle özetler — eksik ya da yanlış anlayabilir.</p>
+  <p>Maliyeti tek bir metin dosyası, getirisi ise markanızın AI cevaplarında <b>doğru tanımlanma</b> olasılığıdır.</p>
+
+  <h2>Format: basit bir örnek</h2>
+  <pre><code># Marka Adı
+&gt; Tek cümlelik tanım: ne yaparsınız, kim için.
+
+## Önemli Sayfalar
+- [Ana Sayfa](https://siteniz.com/): kısa açıklama
+- [Ürünler](https://siteniz.com/urunler): kısa açıklama
+- [Hakkında](https://siteniz.com/hakkinda): kısa açıklama
+
+## Öne Çıkan Konular
+- Uzmanı olduğunuz konu 1
+- Uzmanı olduğunuz konu 2</code></pre>
+  <p>Kurallar basittir: Markdown yazımı, <code>#</code> ile marka adı, <code>&gt;</code> ile tek cümlelik tanım, ardından bağlantı listeleri. Canlı bir örnek için <a href="https://geoni.ai/llms.txt" style="color:var(--accent)">geoni.ai/llms.txt</a> dosyasına bakabilirsiniz.</p>
+
+  <h2>3 adımda ekleme</h2>
+  <ol>
+    <li><b>Dosyayı hazırla:</b> Yukarıdaki formatta, sitenizi dürüstçe özetleyen bir metin yazın. Abartı değil, netlik kazandırır.</li>
+    <li><b>Kök dizine yükle:</b> Dosya <code>siteniz.com/llms.txt</code> adresinden erişilebilir olmalı. WordPress'te dosya yöneticisi eklentisiyle, diğer sistemlerde FTP/hosting paneliyle kök dizine (index dosyanızla aynı seviyeye) koyun.</li>
+    <li><b>Doğrula:</b> Tarayıcıda <code>siteniz.com/llms.txt</code> açın — düz metin görünmeli. Bir yönlendirme veya HTML sayfası görüyorsanız sunucu/rewrite ayarınız dosyayı eziyor demektir.</li>
+  </ol>
+
+  <h2>Tamamlayıcısı: robots.txt'te AI botlarına izin</h2>
+  <p>llms.txt'i okusun istediğiniz botların siteye erişebilmesi gerekir. robots.txt dosyanızda başlıca AI tarayıcılarına izin verin:</p>
+  <pre><code>User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /</code></pre>
+  <p>Kritik ayrıntı: birçok site, farkında olmadan AI botlarını <code>Disallow</code> ile engeller — ve sonra AI cevaplarında neden görünmediğini merak eder. Önce erişimi kontrol edin.</p>
+
+  <h2>Sık sorulan sorular</h2>
+  <div class="faq">
+    <details><summary>llms.txt zorunlu mu?</summary><p>Hayır, gönüllü bir standart. Ama maliyeti sıfıra yakın, potansiyel getirisi yüksek: modele sitenizi doğru özetleme şansı verirsiniz.</p></details>
+    <details><summary>robots.txt'ten farkı ne?</summary><p>robots.txt kapı görevlisidir (kim girebilir); llms.txt tanıtım broşürüdür (burası nedir). İkisi birbirini tamamlar.</p></details>
+    <details><summary>Çalıştığını nasıl doğrularım?</summary><p>Tarayıcıda <code>siteniz.com/llms.txt</code> açın: düz metin görünmeli. GEONI'nin ücretsiz taraması da llms.txt varlığını ve AI bot erişimini otomatik kontrol eder.</p></details>
+  </div>
+
+  <div class="also">
+    <h3>Bu rehberdeki diğer yazılar</h3>
+    <ul>
+      <li><a href="/rehber/aeo-nedir">AEO (Answer Engine Optimization) nedir?</a></li>
+      <li><a href="/rehber/chatgpt-gorunurlugu">Markanız ChatGPT'de nasıl görünür olur?</a></li>
+    </ul>
+  </div>
+
+  <div class="cta">
+    <h2>Siteniz AI botlarına açık mı?</h2>
+    <p>GEONI taraması robots.txt kurallarınızı, llms.txt varlığınızı ve AI motorlarındaki görünürlüğünüzü 60 saniyede kontrol eder. İsterseniz dosyaları sizin için otomatik üretiriz.</p>
+    <a href="https://app.geoni.ai">Ücretsiz Tara →</a>
+  </div>
+</main>
+<footer>
+  <span>© 2026 geoni — Generative Engine Optimization</span>
+  <a href="/rehber">Rehber</a>
+  <a href="/privacy">Gizlilik</a>
+  <a href="/terms">Şartlar</a>
+</footer>
+</body>
+</html>

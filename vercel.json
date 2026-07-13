@@ -5,6 +5,10 @@
     { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/terms", "destination": "/terms.html" },
     { "source": "/social-callback", "destination": "/social-callback.html" },
+    { "source": "/rehber", "destination": "/rehber.html" },
+    { "source": "/rehber/aeo-nedir", "destination": "/rehber/aeo-nedir.html" },
+    { "source": "/rehber/llms-txt-nedir", "destination": "/rehber/llms-txt-nedir.html" },
+    { "source": "/rehber/chatgpt-gorunurlugu", "destination": "/rehber/chatgpt-gorunurlugu.html" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
