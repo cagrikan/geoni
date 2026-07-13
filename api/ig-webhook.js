@@ -26,7 +26,7 @@ function sb(path, init = {}) {
 }
 
 async function getConfig() {
-  const keys = 'ig_verify_token,ig_app_secret,ig_access_token,ig_self_id,ig_autoreply_enabled,ig_autoreply_mode,ig_autoreply_comment_text,ig_autoreply_dm_text';
+  const keys = 'ig_verify_token,ig_app_secret,ig_access_token,ig_self_id,ig_autoreply_enabled,ig_autoreply_mode,ig_autoreply_comment_text,ig_autoreply_dm_text,ig_autoreply_close_text';
   const r = await sb(`app_config?key=in.(${keys})&select=key,value`);
   const rows = r.ok ? await r.json() : [];
   return Object.fromEntries(rows.map((x) => [x.key, x.value]));
@@ -124,7 +124,6 @@ async function todaysCount(senderId) {
 }
 
 async function aiReply(senderId, userText, cfg) {
-  if ((await todaysCount(senderId)) >= DAILY_DM_CAP) return null;
   const history = await loadHistory(senderId);
   const messages = [...history, { role: 'user', content: userText }];
   const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -155,6 +154,21 @@ async function handleDm(senderId, msg, cfg) {
 
   if (cfg.ig_autoreply_mode === 'ai' && process.env.ANTHROPIC_API_KEY && userText) {
     await logDm(senderId, 'user', userText);
+
+    // Gunluk tavana gelindiyse: sessiz kesme yerine BIR KEZ kibar veda +
+    // uygulamaya davet; sonraki mesajlarda o gun sessiz kal.
+    if ((await todaysCount(senderId)) >= DAILY_DM_CAP) {
+      const day = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      if (await claim(`cap:${senderId}:${day}`, 'dm')) {
+        const closing = cfg.ig_autoreply_close_text || '';
+        if (closing) {
+          await sendDm(senderId, closing, cfg.ig_access_token);
+          await logDm(senderId, 'assistant', closing);
+        }
+      }
+      return;
+    }
+
     const reply = await aiReply(senderId, userText, cfg);
     if (reply) {
       await sendDm(senderId, reply, cfg.ig_access_token);
