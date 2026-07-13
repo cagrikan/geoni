@@ -10,7 +10,7 @@
 import crypto from 'crypto';
 
 const GRAPH = 'https://graph.instagram.com/v23.0';
-const DAILY_DM_CAP = 30; // gonderen basina gunluk AI cevap tavani (dongü/istismar freni)
+const DAILY_DM_CAP = 20; // gonderen basina gunluk AI cevap tavani (dongu/istismar freni)
 
 function sb(path, init = {}) {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
