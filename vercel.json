@@ -66,6 +66,10 @@
       "destination": "/api/badge/:id"
     },
     {
+      "source": "/ai-friendly",
+      "destination": "/api/ai-friendly"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
