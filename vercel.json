@@ -62,6 +62,10 @@
       "destination": "/download.html"
     },
     {
+      "source": "/badge/:id",
+      "destination": "/api/badge/:id"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
