@@ -7,4 +7,8 @@
   <url><loc>https://geoni.ai/rehber/chatgpt-gorunurlugu</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
   <url><loc>https://geoni.ai/privacy</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
   <url><loc>https://geoni.ai/terms</loc><changefreq>yearly</changefreq><priority>0.3</priority></url>
+  <url><loc>https://geoni.ai/guides</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://geoni.ai/guides/what-is-aeo</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://geoni.ai/guides/what-is-llms-txt</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://geoni.ai/guides/chatgpt-visibility</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
 </urlset>

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What Is llms.txt and How Do You Add It? — GEONI Guides</title>
+<meta name="description" content="llms.txt is a plain-text file at your site root that summarizes your site for AI models. Format, a live example, how to add it in 3 steps, and the robots.txt allow-list for AI crawlers.">
+<link rel="canonical" href="https://geoni.ai/guides/what-is-llms-txt">
+<link rel="alternate" hreflang="tr" href="https://geoni.ai/rehber/llms-txt-nedir">
+<link rel="alternate" hreflang="en" href="https://geoni.ai/guides/what-is-llms-txt">
+<link rel="alternate" hreflang="x-default" href="https://geoni.ai/guides/what-is-llms-txt">
+<link rel="icon" href="/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/rehber.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "What Is llms.txt and How Do You Add It?",
+      "description": "llms.txt is a plain-text file at your site root that summarizes your site for AI models. Format, example and installation.",
+      "author": { "@type": "Organization", "name": "GEONI", "url": "https://geoni.ai" },
+      "publisher": { "@id": "https://geoni.ai/#organization" },
+      "mainEntityOfPage": "https://geoni.ai/guides/what-is-llms-txt",
+      "inLanguage": "en"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Is llms.txt mandatory?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No — it is a voluntary standard. But the cost is near zero and the potential return is high: you give AI models the chance to summarize your site correctly, and the convention is standardizing quickly." }
+        },
+        {
+          "@type": "Question",
+          "name": "What is the difference between llms.txt and robots.txt?",
+          "acceptedAnswer": { "@type": "Answer", "text": "robots.txt tells bots what they may access (allow/deny); llms.txt tells AI models what your site is (summary, key pages, topics). One is the doorman, the other is the brochure." }
+        },
+        {
+          "@type": "Question",
+          "name": "How do I verify my llms.txt works?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Open yoursite.com/llms.txt in a browser: you should see plain text, not an HTML page. GEONI's free scan also checks llms.txt presence and AI crawler access automatically." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<nav class="nav">
+  <a href="/"><img src="/favicon.png" alt="" width="26" height="26" style="border-radius:6px">geoni</a>
+  <span class="crumb"><a href="/guides">Guides</a> / llms.txt · <a href="/rehber/llms-txt-nedir">TR</a></span>
+</nav>
+<main>
+  <span class="eyebrow">// GEONI Guides</span>
+  <h1>What Is llms.txt and How Do You Add It?</h1>
+  <p class="updated">Last updated: July 2026 · GEONI Team</p>
+
+  <p class="lead"><b>llms.txt</b> is a plain-text (Markdown) file that lives at your website's root and gives AI models <b>a summary of what your site is, its key pages and its main topics</b>. Where robots.txt tells bots <i>where they may go</i>, llms.txt tells them <i>how to understand you</i>.</p>
+
+  <h2>Why add one?</h2>
+  <p>AI engines process a site with a limited context budget. llms.txt spends that budget in your favor: it points the model to your own accurate summary and your most important pages. Without it, the model summarizes your site by guesswork — incompletely or incorrectly.</p>
+  <p>The cost is a single text file; the return is a better chance of being <b>described correctly</b> inside AI answers.</p>
+
+  <h2>Format: a minimal example</h2>
+  <pre><code># Brand Name
+&gt; One-sentence definition: what you do, for whom.
+
+## Key Pages
+- [Home](https://yoursite.com/): short description
+- [Products](https://yoursite.com/products): short description
+- [About](https://yoursite.com/about): short description
+
+## Main Topics
+- A topic you're an authority on
+- Another topic you're an authority on</code></pre>
+  <p>The rules are simple: Markdown syntax, <code>#</code> for the brand name, <code>&gt;</code> for a one-sentence definition, then link lists. For a live example, see <a href="https://geoni.ai/llms.txt" style="color:var(--accent)">geoni.ai/llms.txt</a>.</p>
+
+  <h2>Adding it in 3 steps</h2>
+  <ol>
+    <li><b>Write the file:</b> an honest summary of your site in the format above. Clarity wins, not hype.</li>
+    <li><b>Upload to the root:</b> the file must be reachable at <code>yoursite.com/llms.txt</code>. On WordPress use a file-manager plugin; elsewhere use FTP or your hosting panel — same level as your index file.</li>
+    <li><b>Verify:</b> open <code>yoursite.com/llms.txt</code> in a browser — you should see plain text. If you see a redirect or an HTML page, a server/rewrite rule is swallowing the file.</li>
+  </ol>
+
+  <h2>Its companion: allowing AI bots in robots.txt</h2>
+  <p>The bots you want reading your llms.txt must be able to reach your site at all. Allow the major AI crawlers in robots.txt:</p>
+  <pre><code>User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /</code></pre>
+  <p>A critical detail: many sites block AI bots with <code>Disallow</code> without realizing it — then wonder why they never appear in AI answers. Check access first.</p>
+
+  <h2>Frequently asked questions</h2>
+  <div class="faq">
+    <details><summary>Is llms.txt mandatory?</summary><p>No — a voluntary standard. But the cost is near zero and the return is high: you give the model a chance to summarize you correctly.</p></details>
+    <details><summary>How is it different from robots.txt?</summary><p>robots.txt is the doorman (who may enter); llms.txt is the brochure (what this place is). They complement each other.</p></details>
+    <details><summary>How do I verify it works?</summary><p>Open <code>yoursite.com/llms.txt</code> in a browser: plain text should appear. GEONI's free scan also checks llms.txt presence and AI crawler access automatically.</p></details>
+  </div>
+
+  <div class="also">
+    <h3>More in this guide</h3>
+    <ul>
+      <li><a href="/guides/what-is-aeo">What is AEO (Answer Engine Optimization)?</a></li>
+      <li><a href="/guides/chatgpt-visibility">How does your brand become visible in ChatGPT?</a></li>
+    </ul>
+  </div>
+
+  <div class="cta">
+    <h2>Is your site open to AI bots?</h2>
+    <p>A GEONI scan checks your robots.txt rules, llms.txt presence and your visibility across AI engines in 60 seconds. We can also generate the files for you.</p>
+    <a href="https://app.geoni.ai">Scan Free →</a>
+  </div>
+</main>
+<footer>
+  <span>© 2026 geoni — Generative Engine Optimization</span>
+  <a href="/guides">Guides</a>
+  <a href="/privacy">Privacy</a>
+  <a href="/terms">Terms</a>
+</footer>
+</body>
+</html>

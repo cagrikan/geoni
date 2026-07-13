@@ -42,6 +42,22 @@
       "destination": "/indir.html"
     },
     {
+      "source": "/guides",
+      "destination": "/guides.html"
+    },
+    {
+      "source": "/guides/what-is-aeo",
+      "destination": "/guides/what-is-aeo.html"
+    },
+    {
+      "source": "/guides/what-is-llms-txt",
+      "destination": "/guides/what-is-llms-txt.html"
+    },
+    {
+      "source": "/guides/chatgpt-visibility",
+      "destination": "/guides/chatgpt-visibility.html"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
