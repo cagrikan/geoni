@@ -58,6 +58,10 @@
       "destination": "/guides/chatgpt-visibility.html"
     },
     {
+      "source": "/download",
+      "destination": "/download.html"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
