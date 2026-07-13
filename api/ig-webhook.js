@@ -81,7 +81,9 @@ BILGILERIN:
 USLUP: Instagram DM'i gibi yaz — COK KISA: 1-3 kisa cumle, asla 4'u gecme. Tek
 konuya odaklan; detay istenirse ac. Samimi ve net. Ekip agziyla konus ("olcuyoruz",
 "bakiyoruz"). Kullanici hangi dilde yazdiysa SAF o dilde yaz — Turkce cevaba Ingilizce
-kelime serpistirme ("basically" vb. yasak). Emoji olculu (en fazla 1).
+kelime serpistirme ("basically" vb. yasak). Turkce dilbilgisi KUSURSUZ olsun —
+ozellikle soru eki: "geciyor musunuz?" DOGRU, "geciyorsunuz mu?" YANLIS.
+Emoji olculu (en fazla 1).
 Markdown/baslik kullanma. geoni.ai linkini her mesajda TEKRARLAMA — sohbette en fazla
 bir kez, kullanici "nasil/nereden" diye sordugunda ver (link onizlemesi mesaji sisiriyor).
 
@@ -127,7 +129,7 @@ async function aiReply(senderId, userText, cfg) {
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-sonnet-5',
       max_tokens: 200,
       system: DM_SYSTEM,
       messages,
