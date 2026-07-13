@@ -48,12 +48,28 @@ export default async function handler(req, res) {
     <rect width="232" height="44" fill="#0A0B10"/>
     <rect x="160" width="72" height="44" fill="#10121A"/>
     <rect width="232" height="44" rx="9" fill="none" stroke="rgba(124,134,245,.45)" stroke-width="1.5"/>
-    <!-- G mark: yildiz kumesi -->
-    <g transform="translate(12,10)">
-      <path d="M17 4 A9.5 9.5 0 1 0 17 20" fill="none" stroke="#7C86F5" stroke-width="2.6" stroke-linecap="round"/>
-      <circle cx="20" cy="7" r="1.6" fill="#7C86F5"/>
-      <circle cx="21.5" cy="15" r="2" fill="#F5A623"/>
-      <line x1="20" y1="7" x2="21.5" y2="15" stroke="#7C86F5" stroke-width="1" opacity=".6"/>
+    <!-- Gercek GEONI logosu (sitedeki vektorle birebir; 80x80 -> 26px olcek) -->
+    <g transform="translate(10,9) scale(0.325)">
+      <line x1="38" y1="12" x2="25" y2="22" stroke="#7C86F5" stroke-width="2" opacity=".4"/>
+      <line x1="10" y1="40" x2="20" y2="25" stroke="#7C86F5" stroke-width="2" opacity=".4"/>
+      <line x1="10" y1="40" x2="18" y2="56" stroke="#7C86F5" stroke-width="2" opacity=".4"/>
+      <line x1="38" y1="68" x2="25" y2="58" stroke="#7C86F5" stroke-width="2" opacity=".5"/>
+      <line x1="60" y1="40" x2="70" y2="24" stroke="#7C86F5" stroke-width="2" opacity=".5"/>
+      <line x1="38" y1="12" x2="52" y2="8"  stroke="#7C86F5" stroke-width="2" opacity=".5"/>
+      <line x1="52" y1="8"  x2="70" y2="24" stroke="#7C86F5" stroke-width="2" opacity=".5"/>
+      <path d="M 38 12 A 30 30 0 1 0 38 68" fill="none" stroke="#7C86F5" stroke-width="6.5" stroke-linecap="round"/>
+      <path d="M 50 40 L 62 40" fill="none" stroke="#7C86F5" stroke-width="6.5" stroke-linecap="round"/>
+      <path d="M 62 40 L 62 58" fill="none" stroke="#7C86F5" stroke-width="6.5" stroke-linecap="round"/>
+      <circle cx="38" cy="12" r="3" fill="#7C86F5"/>
+      <circle cx="10" cy="40" r="2.5" fill="#7C86F5"/>
+      <circle cx="38" cy="68" r="3" fill="#7C86F5"/>
+      <circle cx="62" cy="40" r="4.2" fill="#F5A623"/>
+      <circle cx="62" cy="40" r="2.2" fill="#0A0B10"/>
+      <circle cx="62" cy="40" r="1.1" fill="#F5A623"/>
+      <circle cx="50" cy="40" r="2.5" fill="#7C86F5"/>
+      <circle cx="62" cy="58" r="2.5" fill="#7C86F5"/>
+      <circle cx="70" cy="24" r="2.5" fill="#7C86F5"/>
+      <circle cx="52" cy="8"  r="2.2" fill="#7C86F5"/>
     </g>
     <text x="46" y="18" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#A8ADC4" letter-spacing=".6">AI FRIENDLY</text>
     <text x="46" y="33" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="11" font-weight="700" fill="#E7E9F2">Checked by GEONI</text>
