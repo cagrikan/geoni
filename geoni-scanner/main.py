@@ -493,13 +493,14 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
         )
 
     job_id = str(uuid.uuid4())
-    jobs_store[job_id] = {"job_id": job_id, "status": "queued", "domain": request.domain, "email": request.email, "created_at": datetime.now().isoformat(), "result": None, "error": None}
-    audit_events[job_id] = asyncio.Queue()
     # Extract user_id from Authorization header if present
     auth_header = http_request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
 
     if sqs_enabled():
+        # DIKKAT: SQS modunda jobs_store/audit_events'e kayit ACILMAZ —
+        # is bu process'te kosmayacagi icin bellekteki 'queued' girisi status
+        # endpoint'inde DB'nin onune gecip sonsuza dek bayat kalirdi.
         # SQS modu: is worker'a gider. Once DB'de 'queued' satiri (status
         # polling'in kaynagi), sonra kuyruk mesaji. Private taramada satir
         # user_id'siz kalir -> kullanici gecmisinde asla gorunmez.
@@ -516,6 +517,8 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
         logger.info(f"Audit job {job_id} queued to SQS for {request.domain} (ip={client_ip})")
         return AuditResponse(job_id=job_id, status="queued", estimated_time=300)
 
+    jobs_store[job_id] = {"job_id": job_id, "status": "queued", "domain": request.domain, "email": request.email, "created_at": datetime.now().isoformat(), "result": None, "error": None}
+    audit_events[job_id] = asyncio.Queue()
     background_tasks.add_task(run_audit_job, job_id, request, token)
     logger.info(f"Audit job {job_id} created for {request.domain} (ip={client_ip})")
     return AuditResponse(job_id=job_id, status="queued", estimated_time=300)
