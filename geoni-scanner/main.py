@@ -104,6 +104,7 @@ class BrandCheckResponse(BaseModel):
     status: str
 
 from monitor import monitor_loop
+from content_gen import content_loop
 from stability import build_stability
 from scanqueue import acquire_scan_slot, release_scan_slot, estimate_wait_seconds, sqs_enabled, enqueue_scan
 
@@ -134,6 +135,9 @@ logger = logging.getLogger(__name__)
 async def _start_monitor():
     # Izleme v2: haftalik otomatik yeniden tarama dongusu (bkz. monitor.py)
     asyncio.create_task(monitor_loop())
+    # Haftalik icerik uretimi: gercek tarama verisinden sosyal icerik uretip
+    # kurucuya e-postalar (bkz. content_gen.py). Post/DM ATMAZ.
+    asyncio.create_task(content_loop())
 
 
 jobs_store = {}
