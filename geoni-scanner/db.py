@@ -724,6 +724,10 @@ async def get_share_result(job_id: str) -> dict | None:
 # vitrinden gizlenir.
 LEADERBOARD_HIDDEN_DOMAINS = {"cagricakir.com"}
 
+# Ligde gosterilen skorlama surumu (scoring.py SCORING_VERSION ile birlikte
+# guncellenir; import dongusune girmemek icin burada sabit).
+SCORING_VERSION_SHOWN = "v4"
+
 
 async def get_ai_friendly_list(limit: int = 10) -> list:
     """AI Friendly Ligi: en yuksek skorlu SITELER (type=web) — domain basina
@@ -740,8 +744,12 @@ async def get_ai_friendly_list(limit: int = 10) -> list:
         return []
     try:
         async with httpx.AsyncClient() as client:
+            # scoring_version filtresi: lig yalnizca guncel metodolojinin
+            # skorlarini gosterir — eski surum skorlariyla (farkli authority
+            # bilesimi) ayni tabloda karistirmak elmayla armudu siralamak olur.
             r = await client.get(
                 f"{SUPABASE_URL}/rest/v1/audits?type=eq.web&status=eq.complete"
+                f"&result_json->>scoring_version=eq.{SCORING_VERSION_SHOWN}"
                 f"&select=id,domain,score,created_at,pages:result_json->>total_pages"
                 f"&order=score.desc,created_at.desc&limit=300",
                 headers=_headers(), timeout=10,
