@@ -38,6 +38,10 @@
       "destination": "/rehber/chatgpt-gorunurlugu.html"
     },
     {
+      "source": "/rehber/markam-chatgptde-gorunmuyor",
+      "destination": "/rehber/markam-chatgptde-gorunmuyor.html"
+    },
+    {
       "source": "/indir",
       "destination": "/indir.html"
     },

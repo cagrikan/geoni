@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Markanız ChatGPT'de Neden Görünmüyor? 7 Neden ve Çözümü — GEONI Rehber</title>
+<meta name="description" content="Markanız Google'da 1. sırada ama ChatGPT sizi hiç önermiyor mu? AI cevaplarında görünmemenin 7 yaygın nedeni ve her birinin somut çözümü — bot erişimi, schema, kaynak güveni ve daha fazlası.">
+<link rel="canonical" href="https://geoni.ai/rehber/markam-chatgptde-gorunmuyor">
+<link rel="alternate" hreflang="tr" href="https://geoni.ai/rehber/markam-chatgptde-gorunmuyor">
+<link rel="alternate" hreflang="en" href="https://geoni.ai/guides/brand-not-in-chatgpt">
+<link rel="alternate" hreflang="x-default" href="https://geoni.ai/guides/brand-not-in-chatgpt">
+<link rel="icon" href="/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/rehber.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "Markanız ChatGPT'de Neden Görünmüyor? 7 Neden ve Çözümü",
+      "description": "AI cevaplarında görünmemenin 7 yaygın nedeni ve her birinin somut çözümü.",
+      "author": { "@type": "Organization", "name": "GEONI", "url": "https://geoni.ai" },
+      "publisher": { "@id": "https://geoni.ai/#organization" },
+      "mainEntityOfPage": "https://geoni.ai/rehber/markam-chatgptde-gorunmuyor",
+      "inLanguage": "tr"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Google'da 1. sırdayım ama ChatGPT beni önermiyor. Neden?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Google sıralaması ile AI cevabında görünmek farklı mekanizmalardır. ChatGPT eğitim verisini, canlı web erişimini ve yapısal sinyalleri birlikte kullanır. Siteniz AI botlarına kapalıysa, yapısal verisi eksikse veya AI'ların güvendiği kaynaklarda geçmiyorsa, Google'daki sıranız ne olursa olsun AI sizi 'göremeyebilir'." }
+        },
+        {
+          "@type": "Question",
+          "name": "ChatGPT'de görünmek için ne yapmam gerekir?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Öncelikle AI botlarına robots.txt üzerinden izin verin ve llms.txt ekleyin; yapısal veri (JSON-LD schema) ile kim olduğunuzu makinelere açıkça söyleyin; içeriğinizin ilk paragrafı soruların doğrudan cevabını versin; ve AI'ların güvendiği bağımsız kaynaklarda anılmaya çalışın. Önce mevcut durumunuzu ölçmek en verimli başlangıçtır." }
+        },
+        {
+          "@type": "Question",
+          "name": "AI'ın beni tanıyıp tanımadığını nasıl anlarım?",
+          "acceptedAnswer": { "@type": "Answer", "text": "AI motorlarına gerçek kullanıcı soruları sorup markanızın cevaplarda geçip geçmediğini, nasıl tanımlandığını ve yerinize hangi rakiplerin önerildiğini tarayarak anlayabilirsiniz. GEONI bu ölçümü 60 saniyede ücretsiz yapar ve 0-100 arası bir skor verir." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<nav class="nav">
+  <a href="/"><img src="/favicon.png" alt="" width="26" height="26" style="border-radius:6px">geoni</a>
+  <span class="crumb"><a href="/rehber">Rehber</a> / Markanız ChatGPT'de Görünmüyor</span>
+</nav>
+<main>
+  <span class="eyebrow">// GEONI Rehber</span>
+  <h1>Markanız ChatGPT'de Neden Görünmüyor?</h1>
+  <p class="updated">Son güncelleme: Temmuz 2026 · GEONI Ekibi</p>
+
+  <p class="lead">Sektörünüzde bilinen bir markasınız, Google'da da iyi sıradasınız. Ama ChatGPT'ye "bu alanda kimi önerirsin?" diye sorduğunuzda adınız hiç geçmiyor — yerinize rakibiniz çıkıyor. Bu, gitgide yaygınlaşan ve çoğu markanın farkında bile olmadığı bir durum. İşte en sık 7 neden ve her birinin çözümü.</p>
+
+  <h2>1. Siteniz AI botlarına kapalı</h2>
+  <p>AI motorları içeriğinizi ancak tarayabilirlerse öğrenir. <code>robots.txt</code> dosyanız GPTBot, ClaudeBot, PerplexityBot gibi tarayıcıları engelliyorsa, AI sitenizi hiç göremez. Birçok site bunu farkında olmadan yapar — genel bir engelleme kuralı AI botlarını da kapsar.</p>
+  <p><b>Çözüm:</b> robots.txt'te AI tarayıcılarına açıkça izin verin ve kök dizine bir <code>llms.txt</code> ekleyin. <a href="/rehber/llms-txt-nedir" style="color:var(--accent)">llms.txt rehberine bak →</a></p>
+
+  <h2>2. Yapısal veriniz (schema) eksik</h2>
+  <p>AI, "bu site kimin, ne satıyor, kim bu kişi?" sorusunu makine tarafında yapısal veriyle (JSON-LD schema) çözer. Organization, Product veya Person şemanız yoksa, AI içeriğinizi doğru yorumlayamaz ve sizi güvenle öneremez.</p>
+  <p><b>Çözüm:</b> Kim olduğunuzu açıkça söyleyen Organization/Person/Product/FAQ şemaları ekleyin.</p>
+
+  <h2>3. AI'ların güvendiği kaynaklarda geçmiyorsunuz</h2>
+  <p>AI motorları bir markayı önermeden önce, ona bağımsız kaynaklarda rastlamak ister. Yalnızca kendi sitenizde var olmak yeterli değildir; güvenilir yayınlarda, bilgi tabanlarında ve dizinlerde tutarlı bir varlığınız olmalı.</p>
+  <p><b>Çözüm:</b> Bağımsız ve güvenilir kaynaklarda kaynaklı biçimde anılmayı hedefleyin; global bilgi tabanlarında tutarlı bir marka kaydı oluşturun.</p>
+
+  <h2>4. İçeriğiniz "cevap-öncelikli" değil</h2>
+  <p>AI'lar, bir sorunun cevabını doğrudan ve alıntılanabilir netlikte veren metinleri tercih eder. Sayfalarınız uzun girişlerle başlıyor ve asıl cevabı gömüyorsa, AI o cevabı çıkarmakta zorlanır.</p>
+  <p><b>Çözüm:</b> Her sayfanın ilk paragrafı, hedeflediği sorunun doğrudan cevabını versin.</p>
+
+  <h2>5. Marka kimliğiniz AI için belirsiz</h2>
+  <p>Aynı isimde başka markalar/kişiler varsa ya da kimliğiniz net değilse, AI sizi başkalarıyla karıştırabilir veya emin olamadığı için hiç anmaz. "Tanınırlık" boyutundaki düşük skorun sık nedeni budur.</p>
+  <p><b>Çözüm:</b> Alan, sektör ve konum gibi ayırt edici bilgileri her yerde tutarlı kullanın; varlık kaydınızı netleştirin.</p>
+
+  <h2>6. Kategori sorularında görünmüyorsunuz (Share of Voice)</h2>
+  <p>AI sizi ismen tanıyor olabilir — ama asıl önemli olan, sizi <b>tanımayan</b> bir kullanıcının "bu kategoride kimi önerirsin?" sorusunda çıkıp çıkmadığınızdır. Tanınmak ile önerilmek arasında dünya kadar fark vardır.</p>
+  <p><b>Çözüm:</b> Kategori görünürlüğünüzü (SoV) ölçün ve hangi konularda kaybettiğinizi görün.</p>
+
+  <h2>7. Ölçmüyorsunuz — dolayısıyla yönetmiyorsunuz</h2>
+  <p>AI görünürlüğü durağan değildir: modeller güncellenir, cevaplar değişir, rakipler öne geçer. Ölçmediğiniz bir şeyi iyileştiremezsiniz; çoğu marka bu yeni yarışta nerede durduğunu hiç bilmez.</p>
+  <p><b>Çözüm:</b> Görünürlüğünüzü düzenli ölçün ve zaman içindeki değişimi izleyin.</p>
+
+  <h2>Nereden başlamalı?</h2>
+  <p>Bu yedi nedenin hangilerinin sizde geçerli olduğunu tahmin etmek yerine ölçmek, en verimli başlangıçtır. Tek bir tarama; AI'ın sizi tanıyıp tanımadığını, kategori sorularında geçip geçmediğinizi, botlara açık olup olmadığınızı ve yerinize hangi rakiplerin önerildiğini birlikte gösterir.</p>
+
+  <h2>Sık sorulan sorular</h2>
+  <div class="faq">
+    <details><summary>Google'da 1. sırdayım ama ChatGPT beni önermiyor. Neden?</summary><p>Google sıralaması ile AI cevabında görünmek farklı mekanizmalardır. Siteniz AI botlarına kapalıysa, yapısal verisi eksikse veya AI'ların güvendiği kaynaklarda geçmiyorsa, sıranız ne olursa olsun AI sizi göremeyebilir.</p></details>
+    <details><summary>ChatGPT'de görünmek için ne yapmam gerekir?</summary><p>AI botlarına izin verin (robots.txt + llms.txt), yapısal veri ekleyin, cevap-öncelikli içerik üretin ve güvenilir kaynaklarda anılmaya çalışın. Önce mevcut durumu ölçmek en verimli başlangıçtır.</p></details>
+    <details><summary>AI'ın beni tanıyıp tanımadığını nasıl anlarım?</summary><p>AI motorlarına gerçek kullanıcı soruları sorup markanızın geçip geçmediğini, nasıl tanımlandığını ve yerinize kimin önerildiğini tarayarak. GEONI bunu 60 saniyede ücretsiz yapıp 0-100 skor verir.</p></details>
+  </div>
+
+  <div class="also">
+    <h3>Bu rehberdeki diğer yazılar</h3>
+    <ul>
+      <li><a href="/rehber/aeo-nedir">AEO (Answer Engine Optimization) nedir?</a></li>
+      <li><a href="/rehber/llms-txt-nedir">llms.txt nedir, nasıl eklenir?</a></li>
+      <li><a href="/rehber/chatgpt-gorunurlugu">Markanız ChatGPT'de nasıl görünür olur?</a></li>
+    </ul>
+  </div>
+
+  <div class="cta">
+    <h2>AI seni tanıyor mu?</h2>
+    <p>Yukarıdaki yedi nedenin hangisinin sende geçerli olduğunu 60 saniyede öğren — skor, rakip analizi ve fırsat konuları tek raporda. Ücretsiz.</p>
+    <a href="https://app.geoni.ai">Ücretsiz Tara →</a>
+  </div>
+</main>
+<footer>
+  <span>© 2026 geoni — Generative Engine Optimization</span>
+  <a href="/rehber">Rehber</a>
+  <a href="/privacy">Gizlilik</a>
+  <a href="/terms">Şartlar</a>
+</footer>
+</body>
+</html>
