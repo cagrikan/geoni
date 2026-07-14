@@ -82,8 +82,9 @@ body{min-height:100vh;background:#0A0B10;color:#E7E9F2;font-family:'Inter',-appl
 .lang{margin-left:auto;font-size:.8rem;color:#6E7391}
 .lang a{color:#A8ADC4;text-decoration:none}
 .lang b{color:#E7E9F2}
-.seal{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(47,189,132,.4);background:rgba(47,189,132,.08);color:#2fbd84;font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-radius:999px;padding:5px 13px;margin-bottom:14px}
-h1{font-size:clamp(1.8rem,5vw,2.5rem);font-weight:800;letter-spacing:-.02em;margin-bottom:10px}
+.titlerow{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px}
+.seal{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(47,189,132,.4);background:rgba(47,189,132,.08);color:#2fbd84;font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-radius:999px;padding:5px 13px;white-space:nowrap}
+h1{font-size:clamp(1.8rem,5vw,2.5rem);font-weight:800;letter-spacing:-.02em}
 .sub{color:#A8ADC4;font-size:.98rem;max-width:56ch;margin-bottom:32px}
 table{width:100%;border-collapse:collapse;background:#10121A;border:1px solid rgba(124,134,245,.18);border-radius:14px;overflow:hidden;font-size:.95rem}
 thead th{font-family:'JetBrains Mono',monospace;font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:#6E7391;text-align:left;padding:12px 16px;border-bottom:1px solid rgba(124,134,245,.18)}
@@ -115,8 +116,10 @@ tbody tr:nth-child(1) .rank{color:#F5A623}
     <a class="brand" href="https://geoni.ai"><img src="/favicon.png" width="24" height="24" alt="">geoni</a>
     <div class="lang">${lang === 'tr' ? `<b>TR</b> · <a href="?lang=en">EN</a>` : `<a href="?lang=tr">TR</a> · <b>EN</b>`}</div>
   </div>
-  <div class="seal">✓ AI FRIENDLY · CHECKED BY GEONI</div>
-  <h1>${L.h1}</h1>
+  <div class="titlerow">
+    <h1>${L.h1}</h1>
+    <div class="seal">✓ AI FRIENDLY · CHECKED BY GEONI</div>
+  </div>
   <p class="sub">${L.sub}</p>
   <div class="tablewrap"><table>
     <thead><tr><th>#</th><th>${L.col_site}</th><th>${L.col_score}</th><th>${L.col_seal}</th><th>${L.col_date}</th></tr></thead>
