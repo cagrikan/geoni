@@ -10,14 +10,47 @@ tahmini bekleme ~X dk" mesaji gosterilir. Kullanici taramalari ve izleme
 kullaniciyla yarisip kaynak tuketemez.
 
 Kalici/dagitik kuyruk (SQS vb.) gerektiginde tek degisim noktasi burasi.
+
+SQS MODU (SCAN_QUEUE_URL doluysa): API taramayi kendisi calistirmaz; isi SQS'e
+yazar, ayri worker servisi (worker.py) ceker. Semafor worker icinde ayni sekilde
+calisir (worker basina SCAN_CONCURRENCY). Env bos birakilirsa eski in-process
+davranis aynen korunur — guvenli geri donus yolu budur.
 """
 
 import asyncio
+import json
 import math
 import os
 
 SCAN_CONCURRENCY = int(os.environ.get("SCAN_CONCURRENCY", "2"))
 AVG_SCAN_SECONDS = int(os.environ.get("AVG_SCAN_SECONDS", "150"))  # kaba ortalama
+SCAN_QUEUE_URL = os.environ.get("SCAN_QUEUE_URL", "")
+
+_sqs_client = None
+
+
+def sqs_enabled() -> bool:
+    return bool(SCAN_QUEUE_URL)
+
+
+def _sqs():
+    global _sqs_client
+    if _sqs_client is None:
+        import boto3
+        # Bolge kuyruk URL'sinden cikarilir (https://sqs.eu-central-1.amazonaws.com/...)
+        region = SCAN_QUEUE_URL.split(".")[1] if "sqs." in SCAN_QUEUE_URL else None
+        _sqs_client = boto3.client("sqs", region_name=region)
+    return _sqs_client
+
+
+async def enqueue_scan(payload: dict) -> None:
+    """Is tanimini SQS'e yazar. boto3 senkron oldugu icin thread'e atilir;
+    hata yutulmaz — cagiran taraf 500 dondursun ki kullanici kaybolmus
+    bir taramaya bakakalmasin."""
+    body = json.dumps(payload, ensure_ascii=False)
+    await asyncio.to_thread(
+        _sqs().send_message, QueueUrl=SCAN_QUEUE_URL, MessageBody=body
+    )
 
 scan_semaphore = asyncio.Semaphore(SCAN_CONCURRENCY)
 _counters = {"waiting": 0}

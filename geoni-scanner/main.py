@@ -27,6 +27,7 @@ from ratelimit import enforce_audit_rate_limits, RateLimitExceeded
 from mailer import send_audit_report_email, send_purchase_email, send_refund_email
 from brand_recall import check_brand_recall, infer_brand_identity
 from db import (
+    create_pending_audit, update_audit_status, get_audit_row,
     save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits,
     is_strict_admin, get_admin_summary, get_admin_scans_daily, get_admin_credits_stats, get_admin_provider_usage,
     admin_list_users, admin_list_audits, admin_get_audit, admin_adjust_credits, admin_set_is_admin,
@@ -103,7 +104,7 @@ class BrandCheckResponse(BaseModel):
 
 from monitor import monitor_loop
 from stability import build_stability
-from scanqueue import acquire_scan_slot, release_scan_slot, estimate_wait_seconds
+from scanqueue import acquire_scan_slot, release_scan_slot, estimate_wait_seconds, sqs_enabled, enqueue_scan
 
 app = FastAPI(title="GEONI Visibility Scanner MVP", version="0.9.0", description="AI visibility auditing with Playwright crawling, 6-dimension domain scoring, brand recall with rich context, identity verification, and email delivery")
 
@@ -188,6 +189,15 @@ def get_client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+async def set_job_status(job_id: str, status: str):
+    """Bellekteki durumu gunceller; SQS modunda ayni durumu audits satirina da
+    isler ki status endpoint'i hangi process'te olursa olsun dogru cevap versin."""
+    if job_id in jobs_store:
+        jobs_store[job_id]["status"] = status
+    if sqs_enabled():
+        await update_audit_status(job_id, status)
+
+
 async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
     queue = audit_events.get(job_id)
     msgs = AUDIT_PROGRESS_MESSAGES.get(request.lang, AUDIT_PROGRESS_MESSAGES["tr"])
@@ -206,17 +216,17 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
             emit(msgs["queue_wait"].format(mins=max(1, round(wait_s / 60))))
         await acquire_scan_slot()
         slot_acquired = True
-        jobs_store[job_id]["status"] = "crawling"
+        await set_job_status(job_id, "crawling")
         emit(msgs["crawling"].format(domain=request.domain))
         crawl_result = await crawl_domain(request.domain, request.page_limit)
         emit(msgs["pages_scanned"].format(count=crawl_result['total_pages']))
 
-        jobs_store[job_id]["status"] = "indexing"
+        await set_job_status(job_id, "indexing")
         emit(msgs["checking_bots"])
         indexing_status = await check_indexing_status(crawl_result["pages"])
         emit(msgs["index_checked"])
 
-        jobs_store[job_id]["status"] = "scoring"
+        await set_job_status(job_id, "scoring")
 
         # Infer brand name + topic from crawled page titles, then check
         # whether the LLM's trained knowledge already recognizes this brand
@@ -292,6 +302,11 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
         if request.private:
             if user_id:
                 await deduct_credits(user_id, 5, "web_audit_private", job_id)
+            # SQS modunda 'queued' satiri onceden acildi (user_id=None ile,
+            # gecmis listesinde gorunmez); sonucu satira isle ki polling bitsin.
+            if sqs_enabled():
+                await update_audit_status(job_id, "complete", result=result_payload,
+                                          score=result_payload.get("score"))
             logger.info(f"Private audit job {job_id} completed, not saved")
         else:
             await save_audit(job_id, {"domain": request.domain, "email": request.email}, jobs_store[job_id]["result"], user_id)
@@ -306,6 +321,8 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
         logger.error(f"Audit job {job_id} failed: {str(e)}")
         jobs_store[job_id]["status"] = "failed"
         jobs_store[job_id]["error"] = str(e)
+        if sqs_enabled():
+            await update_audit_status(job_id, "failed")
     finally:
         if slot_acquired:
             release_scan_slot()
@@ -481,6 +498,24 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
     # Extract user_id from Authorization header if present
     auth_header = http_request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
+
+    if sqs_enabled():
+        # SQS modu: is worker'a gider. Once DB'de 'queued' satiri (status
+        # polling'in kaynagi), sonra kuyruk mesaji. Private taramada satir
+        # user_id'siz kalir -> kullanici gecmisinde asla gorunmez.
+        row_user_id = None if request.private else (await get_user_id_from_token(token) if token else None)
+        if not await create_pending_audit(job_id, "web", request.domain, row_user_id):
+            raise HTTPException(status_code=503, detail="Scan could not be queued, please retry")
+        try:
+            await enqueue_scan({"kind": "web_audit", "job_id": job_id,
+                                "request": request.model_dump(), "token": token})
+        except Exception as e:
+            logger.error(f"SQS enqueue failed for {job_id}: {e}")
+            await update_audit_status(job_id, "failed")
+            raise HTTPException(status_code=503, detail="Scan could not be queued, please retry")
+        logger.info(f"Audit job {job_id} queued to SQS for {request.domain} (ip={client_ip})")
+        return AuditResponse(job_id=job_id, status="queued", estimated_time=300)
+
     background_tasks.add_task(run_audit_job, job_id, request, token)
     logger.info(f"Audit job {job_id} created for {request.domain} (ip={client_ip})")
     return AuditResponse(job_id=job_id, status="queued", estimated_time=300)
@@ -488,7 +523,16 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
 @app.get("/api/audit/{job_id}")
 async def get_audit_status(job_id: str):
     if job_id not in jobs_store:
-        raise HTTPException(status_code=404, detail="Audit job not found")
+        # SQS modu: is baska process'te (worker) kosuyor — durum DB'den okunur.
+        # Bu ayni zamanda API yeniden baslasa bile eski islerin sonucunu verir.
+        row = await get_audit_row(job_id) if sqs_enabled() else None
+        if row is None:
+            raise HTTPException(status_code=404, detail="Audit job not found")
+        if row["status"] == "complete":
+            return {"job_id": job_id, "status": "complete", "result": row.get("result_json"), "email_sent": True}
+        if row["status"] == "failed":
+            raise HTTPException(status_code=500, detail="Audit failed")
+        return {"job_id": job_id, "status": row["status"], "created_at": row.get("created_at")}
     job = jobs_store[job_id]
     if job["status"] == "complete":
         return {"job_id": job_id, "status": "complete", "result": job["result"], "email_sent": job.get("email_sent", False)}
@@ -498,10 +542,34 @@ async def get_audit_status(job_id: str):
         return {"job_id": job_id, "status": job["status"], "created_at": job["created_at"]}
 
 @app.get("/api/audit/{job_id}/stream")
-async def stream_audit(job_id: str):
+async def stream_audit(job_id: str, lang: str = "tr"):
     """Live crawl/index/model progress for the loading screen (SSE)."""
     queue = audit_events.get(job_id)
     if queue is None:
+        # SQS modu: is worker'da kosuyor, canli mesaj kuyrugu bu process'te yok.
+        # DB'deki status'u yoklayip kaba asama mesajlari uretiyoruz — web'in
+        # yukleme ekrani ayni sozlesmeyle calismaya devam eder.
+        if sqs_enabled() and await get_audit_row(job_id) is not None:
+            msgs = AUDIT_PROGRESS_MESSAGES.get(lang, AUDIT_PROGRESS_MESSAGES["tr"])
+            stage_msgs = {"crawling": msgs["crawling"].format(domain=""),
+                          "indexing": msgs["checking_bots"], "scoring": msgs["scoring"]}
+
+            async def db_generator():
+                last = None
+                for _ in range(300):  # ~15 dk emniyet tavani
+                    row = await get_audit_row(job_id)
+                    status = (row or {}).get("status")
+                    if status in ("complete", "failed") or row is None:
+                        yield f"data: {json.dumps({'done': True, 'status': status or 'complete'})}\n\n"
+                        return
+                    if status != last and status in stage_msgs:
+                        yield f"data: {json.dumps({'message': stage_msgs[status]})}\n\n"
+                        last = status
+                    await asyncio.sleep(3)
+                yield f"data: {json.dumps({'done': True, 'status': 'failed'})}\n\n"
+
+            return StreamingResponse(db_generator(), media_type="text/event-stream",
+                                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
         raise HTTPException(status_code=404, detail="Audit job not found")
 
     async def event_generator():

@@ -54,6 +54,66 @@ async def get_total_scan_count() -> int:
         return SCAN_COUNT_DISPLAY_BASE
 
 
+async def create_pending_audit(job_id: str, audit_type: str, domain: str, user_id: str = None) -> bool:
+    """SQS modu: is kuyruga yazilmadan ONCE 'queued' satiri olusur, boylece
+    status endpoint'i API process'inin belleginden bagimsiz her zaman cevap
+    verebilir. Basarisizsa False doner — cagiran is'i kuyruga YAZMASIN."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/audits",
+                headers=_headers(),
+                json={"id": job_id, "user_id": user_id, "type": audit_type,
+                      "domain": domain, "status": "queued", "credits_spent": 0},
+                timeout=10,
+            )
+            return r.status_code in (200, 201)
+    except Exception as e:
+        logger.warning(f"create_pending_audit failed: {e}")
+        return False
+
+
+async def update_audit_status(job_id: str, status: str, result: dict = None, score=None) -> None:
+    """Kosan isin durumunu audits satirina isler (SQS modunda). Sessizce
+    loglar — durum guncellemesi taramayi asla dusurmemeli."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return
+    patch: dict = {"status": status}
+    if result is not None:
+        patch["result_json"] = result
+    if score is not None:
+        patch["score"] = score
+    if status in ("complete", "failed"):
+        patch["completed_at"] = datetime.now(timezone.utc).isoformat()
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.patch(
+                f"{SUPABASE_URL}/rest/v1/audits?id=eq.{job_id}",
+                headers=_headers(), json=patch, timeout=10,
+            )
+    except Exception as e:
+        logger.warning(f"update_audit_status({job_id},{status}) failed: {e}")
+
+
+async def get_audit_row(job_id: str) -> dict | None:
+    """Status endpoint'inin DB fallback'i: satiri getirir, yoksa None."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/audits?id=eq.{job_id}&select=id,status,result_json,created_at",
+                headers=_headers(), timeout=10,
+            )
+            rows = r.json() if r.status_code == 200 else []
+            return rows[0] if rows else None
+    except Exception as e:
+        logger.warning(f"get_audit_row({job_id}) failed: {e}")
+        return None
+
+
 async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str = None, deduct: bool = True) -> bool:
     """Save domain audit result to Supabase audits table.
     deduct=False: otomatik izleme taramalari kontor dusmez (izleme ucretsiz)."""
@@ -79,7 +139,8 @@ async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str
         async with httpx.AsyncClient() as client:
             r = await client.post(
                 f"{SUPABASE_URL}/rest/v1/audits",
-                headers=_headers(),
+                # SQS modunda ayni id'li 'queued' satiri onceden var — upsert.
+                headers={**_headers(), "Prefer": "return=minimal,resolution=merge-duplicates"},
                 json=payload,
                 timeout=10,
             )
