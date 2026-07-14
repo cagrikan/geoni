@@ -73,7 +73,8 @@ export default async function handler(req, res) {
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{min-height:100vh;background:#0A0B10;color:#E7E9F2;font-family:'Inter',-apple-system,sans-serif;line-height:1.6}
+body{min-height:100vh;background:#0A0B10;color:#E7E9F2;font-family:'Inter',-apple-system,sans-serif;line-height:1.6;overflow-x:hidden}
+.tablewrap{overflow-x:auto;border-radius:14px}
 .wrap{max-width:720px;margin:0 auto;padding:28px 20px 80px}
 .top{display:flex;align-items:center;gap:10px;margin-bottom:34px}
 .top a.brand{display:flex;align-items:center;gap:9px;color:#E7E9F2;text-decoration:none;font-weight:800;font-size:1.05rem}
@@ -117,10 +118,10 @@ tbody tr:nth-child(1) .rank{color:#F5A623}
   <div class="seal">✓ AI FRIENDLY · CHECKED BY GEONI</div>
   <h1>${L.h1}</h1>
   <p class="sub">${L.sub}</p>
-  <table>
+  <div class="tablewrap"><table>
     <thead><tr><th>#</th><th>${L.col_site}</th><th>${L.col_score}</th><th>${L.col_seal}</th><th>${L.col_date}</th></tr></thead>
     <tbody>${rows || `<tr><td colspan="5" class="empty">${L.empty}</td></tr>`}</tbody>
-  </table>
+  </table></div>
   <div class="cta">
     <h2>${L.cta_h}</h2>
     <p>${L.cta_p}</p>
