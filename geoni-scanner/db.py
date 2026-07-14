@@ -718,22 +718,27 @@ async def get_share_result(job_id: str) -> dict | None:
         return None
 
 
-# Ligde gosterilmeyen alan adlari (skorlar DB'de aynen durur, yalnizca
-# vitrinden gizlenir):
-# 1) Ayni sahibin ikinci/test alan adlari — bir sahip listede bir kez
-#    gorunur ki tablo disaridan "sisirilmis" okunmasin.
-# 2) Yabanci kalibrasyon taramalari — algoritma dogrulamasi icin taradik,
-#    lig ise musteri portfoyumuzun (Turkiye pazari) vitrini (kullanici
-#    karari 2026-07-14). Jotform/Insider TR kokenli sayilir, gizlenmez.
-LEADERBOARD_HIDDEN_DOMAINS = {
-    "cagricakir.com",
-    # yabanci kalibrasyon seti:
-    "anthropic.com", "openai.com", "stripe.com", "github.com",
-    "hubspot.com", "zapier.com", "shopify.com", "cloudflare.com",
-    "wikipedia.org", "semrush.com", "ahrefs.com", "moz.com",
-    "vercel.com", "wordpress.org", "w3schools.com",
-    "developer.mozilla.org", "neilpatel.com",
-}
+# Ligde gizlenen alan adlari artik leaderboard_hidden TABLOSUNDA yasar
+# (opt-out talepleri, kalibrasyon taramalari, ayni sahibin ikinci alan
+# adlari). Kaldirma talebi gelince kod degil tablo guncellenir:
+#   INSERT INTO leaderboard_hidden (domain, reason) VALUES ('x.com','optout');
+# Skorlar audits'te aynen durur; tablo yalnizca vitrini yonetir.
+
+
+async def _get_leaderboard_hidden(client: "httpx.AsyncClient") -> set[str]:
+    """leaderboard_hidden tablosundaki domainler. Tablo okunamazsa bos set
+    doner (lig gizleme listesi olmadan da yayinlanabilir; tersini yapip
+    tum ligi bosaltmak daha kotu bir arizadir)."""
+    try:
+        r = await client.get(
+            f"{SUPABASE_URL}/rest/v1/leaderboard_hidden?select=domain",
+            headers=_headers(), timeout=10,
+        )
+        if r.status_code == 200:
+            return {(row.get("domain") or "").lower().strip() for row in r.json()}
+    except Exception as e:
+        logger.warning(f"leaderboard_hidden read error: {e}")
+    return set()
 
 # Ligde gosterilen skorlama surumu (scoring.py SCORING_VERSION ile birlikte
 # guncellenir; import dongusune girmemek icin burada sabit).
@@ -755,6 +760,7 @@ async def get_ai_friendly_list(limit: int = 10) -> list:
         return []
     try:
         async with httpx.AsyncClient() as client:
+            hidden = await _get_leaderboard_hidden(client)
             # scoring_version filtresi: lig yalnizca guncel metodolojinin
             # skorlarini gosterir — eski surum skorlariyla (farkli authority
             # bilesimi) ayni tabloda karistirmak elmayla armudu siralamak olur.
@@ -772,7 +778,7 @@ async def get_ai_friendly_list(limit: int = 10) -> list:
                 d = (row.get("domain") or "").lower().strip()
                 # "." sarti: domain alanina yazilmis serbest metinleri
                 # (kisi adi vb.) site liginden dislar.
-                if not d or "." not in d or d in LEADERBOARD_HIDDEN_DOMAINS:
+                if not d or "." not in d or d in hidden:
                     continue
                 try:
                     if int(row.get("pages") or 0) < MIN_CRAWLED_PAGES:
