@@ -1516,6 +1516,7 @@ async def admin_get_user_detail(user_id: str) -> dict | None:
             profile = profile_r.json()[0]
 
             expert_stats = None
+            expert_specialization_ids = []
             if profile.get("is_expert"):
                 verified_r = await client.get(
                     f"{SUPABASE_URL}/rest/v1/tickets?assigned_expert_id=eq.{user_id}&status=eq.verified&select=id",
@@ -1525,11 +1526,18 @@ async def admin_get_user_detail(user_id: str) -> dict | None:
                     f"{SUPABASE_URL}/rest/v1/tickets?assigned_expert_id=eq.{user_id}&status=eq.rejected&select=id",
                     headers={**_headers(), "Prefer": "count=exact", "Range": "0-0"}, timeout=10,
                 )
+                disputed_r = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/tickets?assigned_expert_id=eq.{user_id}&status=eq.disputed&select=id",
+                    headers={**_headers(), "Prefer": "count=exact", "Range": "0-0"}, timeout=10,
+                )
                 def _count_from_range(resp):
                     cr = resp.headers.get("content-range", "")
                     total = cr.split("/")[-1] if "/" in cr else ""
                     return int(total) if total.isdigit() else 0
-                expert_stats = {"verified": _count_from_range(verified_r), "rejected": _count_from_range(rejected_r)}
+                expert_stats = {"verified": _count_from_range(verified_r),
+                                "rejected": _count_from_range(rejected_r),
+                                "disputed": _count_from_range(disputed_r)}
+                expert_specialization_ids = await get_expert_ticket_type_ids(user_id)
 
         emails = await _fetch_all_auth_emails()
         profile["email"] = emails.get(user_id, "")
@@ -1537,7 +1545,8 @@ async def admin_get_user_detail(user_id: str) -> dict | None:
         auth_user = await _fetch_auth_user(user_id)
         profile["last_sign_in_at"] = auth_user.get("last_sign_in_at") if auth_user else None
 
-        return {"profile": profile, "expert_stats": expert_stats}
+        return {"profile": profile, "expert_stats": expert_stats,
+                "expert_specialization_ids": expert_specialization_ids}
     except Exception as e:
         logger.warning(f"admin_get_user_detail error: {e}")
         return None
