@@ -1,0 +1,21 @@
+# AWS CodeBuild: geoni-scanner imajini derle + ECR'a push et.
+# Lokal Mac'te amd64 Playwright imaji derlemek disk yuttugu icin build
+# buluta alindi (2026-07-14). Kaynak S3 zip'i olarak gelir; baslatma:
+# scripts yerine dogrudan: aws codebuild start-build --project-name geoni-scanner-build
+version: 0.2
+
+env:
+  variables:
+    ECR: "016031489497.dkr.ecr.eu-central-1.amazonaws.com"
+    REPO: "geoni-scanner"
+
+phases:
+  pre_build:
+    commands:
+      - aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin $ECR
+  build:
+    commands:
+      - docker build -t $ECR/$REPO:latest .
+  post_build:
+    commands:
+      - docker push $ECR/$REPO:latest
