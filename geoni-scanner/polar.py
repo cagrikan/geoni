@@ -8,7 +8,7 @@ is pending; Turkey is on Polar's supported seller list.
 
 Docs: https://polar.sh/docs/api-reference
 
-Flow (mirrors lemonsqueezy.py):
+Flow:
 1. User picks a credit package on the frontend -> POST /api/checkout/create
 2. We create a Polar checkout via their API, embedding the GEONI user_id
    and credit amount in metadata, and return the hosted checkout URL.

@@ -52,7 +52,6 @@ from tavily_admin import get_tavily_usage_summary
 from perplexity_admin import get_perplexity_cost_summary
 from gemini_admin import get_gemini_cost_summary
 from total_cost_admin import get_admin_total_cost_summary
-from lemonsqueezy import verify_webhook_signature, create_checkout, parse_order_webhook
 import polar
 import iap
 from ticket_automation import fulfill_auto_ticket, AUTO_FULFILL_KEYS
@@ -1221,41 +1220,16 @@ async def create_checkout_session(body: CheckoutRequest, http_request: Request):
 
     packages = await get_credit_packages(active_only=True)
     package = next((p for p in packages if p["id"] == body.package_id), None)
-    if not package or not (package.get("polar_product_id") or package.get("lemonsqueezy_variant_id")):
+    if not package or not package.get("polar_product_id"):
         raise HTTPException(status_code=400, detail="Geçersiz paket")
 
-    # Polar is the active provider; Lemon Squeezy stays as fallback until
-    # its account approval lands.
+    # Polar tek odeme saglayicisi (Lemon Squeezy kaldirildi, 2026-07-14).
     url = None
     if package.get("polar_product_id") and polar.POLAR_ACCESS_TOKEN:
         url = await polar.create_checkout(package["polar_product_id"], user_id, package["credits"])
-    if not url and package.get("lemonsqueezy_variant_id"):
-        url = await create_checkout(package["lemonsqueezy_variant_id"], user_id, package["credits"])
     if not url:
         raise HTTPException(status_code=502, detail="Ödeme sayfası oluşturulamadı")
     return {"checkout_url": url}
-
-@app.post("/api/webhooks/lemonsqueezy")
-async def lemonsqueezy_webhook(http_request: Request):
-    raw_body = await http_request.body()
-    signature = http_request.headers.get("X-Signature", "")
-    if not verify_webhook_signature(raw_body, signature):
-        raise HTTPException(status_code=401, detail="Invalid signature")
-
-    payload = json.loads(raw_body)
-    order = parse_order_webhook(payload)
-    if not order:
-        return {"ignored": True}
-
-    ok = await record_purchase(
-        user_id=order["user_id"],
-        credits=order["credits"],
-        amount_paid=order["amount_paid"],
-        currency_paid=order["currency_paid"],
-        external_id=order["external_id"],
-        description="Lemon Squeezy satın alma",
-    )
-    return {"success": ok}
 
 @app.post("/api/webhooks/polar")
 async def polar_webhook(http_request: Request):
