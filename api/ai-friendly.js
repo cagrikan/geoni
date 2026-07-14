@@ -100,7 +100,7 @@ tbody tr:nth-child(1) .rank{color:#F5A623}
 .nochip{color:#3a3f55}
 .date{color:#6E7391;font-size:.82rem;width:106px}
 .empty{padding:36px 16px;text-align:center;color:#6E7391}
-@media (max-width:480px){.date,thead th:nth-child(5){display:none}td{padding:12px 10px}}
+@media (max-width:480px){.date,thead th:nth-child(5){display:none}td{padding:11px 8px}thead th{padding:10px 8px}.rank{width:28px}.score,.sealcol{width:46px}table{font-size:.88rem}}
 .cta{margin-top:36px;background:#10121A;border:1px solid rgba(124,134,245,.3);border-radius:14px;padding:30px 26px;text-align:center}
 .cta h2{font-size:1.25rem;margin-bottom:6px}
 .cta p{color:#A8ADC4;font-size:.9rem;max-width:48ch;margin:0 auto 20px}
