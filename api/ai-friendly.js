@@ -82,7 +82,8 @@ body{min-height:100vh;background:#0A0B10;color:#E7E9F2;font-family:'Inter',-appl
 .lang{margin-left:auto;font-size:.8rem;color:#6E7391}
 .lang a{color:#A8ADC4;text-decoration:none}
 .lang b{color:#E7E9F2}
-.titlerow{display:flex;align-items:center;gap:32px;flex-wrap:wrap;margin-bottom:10px}
+.titlerow{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:10px}
+.titlerow .seal{margin-left:auto}
 .seal{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(47,189,132,.4);background:rgba(47,189,132,.08);color:#2fbd84;font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-radius:999px;padding:5px 13px;white-space:nowrap}
 h1{font-size:clamp(1.8rem,5vw,2.5rem);font-weight:800;letter-spacing:-.02em}
 .sub{color:#A8ADC4;font-size:.98rem;max-width:56ch;margin-bottom:32px}
