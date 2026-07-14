@@ -562,7 +562,7 @@ async def get_admin_credits_stats(days: int = 14) -> dict:
 
 
 async def get_credit_packages(active_only: bool = True) -> list:
-    """Purchasable credit packages (Lemon Squeezy variants) for the Buy
+    """Purchasable credit packages (Polar products) for the Buy
     Credits page."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return []
@@ -598,7 +598,7 @@ async def get_package_by_apple_product_id(product_id: str) -> dict | None:
 
 
 async def record_purchase(user_id: str, credits: int, amount_paid: float, currency_paid: str, external_id: str, channel: str = "web", description: str = "Satın alma") -> bool:
-    """Credits a user's balance for a REAL payment (Polar / Lemon Squeezy
+    """Credits a user's balance for a REAL payment (Polar
     webhook). Idempotent on external_id - a retried/duplicate webhook
     delivery for the same order is a no-op, not a double-credit."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not credits:
@@ -904,7 +904,7 @@ async def record_refund(user_id: str, credits: int, external_id: str, descriptio
 
 
 async def get_admin_sales_stats(days: int = 14) -> dict:
-    """Real revenue (from actual Lemon Squeezy purchases), broken down by
+    """Real revenue (from actual purchases), broken down by
     channel (web/ios/android), by signup traffic source (utm_source, i.e.
     how many people SIGNED UP from each source), and by traffic source's
     actual REVENUE (i.e. of the people who bought, which source brought

@@ -1150,7 +1150,7 @@ async def admin_experts(http_request: Request):
 @app.get("/api/credit-packages")
 async def credit_packages():
     # Public uc: yalniz vitrin alanlari + Apple urun kimligi. Web odeme
-    # saglayici kimliklerini (lemonsqueezy_variant_id / polar_product_id)
+    # saglayici kimliklerini (polar_product_id)
     # disari sizdirma - web checkout sunucu tarafinda package_id'den kurulur.
     # apple_product_id hassas degil (App Store'da zaten herkese acik) ve
     # mobil IAP'nin hangi urunu satin alacagini bilmesi icin gerekli.
@@ -1223,7 +1223,7 @@ async def create_checkout_session(body: CheckoutRequest, http_request: Request):
     if not package or not package.get("polar_product_id"):
         raise HTTPException(status_code=400, detail="Geçersiz paket")
 
-    # Polar tek odeme saglayicisi (Lemon Squeezy kaldirildi, 2026-07-14).
+    # Polar tek odeme saglayicisi.
     url = None
     if package.get("polar_product_id") and polar.POLAR_ACCESS_TOKEN:
         url = await polar.create_checkout(package["polar_product_id"], user_id, package["credits"])

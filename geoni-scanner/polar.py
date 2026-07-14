@@ -1,10 +1,9 @@
 """
 GEONI - Polar payment integration.
 
-Polar (polar.sh) is a Merchant of Record like Lemon Squeezy - it handles
-card processing, VAT/sales tax and invoicing, GEONI never touches raw card
-data. Added as an alternative provider while Lemon Squeezy account approval
-is pending; Turkey is on Polar's supported seller list.
+Polar (polar.sh) is a Merchant of Record - it handles card processing,
+VAT/sales tax and invoicing, GEONI never touches raw card data. Sole
+payment provider; Turkey is on Polar's supported seller list.
 
 Docs: https://polar.sh/docs/api-reference
 
@@ -191,8 +190,7 @@ async def get_sales_summary(days: int = 14) -> dict | None:
 
 async def get_products_overview() -> dict | None:
     """Admin fiyatlandirma karti: Polar'daki gercek urunler ve indirim
-    kodlari (eski Lemon Squeezy 'fiyat kademeleri' referans tablosunun
-    yerini alir - fiyatin kaynagi artik dogrudan Polar)."""
+    kodlari (fiyatin kaynagi dogrudan Polar)."""
     if not POLAR_ACCESS_TOKEN:
         return None
     out = {"products": [], "discounts": []}
