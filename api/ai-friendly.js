@@ -31,6 +31,9 @@ export default async function handler(req, res) {
     cta_h: 'Sen de mührü kazan',
     cta_p: 'Sitenin AI görünürlüğünü 60 saniyede ücretsiz ölç. 70\'i geçersen mühür ve ligdeki yerin hazır.',
     cta_btn: 'Ücretsiz Tara →',
+    optout: 'Skorlar, herkese açık web verisi üzerinden yapılan taramalarla ölçülür. Sitenizin bu listede yer almasını istemiyorsanız yazmanız yeterli:',
+    optout_link: 'listeden kaldırılma talebi gönder',
+    optout_subject: 'AI Friendly Ligi - Listeden kaldirma talebi',
   } : {
     title: 'AI Friendly Leaderboard — GEONI',
     desc: 'The sites AI engines know best: everyone scoring 70+ on AI Visibility makes the board. Earn your seal.',
@@ -41,6 +44,9 @@ export default async function handler(req, res) {
     cta_h: 'Earn your seal',
     cta_p: 'Measure your site\'s AI visibility free in 60 seconds. Cross 70 and the seal — and your spot here — is yours.',
     cta_btn: 'Scan Free →',
+    optout: 'Scores are measured from publicly available web data. If you\'d rather not have your site listed here, just let us know:',
+    optout_link: 'request removal from the board',
+    optout_subject: 'AI Friendly Board - Removal request',
   };
 
   const rows = items.map((it, i) => {
@@ -109,6 +115,8 @@ tbody tr:nth-child(1) .rank{color:#F5A623}
 .cta p{color:#A8ADC4;font-size:.9rem;max-width:48ch;margin:0 auto 20px}
 .cta a{display:inline-block;background:#7C86F5;color:#fff;text-decoration:none;font-weight:700;padding:12px 30px;border-radius:9px}
 .cta a:hover{opacity:.9}
+.optout{margin-top:22px;text-align:center;color:#6E7391;font-size:.78rem;max-width:62ch;margin-left:auto;margin-right:auto}
+.optout a{color:#A8ADC4}
 </style>
 </head>
 <body>
@@ -131,6 +139,7 @@ tbody tr:nth-child(1) .rank{color:#F5A623}
     <p>${L.cta_p}</p>
     <a href="https://app.geoni.ai?utm_source=leaderboard">${L.cta_btn}</a>
   </div>
+  <p class="optout">${L.optout} <a href="mailto:mail@geoni.ai?subject=${encodeURIComponent(L.optout_subject)}">${L.optout_link}</a>.</p>
 </div>
 </body>
 </html>`;
