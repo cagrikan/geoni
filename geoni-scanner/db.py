@@ -7,6 +7,7 @@ Uses service role key to bypass RLS.
 import asyncio
 import os
 import time
+import uuid
 import logging
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse, parse_qs
@@ -2538,11 +2539,14 @@ async def create_ticket_upload_url(ticket_id: int, filename: str) -> dict | None
     supabase-js's own storage.from(...).uploadToSignedUrl() rather than us
     guessing the raw HTTP verb/headers Storage expects - our backend never
     handles the file bytes either way. The path is namespaced by ticket_id
-    so one ticket's uploads can't collide with or overwrite another's."""
+    so one ticket's uploads can't collide with or overwrite another's.
+    Bucket public oldugundan yola TAHMIN EDILEMEZ bir uuid segmenti eklenir:
+    ticket_id sirali bir sayi oldugundan onsuz dosya yolu enumerate
+    edilebilirdi; uuid ile yalnizca linki bilen erisir (2026-07-14)."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return None
     safe_name = "".join(c for c in filename if c.isalnum() or c in "._-") or "file"
-    path = f"{ticket_id}/{int(datetime.now(timezone.utc).timestamp() * 1000)}_{safe_name}"
+    path = f"{ticket_id}/{uuid.uuid4().hex}_{safe_name}"
     try:
         async with httpx.AsyncClient() as client:
             r = await client.post(
@@ -2566,11 +2570,13 @@ async def upload_ticket_file(ticket_id: int, filename: str, content: str,
     """Sunucu tarafindan uretilen bir dosyayi (or. otomatik teslimdeki
     robots.txt/llms.txt) ticket-attachments bucket'ina yukler ve herkese
     acik URL'ini dondurur - musteri bunu siteyi yapan kisiyle paylasabilir.
-    Bucket public oldugundan URL kimlik dogrulamasi gerektirmez."""
+    Bucket public oldugundan URL kimlik dogrulamasi gerektirmez; bu yuzden
+    yola tahmin edilemez uuid segmenti eklenir (ticket_id sirali oldugundan
+    onsuz enumerate edilebilirdi, 2026-07-14)."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return None
     safe_name = "".join(c for c in filename if c.isalnum() or c in "._-") or "file"
-    path = f"{ticket_id}/{int(datetime.now(timezone.utc).timestamp() * 1000)}_{safe_name}"
+    path = f"{ticket_id}/{uuid.uuid4().hex}_{safe_name}"
     try:
         async with httpx.AsyncClient() as client:
             r = await client.post(
