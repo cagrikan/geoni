@@ -45,8 +45,37 @@ def assert_public_host(host: str) -> None:
     h = (host or "").strip().strip(".").lower()
     if not h:
         raise BlockedHostError("bos host")
+    # Koseli parantezli IPv6 literal ([::1], [::ffff:169.254.170.2]) — getaddrinfo
+    # parantezi cozemeyip fail-open'a dusuyordu ama HTTP istemcisi baglanabiliyor.
+    # Parantezi soy ve varsa zone/port'u ayikla.
+    if h.startswith("[") and "]" in h:
+        h = h[1:h.index("]")]
     if h in _BLOCKED_NAMES or h.endswith(_BLOCKED_SUFFIXES):
         raise BlockedHostError(f"engellenen host adi: {host}")
+
+    # Once IP literali mi diye dogrudan dene (::ffff:x, IPv6, IPv4). getaddrinfo'ya
+    # birakmak koseli/mapped formlarda baypasa yol aciyordu.
+    try:
+        ipaddress.ip_address(h.split("%")[0])  # zone id'yi ayikla
+        is_ip_literal = True
+    except ValueError:
+        is_ip_literal = False
+    if is_ip_literal:
+        if not _is_public_ip(h.split("%")[0]):
+            raise BlockedHostError(f"host ic IP literali: {host}")
+        return  # gecerli public IP literali
+
+    # Legacy IPv4 kodlamalari: octal (0177.0.0.1), decimal (2130706433),
+    # hex (0x7f.0.0.1). ipaddress bunlari reddeder, ama inet_aton cozer ve
+    # HTTP istemcileri de cogu zaman baglanir. Platformdan bagimsiz yakala.
+    try:
+        ipv4 = socket.inet_ntoa(socket.inet_aton(h))
+    except OSError:
+        ipv4 = None
+    if ipv4 is not None:
+        if not _is_public_ip(ipv4):
+            raise BlockedHostError(f"host legacy-kodlu ic IPv4: {host}")
+        return
 
     # Tum A/AAAA kayitlarini coz; herhangi biri public degilse tumden reddet
     # (DNS rebinding'e karsi: bir kaydin bile ic olmasi yeter).

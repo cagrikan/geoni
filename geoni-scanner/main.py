@@ -107,7 +107,17 @@ from monitor import monitor_loop
 from stability import build_stability
 from scanqueue import acquire_scan_slot, release_scan_slot, estimate_wait_seconds, sqs_enabled, enqueue_scan
 
-app = FastAPI(title="GEONI Visibility Scanner MVP", version="0.9.0", description="AI visibility auditing with Playwright crawling, 6-dimension domain scoring, brand recall with rich context, identity verification, and email delivery")
+# Interaktif API dokumani (/docs, /redoc, /openapi.json) tum uc yuzeyini
+# (admin/webhook uclari + semalar) herkese acar — uretimde kapali. Yerel/dev
+# icin GEONI_ENABLE_DOCS=1 ile acilabilir.
+_docs_on = os.environ.get("GEONI_ENABLE_DOCS", "") == "1"
+app = FastAPI(
+    title="GEONI Visibility Scanner MVP", version="0.9.0",
+    description="AI visibility auditing with Playwright crawling, 6-dimension domain scoring, brand recall with rich context, identity verification, and email delivery",
+    docs_url="/docs" if _docs_on else None,
+    redoc_url="/redoc" if _docs_on else None,
+    openapi_url="/openapi.json" if _docs_on else None,
+)
 
 app.add_middleware(
     CORSMiddleware,
