@@ -19,7 +19,8 @@ import uuid
 from datetime import datetime
 import logging
 
-from crawler import crawl_domain
+from crawler import crawl_domain, normalize_domain
+from ssrf_guard import assert_public_host, BlockedHostError
 from indexing import check_indexing_status
 from scoring import compute_ai_visibility_score
 from topics import generate_topics_and_opportunities
@@ -491,6 +492,13 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
             detail=_rate_limit_message(request.lang or "tr", e.retry_after_seconds),
             headers={"Retry-After": str(e.retry_after_seconds)},
         )
+
+    # SSRF: ic/ozel adrese cozulen hedefleri erken reddet (crawler'da da guard
+    # var; buradaki kontrol kullaniciya bozuk tarama beklemeden 400 dondurur).
+    try:
+        await asyncio.to_thread(assert_public_host, normalize_domain(request.domain))
+    except BlockedHostError:
+        raise HTTPException(status_code=400, detail="Geçersiz hedef: yalnızca herkese açık siteler taranabilir.")
 
     job_id = str(uuid.uuid4())
     # Extract user_id from Authorization header if present

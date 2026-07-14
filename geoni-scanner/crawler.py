@@ -14,6 +14,8 @@ from urllib.robotparser import RobotFileParser
 import httpx
 from playwright.async_api import async_playwright
 
+from ssrf_guard import assert_public_host, BlockedHostError
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_PER_PAGE = 10  # seconds
@@ -187,6 +189,10 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
     """
     start_time = time.monotonic()
     domain = normalize_domain(domain)
+    # SSRF korumasi: robots/sitemap dahil HERHANGI bir istek atilmadan once
+    # host'un public bir adrese cozuldugunu dogrula. Tum crawl cagiranlari
+    # (API, monitor, marka) bu tek noktadan gecer.
+    await asyncio.to_thread(assert_public_host, domain)
     base_url = f"https://{domain}/"
 
     visited: set[str] = set()
