@@ -718,17 +718,32 @@ async def get_share_result(job_id: str) -> dict | None:
         return None
 
 
-async def get_ai_friendly_list(limit: int = 50) -> list:
-    """AI Friendly Ligi: 70+ skorlu SITELER (type=web) — domain basina en iyi
-    tarama. Kisi/marka taramalari KVKK hassasiyeti nedeniyle listelenmez;
+# Ligde gosterilmeyen alan adlari: ayni sahibin ikinci/test alan adlari
+# (kurucunun cagricakir.com'u gibi) — bir sahip listede bir kez gorunur ki
+# tablo disaridan "sisirilmis" okunmasin. Skorlar DB'de aynen durur, yalnizca
+# vitrinden gizlenir.
+LEADERBOARD_HIDDEN_DOMAINS = {"cagricakir.com"}
+
+
+async def get_ai_friendly_list(limit: int = 10) -> list:
+    """AI Friendly Ligi: en yuksek skorlu SITELER (type=web) — domain basina
+    en iyi tarama. 70 barajini gecenler seal=True ile muhur tasir; baraji
+    gecemeyenler de listelenir (devlerin de kaldigi gorulsun). Yalnizca
+    DOGRULANMIS taramalar listelenir: crawl en az 3 sayfa gezebilmis olmali —
+    bot korumasina takilip 0 sayfayla biten taramalarin skoru "erisemedik"
+    cezasi tasir, boyle bir skoru herkese acik afise etmek haksizlik olur
+    (Stripe ornegi: gercekte llms.txt'si var ama crawl'imiz kesildi).
+    Kisi/marka taramalari KVKK hassasiyeti nedeniyle listelenmez;
     e-posta/kullanici bilgisi asla donmez."""
+    MIN_CRAWLED_PAGES = 3
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return []
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/audits?type=eq.web&status=eq.complete&score=gte.70"
-                f"&select=id,domain,score,created_at&order=score.desc,created_at.desc&limit=300",
+                f"{SUPABASE_URL}/rest/v1/audits?type=eq.web&status=eq.complete"
+                f"&select=id,domain,score,created_at,pages:result_json->>total_pages"
+                f"&order=score.desc,created_at.desc&limit=300",
                 headers=_headers(), timeout=10,
             )
             if r.status_code != 200:
@@ -736,10 +751,17 @@ async def get_ai_friendly_list(limit: int = 50) -> list:
             best: dict[str, dict] = {}
             for row in r.json():
                 d = (row.get("domain") or "").lower().strip()
-                if not d:
+                # "." sarti: domain alanina yazilmis serbest metinleri
+                # (kisi adi vb.) site liginden dislar.
+                if not d or "." not in d or d in LEADERBOARD_HIDDEN_DOMAINS:
+                    continue
+                try:
+                    if int(row.get("pages") or 0) < MIN_CRAWLED_PAGES:
+                        continue
+                except (TypeError, ValueError):
                     continue
                 if d not in best or row["score"] > best[d]["score"]:
-                    best[d] = {"domain": d, "score": row["score"],
+                    best[d] = {"domain": d, "score": row["score"], "seal": row["score"] >= 70,
                                "job_id": row["id"], "date": row.get("created_at", "")[:10]}
             ranked = sorted(best.values(), key=lambda x: -x["score"])[:limit]
             return ranked

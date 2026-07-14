@@ -1,7 +1,8 @@
 // AI Friendly Ligi: geoni.ai/ai-friendly
-// 70+ skorlu sitelerin herkese acik siralamasi — muhur kazananlarin vitrini.
-// Listelenmek odul: rekabet durtusu ("rakibim listede!") + surekli taze icerik
-// + AEO miknatisi. Kisi/marka taramalari listelenmez (yalnizca siteler).
+// En yuksek skorlu sitelerin herkese acik siralamasi; muhur (✓) yalnizca
+// 70+ satirlarda. Devlerin de barajin altinda kaldigi gorunsun diye liste
+// 70 sartina bagli degil — bu, muhru daha da degerli kilar. Kisi/marka
+// taramalari listelenmez (yalnizca siteler).
 const API = 'https://api.geoni.ai';
 
 function esc(s) {
@@ -24,8 +25,8 @@ export default async function handler(req, res) {
     title: 'AI Friendly Ligi — GEONI',
     desc: 'AI motorlarının en iyi tanıdığı siteler: 70+ AI Görünürlük Skoru yapan herkes ligde. Sen de mührü kazan.',
     h1: 'AI Friendly Ligi',
-    sub: 'ChatGPT, Gemini ve Perplexity\'nin en iyi tanıdığı siteler. 70+ skor yapan herkes "AI Friendly · Checked by GEONI" mührünü ve bu listede yerini kazanır.',
-    col_site: 'Site', col_score: 'Skor', col_date: 'Tarih',
+    sub: 'ChatGPT, Gemini ve Perplexity\'nin en iyi tanıdığı siteler. 70+ skor yapan herkes "AI Friendly · Checked by GEONI" mührünü kullanmaya hak kazanır ve bu listede yerini alır.',
+    col_site: 'Site', col_score: 'Skor', col_seal: 'Mühür', col_date: 'Tarih',
     empty: 'Lig yeni açıldı — ilk sıra seni bekliyor.',
     cta_h: 'Sen de mührü kazan',
     cta_p: 'Sitenin AI görünürlüğünü 60 saniyede ücretsiz ölç. 70\'i geçersen mühür ve ligdeki yerin hazır.',
@@ -34,21 +35,25 @@ export default async function handler(req, res) {
     title: 'AI Friendly Leaderboard — GEONI',
     desc: 'The sites AI engines know best: everyone scoring 70+ on AI Visibility makes the board. Earn your seal.',
     h1: 'AI Friendly Leaderboard',
-    sub: 'The sites ChatGPT, Gemini and Perplexity know best. Score 70+ and you earn the "AI Friendly · Checked by GEONI" seal — and your place on this board.',
-    col_site: 'Site', col_score: 'Score', col_date: 'Date',
+    sub: 'The sites ChatGPT, Gemini and Perplexity know best. Score 70+ and you earn the right to use the "AI Friendly · Checked by GEONI" seal — and your place on this board.',
+    col_site: 'Site', col_score: 'Score', col_seal: 'Seal', col_date: 'Date',
     empty: 'The board just opened — first place is waiting for you.',
     cta_h: 'Earn your seal',
     cta_p: 'Measure your site\'s AI visibility free in 60 seconds. Cross 70 and the seal — and your spot here — is yours.',
     cta_btn: 'Scan Free →',
   };
 
-  const rows = items.map((it, i) => `
+  const rows = items.map((it, i) => {
+    const seal = it.seal ?? (it.score >= 70); // eski API cevabinda seal alani yok
+    return `
     <tr onclick="location.href='/s/${esc(it.job_id)}'">
       <td class="rank">${i + 1}</td>
       <td class="site">${esc(it.domain)}</td>
-      <td class="score">${Math.round(it.score)}</td>
+      <td class="score${seal ? '' : ' score--low'}">${Math.round(it.score)}</td>
+      <td class="sealcol">${seal ? '<span class="sealchip">✓</span>' : '<span class="nochip">—</span>'}</td>
       <td class="date">${esc(it.date)}</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   const html = `<!DOCTYPE html>
 <html lang="${lang}">
@@ -89,8 +94,13 @@ tbody tr:last-child td{border-bottom:0}
 tbody tr:nth-child(1) .rank{color:#F5A623}
 .site{font-weight:600}
 .score{font-family:'JetBrains Mono',monospace;font-weight:700;color:#2fbd84;width:64px}
+.score--low{color:#F5A623}
+.sealcol{width:64px;text-align:center}
+.sealchip{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;border:1px solid rgba(47,189,132,.5);background:rgba(47,189,132,.12);color:#2fbd84;font-weight:800;font-size:.85rem}
+.nochip{color:#3a3f55}
 .date{color:#6E7391;font-size:.82rem;width:106px}
 .empty{padding:36px 16px;text-align:center;color:#6E7391}
+@media (max-width:480px){.date,thead th:nth-child(5){display:none}td{padding:12px 10px}}
 .cta{margin-top:36px;background:#10121A;border:1px solid rgba(124,134,245,.3);border-radius:14px;padding:30px 26px;text-align:center}
 .cta h2{font-size:1.25rem;margin-bottom:6px}
 .cta p{color:#A8ADC4;font-size:.9rem;max-width:48ch;margin:0 auto 20px}
@@ -108,8 +118,8 @@ tbody tr:nth-child(1) .rank{color:#F5A623}
   <h1>${L.h1}</h1>
   <p class="sub">${L.sub}</p>
   <table>
-    <thead><tr><th>#</th><th>${L.col_site}</th><th>${L.col_score}</th><th>${L.col_date}</th></tr></thead>
-    <tbody>${rows || `<tr><td colspan="4" class="empty">${L.empty}</td></tr>`}</tbody>
+    <thead><tr><th>#</th><th>${L.col_site}</th><th>${L.col_score}</th><th>${L.col_seal}</th><th>${L.col_date}</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="5" class="empty">${L.empty}</td></tr>`}</tbody>
   </table>
   <div class="cta">
     <h2>${L.cta_h}</h2>
