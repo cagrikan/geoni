@@ -787,6 +787,20 @@ async def _require_admin_scope(http_request: Request, scope: str) -> str:
         raise HTTPException(status_code=403, detail=f"'{scope}' yönetim yetkisi gerekli")
     return user_id
 
+async def _require_full_admin(http_request: Request) -> str:
+    """Admin YONETIMI (baskasina/kendine yetki veya kapsam verme) icin: yalnizca
+    is_admin degil, UC kapsamin (users/tickets/campaigns) HEPSINE sahip tam admin
+    gerekir. _require_admin sadece is_admin'i dogruladigi icin, kisitli bir admin
+    admin-flag/admin-scopes ile kendini tam admin yapip scope izolasyonunu
+    asabiliyordu (dogrulanmis yetki yukseltme). Kod yorumlarindaki 'TAM admin'
+    niyetini gercekten uygular."""
+    user_id = await _require_admin(http_request)
+    for sc in ("users", "tickets", "campaigns"):
+        if not await has_admin_scope(user_id, sc):
+            raise HTTPException(status_code=403, detail="Tam yönetici yetkisi gerekli")
+    return user_id
+
+
 async def _require_user(http_request: Request) -> str:
     auth_header = http_request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
@@ -1509,10 +1523,11 @@ async def admin_users_credits(user_id: str, body: CreditAdjustRequest, http_requ
 
 @app.post("/api/admin/users/{user_id}/admin-flag")
 async def admin_users_flag(user_id: str, body: AdminFlagRequest, http_request: Request):
-    # Bilerek scope'lanmamis: yetki verme/alma islemi her zaman TAM admin
-    # gerektirir - yoksa kisitli ("users" kapsamli) bir admin baskasini tam
-    # admin yapip kendi kisitlarini asabilirdi (yetki yukseltme riski).
-    await _require_admin(http_request)
+    # Yetki verme/alma islemi her zaman TAM admin gerektirir - yoksa kisitli
+    # ("campaigns" kapsamli) bir admin baskasini/kendini tam admin yapip
+    # kisitlarini asabilirdi (yetki yukseltme). _require_admin sadece is_admin'i
+    # kontrol ettigi icin _require_full_admin sart (tum kapsamlar).
+    await _require_full_admin(http_request)
     if not await admin_set_is_admin(user_id, body.is_admin):
         raise HTTPException(status_code=400, detail="Update failed")
     return {"success": True}
@@ -1567,9 +1582,9 @@ class AdminScopesRequest(BaseModel):
 
 @app.post("/api/admin/users/{user_id}/admin-scopes")
 async def admin_user_scopes_ep(user_id: str, body: AdminScopesRequest, http_request: Request):
-    # is_admin toggle'i gibi bilerek scope'lanmamis - kapsam atamasi tam
-    # admin yetkisi gerektirir.
-    await _require_admin(http_request)
+    # Kapsam atamasi TAM admin gerektirir (is_admin yetmez) - aksi halde kisitli
+    # bir admin kendine tum kapsamlari atayip yukselirdi.
+    await _require_full_admin(http_request)
     scopes = {k: v for k, v in body.model_dump().items() if v is not None}
     if not await admin_set_admin_scopes(user_id, scopes):
         raise HTTPException(status_code=400, detail="Güncellenemedi")
