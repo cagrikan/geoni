@@ -718,11 +718,22 @@ async def get_share_result(job_id: str) -> dict | None:
         return None
 
 
-# Ligde gosterilmeyen alan adlari: ayni sahibin ikinci/test alan adlari
-# (kurucunun cagricakir.com'u gibi) — bir sahip listede bir kez gorunur ki
-# tablo disaridan "sisirilmis" okunmasin. Skorlar DB'de aynen durur, yalnizca
-# vitrinden gizlenir.
-LEADERBOARD_HIDDEN_DOMAINS = {"cagricakir.com"}
+# Ligde gosterilmeyen alan adlari (skorlar DB'de aynen durur, yalnizca
+# vitrinden gizlenir):
+# 1) Ayni sahibin ikinci/test alan adlari — bir sahip listede bir kez
+#    gorunur ki tablo disaridan "sisirilmis" okunmasin.
+# 2) Yabanci kalibrasyon taramalari — algoritma dogrulamasi icin taradik,
+#    lig ise musteri portfoyumuzun (Turkiye pazari) vitrini (kullanici
+#    karari 2026-07-14). Jotform/Insider TR kokenli sayilir, gizlenmez.
+LEADERBOARD_HIDDEN_DOMAINS = {
+    "cagricakir.com",
+    # yabanci kalibrasyon seti:
+    "anthropic.com", "openai.com", "stripe.com", "github.com",
+    "hubspot.com", "zapier.com", "shopify.com", "cloudflare.com",
+    "wikipedia.org", "semrush.com", "ahrefs.com", "moz.com",
+    "vercel.com", "wordpress.org", "w3schools.com",
+    "developer.mozilla.org", "neilpatel.com",
+}
 
 # Ligde gosterilen skorlama surumu (scoring.py SCORING_VERSION ile birlikte
 # guncellenir; import dongusune girmemek icin burada sabit).
