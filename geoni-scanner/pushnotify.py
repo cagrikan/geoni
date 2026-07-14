@@ -41,6 +41,32 @@ async def _get_tokens(user_id: str) -> list[str]:
     return []
 
 
+async def send_new_task_push(expert_id: str, task_name: str, ref_code: str = "") -> None:
+    """Uzmanlik alani eslesen uzmana yeni gorev bildirimi. Uzman uygulamayi
+    acip gorevi ustlenebilir. Token yoksa (uzman giris yapmamis/cihaz yok)
+    sessizce gecer."""
+    tokens = await _get_tokens(expert_id)
+    if not tokens:
+        return
+    ref = f" ({ref_code})" if ref_code else ""
+    messages = [
+        {
+            "to": t,
+            "sound": "default",
+            "title": "Yeni görev müsait 🎯",
+            "body": f"{task_name}{ref} — uygulamayı açıp üstlenebilirsin.",
+            "data": {"type": "new_task", "ref_code": ref_code},
+        }
+        for t in tokens
+    ]
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.post(EXPO_PUSH_URL, json=messages, headers={"Content-Type": "application/json"}, timeout=15)
+        logger.info(f"new-task push sent to {len(tokens)} device(s) for expert {expert_id}")
+    except Exception as e:
+        logger.warning(f"expo new-task push error: {e}")
+
+
 async def send_score_change_push(user_id: str, label: str, old_score: int, new_score: int) -> None:
     """Izleme skoru degisiminde push gonderir. Kullanicinin kayitli tum
     cihazlarina; token yoksa sessizce gecer."""

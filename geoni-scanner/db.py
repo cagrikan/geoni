@@ -2420,8 +2420,12 @@ async def admin_set_ticket_type_active(ticket_type_id: int, is_active: bool) -> 
     return False
 
 
-async def admin_set_is_expert(user_id: str, is_expert_flag: bool) -> bool:
-    """Grant or revoke the expert panel access for a user."""
+async def admin_set_is_expert(user_id: str, is_expert_flag: bool,
+                              ticket_type_ids: list[int] | None = None) -> bool:
+    """Uzman panel erisimini ver/al. Verirken uzmanlik alanlari
+    (ticket_type_ids) da secilir — bu uzmanin YALNIZCA bu gorev turlerine
+    atanabilecegini ve yalnizca bunlar icin "yeni gorev" bildirimi
+    alacagini belirler. Yetki alinirsa uzmanlik alanlari da temizlenir."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return False
     try:
@@ -2430,15 +2434,46 @@ async def admin_set_is_expert(user_id: str, is_expert_flag: bool) -> bool:
                 f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
                 headers=_headers(), json={"is_expert": is_expert_flag}, timeout=10,
             )
-            return r.status_code in (200, 204)
+            if r.status_code not in (200, 204):
+                return False
+            # Uzmanlik alanlarini yeniden yaz: once sil, sonra ekle.
+            await client.delete(
+                f"{SUPABASE_URL}/rest/v1/expert_ticket_types?expert_id=eq.{user_id}",
+                headers=_headers(), timeout=10,
+            )
+            if is_expert_flag and ticket_type_ids:
+                rows = [{"expert_id": user_id, "ticket_type_id": int(t)} for t in ticket_type_ids]
+                await client.post(
+                    f"{SUPABASE_URL}/rest/v1/expert_ticket_types",
+                    headers=_headers(), json=rows, timeout=10,
+                )
+            return True
     except Exception as e:
         logger.warning(f"admin_set_is_expert error: {e}")
     return False
 
 
+async def get_expert_ticket_type_ids(expert_id: str) -> list[int]:
+    """Bir uzmanin yapabilecegi gorev turlerinin id listesi."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return []
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/expert_ticket_types?expert_id=eq.{expert_id}&select=ticket_type_id",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code == 200:
+                return [row["ticket_type_id"] for row in r.json()]
+    except Exception as e:
+        logger.warning(f"get_expert_ticket_type_ids error: {e}")
+    return []
+
+
 async def list_experts() -> list:
-    """id + email for every is_expert=true profile - powers the admin
-    panel's ticket-assignment dropdown."""
+    """Admin uzman karnesi: her uzman icin kimlik + uzmanlik alanlari +
+    itibar (musteri puani ortalamasi, tamamlanan is, itiraz sayisi/orani,
+    'hic itiraz almadi' rozeti). Atama listesini ve uzman siralamasini besler."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return []
     try:
@@ -2448,13 +2483,195 @@ async def list_experts() -> list:
                 headers=_headers(), timeout=10,
             )
             experts = r.json() if r.status_code == 200 else []
+            if not experts:
+                return []
+            expert_ids = [e["id"] for e in experts]
+            id_list = ",".join(f'"{i}"' for i in expert_ids)
+            # Uzmanlik alanlari
+            spec = await client.get(
+                f"{SUPABASE_URL}/rest/v1/expert_ticket_types?expert_id=in.({id_list})&select=expert_id,ticket_type_id",
+                headers=_headers(), timeout=10,
+            )
+            spec_map: dict[str, list[int]] = {}
+            for row in (spec.json() if spec.status_code == 200 else []):
+                spec_map.setdefault(row["expert_id"], []).append(row["ticket_type_id"])
+            # Bu uzmanlara atanmis biletler (is/itiraz sayimi)
+            tk = await client.get(
+                f"{SUPABASE_URL}/rest/v1/tickets?assigned_expert_id=in.({id_list})&select=assigned_expert_id,status",
+                headers=_headers(), timeout=10,
+            )
+            jobs: dict[str, int] = {}
+            disputes: dict[str, int] = {}
+            done: dict[str, int] = {}
+            for row in (tk.json() if tk.status_code == 200 else []):
+                eid = row["assigned_expert_id"]
+                jobs[eid] = jobs.get(eid, 0) + 1
+                if row["status"] == "disputed":
+                    disputes[eid] = disputes.get(eid, 0) + 1
+                if row["status"] in ("verified", "disputed"):
+                    done[eid] = done.get(eid, 0) + 1
+            # Musteri puanlari (ratee = uzman, rater_role = customer)
+            rt = await client.get(
+                f"{SUPABASE_URL}/rest/v1/ticket_ratings?ratee_id=in.({id_list})&rater_role=eq.customer&select=ratee_id,stars",
+                headers=_headers(), timeout=10,
+            )
+            star_sum: dict[str, int] = {}
+            star_cnt: dict[str, int] = {}
+            for row in (rt.json() if rt.status_code == 200 else []):
+                eid = row["ratee_id"]
+                star_sum[eid] = star_sum.get(eid, 0) + row["stars"]
+                star_cnt[eid] = star_cnt.get(eid, 0) + 1
     except Exception as e:
         logger.warning(f"list_experts error: {e}")
         return []
     emails = await _fetch_all_auth_emails()
     for e in experts:
-        e["email"] = emails.get(e["id"], "")
+        eid = e["id"]
+        e["email"] = emails.get(eid, "")
+        e["specialization_ids"] = spec_map.get(eid, [])
+        e["jobs_total"] = jobs.get(eid, 0)
+        e["jobs_done"] = done.get(eid, 0)
+        e["dispute_count"] = disputes.get(eid, 0)
+        e["dispute_rate"] = round(disputes.get(eid, 0) / done[eid], 3) if done.get(eid) else 0.0
+        e["never_disputed"] = done.get(eid, 0) > 0 and disputes.get(eid, 0) == 0
+        cnt = star_cnt.get(eid, 0)
+        e["avg_rating"] = round(star_sum[eid] / cnt, 2) if cnt else None
+        e["rating_count"] = cnt
+    # Siralama: once puan (yuksek), sonra itiraz orani (dusuk), sonra is sayisi
+    experts.sort(key=lambda x: (-(x["avg_rating"] or 0), x["dispute_rate"], -x["jobs_done"]))
     return experts
+
+
+async def rate_ticket(ticket_id: int, rater_id: str, stars: int, comment: str = "") -> dict:
+    """Cift yonlu puanlama. Rol biletten cikarilir: bilet sahibi ->
+    'customer' (uzmani puanlar), atanan uzman -> 'expert' (musteriyi puanlar).
+    Yalnizca is bittiginde (submitted/verified/disputed) puanlanabilir; bilet
+    basina her yon TEK puan. Uzman kimligi musteriye HIC gosterilmez -
+    musteri sadece skoru yazar, kimi puanladigini gormez."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return {"success": False, "error": "not_configured"}
+    if not isinstance(stars, int) or not (1 <= stars <= 5):
+        return {"success": False, "error": "invalid_stars"}
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}&select=user_id,assigned_expert_id,status",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code != 200 or not r.json():
+                return {"success": False, "error": "not_found"}
+            t = r.json()[0]
+            if t["status"] not in ("submitted", "verified", "disputed"):
+                return {"success": False, "error": "too_early"}
+            if rater_id == t.get("user_id"):
+                role, ratee = "customer", t.get("assigned_expert_id")
+            elif rater_id == t.get("assigned_expert_id"):
+                role, ratee = "expert", t.get("user_id")
+            else:
+                return {"success": False, "error": "not_participant"}
+            if not ratee:
+                return {"success": False, "error": "no_counterparty"}
+            up = await client.post(
+                f"{SUPABASE_URL}/rest/v1/ticket_ratings?on_conflict=ticket_id,rater_role",
+                headers={**_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
+                json={"ticket_id": ticket_id, "rater_role": role, "rater_id": rater_id,
+                      "ratee_id": ratee, "stars": stars, "comment": (comment or "").strip() or None},
+                timeout=10,
+            )
+            if up.status_code not in (200, 201, 204):
+                return {"success": False, "error": "save_failed"}
+            return {"success": True, "role": role, "error": None}
+    except Exception as e:
+        logger.warning(f"rate_ticket error: {e}")
+        return {"success": False, "error": "exception"}
+
+
+async def get_ticket_rating_state(ticket_id: int, user_id: str) -> dict:
+    """Bir kullanicinin bu bileti puanlayip puanlayamayacagi + verdigi puan.
+    Musteri karsi tarafin (uzmanin) kimligini ASLA gormez."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return {}
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}&select=user_id,assigned_expert_id,status",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code != 200 or not r.json():
+                return {}
+            t = r.json()[0]
+            role = "customer" if user_id == t.get("user_id") else ("expert" if user_id == t.get("assigned_expert_id") else None)
+            if not role:
+                return {}
+            can = t["status"] in ("submitted", "verified", "disputed")
+            rr = await client.get(
+                f"{SUPABASE_URL}/rest/v1/ticket_ratings?ticket_id=eq.{ticket_id}&rater_role=eq.{role}&select=stars,comment",
+                headers=_headers(), timeout=10,
+            )
+            mine = rr.json()[0] if rr.status_code == 200 and rr.json() else None
+            return {"role": role, "can_rate": can, "my_rating": mine}
+    except Exception as e:
+        logger.warning(f"get_ticket_rating_state error: {e}")
+    return {}
+
+
+async def get_customer_reputation(user_id: str) -> dict:
+    """Bir musterinin uzmanlardan aldigi puan ozeti (rater_role='expert').
+    Atanan uzman ve admin bunu gorur — sorunlu musteriyi onceden tanimak icin."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return {"avg_rating": None, "rating_count": 0}
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/ticket_ratings?ratee_id=eq.{user_id}&rater_role=eq.expert&select=stars",
+                headers=_headers(), timeout=10,
+            )
+            rows = r.json() if r.status_code == 200 else []
+            if not rows:
+                return {"avg_rating": None, "rating_count": 0}
+            return {"avg_rating": round(sum(x["stars"] for x in rows) / len(rows), 2),
+                    "rating_count": len(rows)}
+    except Exception as e:
+        logger.warning(f"get_customer_reputation error: {e}")
+    return {"avg_rating": None, "rating_count": 0}
+
+
+async def notify_experts_new_task(ticket_id: int) -> None:
+    """Yeni (atanmamis) bir gorev musait oldugunda, o gorev turunu yapabilen
+    uzmanlarin cihazlarina push gonderir - uzman uygulamayi acip isi gorur.
+    Yalnizca uzmanlik alani eslesen uzmanlara gider."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}&select=ticket_type_id,ref_code",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code != 200 or not r.json():
+                return
+            t = r.json()[0]
+            tt_id = t["ticket_type_id"]
+            # Bu turu yapabilen uzmanlar
+            sp = await client.get(
+                f"{SUPABASE_URL}/rest/v1/expert_ticket_types?ticket_type_id=eq.{tt_id}&select=expert_id",
+                headers=_headers(), timeout=10,
+            )
+            expert_ids = [row["expert_id"] for row in (sp.json() if sp.status_code == 200 else [])]
+            # Gorev turu adi
+            tn = await client.get(
+                f"{SUPABASE_URL}/rest/v1/ticket_types?id=eq.{tt_id}&select=name",
+                headers=_headers(), timeout=10,
+            )
+            task_name = (tn.json()[0]["name"] if tn.status_code == 200 and tn.json() else "Yeni görev")
+    except Exception as e:
+        logger.warning(f"notify_experts_new_task error: {e}")
+        return
+    if not expert_ids:
+        return
+    from pushnotify import send_new_task_push
+    for eid in expert_ids:
+        await send_new_task_push(eid, task_name, t.get("ref_code", ""))
 
 
 async def get_ticket_role(ticket_id: int, user_id: str) -> tuple[str | None, dict | None]:

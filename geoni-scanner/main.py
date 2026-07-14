@@ -39,6 +39,7 @@ from db import (
     is_expert, list_ticket_types, purchase_ticket, list_user_tickets, list_expert_tickets,
     submit_ticket_evidence, start_ticket_work, admin_list_tickets, admin_assign_ticket, admin_verify_ticket,
     admin_create_ticket_type, admin_set_ticket_type_active, admin_set_is_expert, list_experts,
+    rate_ticket, get_ticket_rating_state, get_customer_reputation, notify_experts_new_task,
     has_admin_scope, is_user_suspended, admin_get_user_detail,
     admin_get_user_audits, admin_get_user_transactions, admin_get_user_tickets, admin_set_user_notes,
     admin_set_suspended, admin_set_admin_scopes,
@@ -941,6 +942,10 @@ async def create_ticket(body: TicketPurchaseRequest, http_request: Request):
             if await fulfill_auto_ticket(tkey, tid, target):
                 await notify_ticket_event(tid, "submitted")
         asyncio.create_task(_auto_fulfill(result["ticket_id"], body.target, key))
+    elif result.get("ticket_id"):
+        # Insan-uzman gerektiren gorev: uzmanlik alani eslesen uzmanlara
+        # "yeni gorev musait" push'u (atama beklemeden haberdar olsunlar).
+        asyncio.create_task(notify_experts_new_task(result["ticket_id"]))
     return {"success": True}
 
 @app.get("/api/tickets")
@@ -1049,6 +1054,41 @@ async def ticket_dispute_ep(ticket_id: int, body: TicketDisputeRequest, http_req
     await notify_ticket_event(ticket_id, "disputed")
     return {"success": True}
 
+
+class TicketRatingRequest(BaseModel):
+    stars: int
+    comment: str = ""
+
+@app.post("/api/tickets/{ticket_id}/rate")
+async def ticket_rate_ep(ticket_id: int, body: TicketRatingRequest, http_request: Request):
+    """Cift yonlu puanlama: rol biletten cikarilir (sahip -> uzmani puanlar,
+    atanan uzman -> musteriyi puanlar). Musteri uzmanin kimligini gormez."""
+    user_id = await _require_user(http_request)
+    result = await rate_ticket(ticket_id, user_id, body.stars, body.comment)
+    if not result["success"]:
+        messages = {"invalid_stars": "Puan 1-5 arasında olmalı", "not_found": "Bilet bulunamadı",
+                    "too_early": "İş tamamlanmadan puanlanamaz", "not_participant": "Bu bileti puanlayamazsınız",
+                    "no_counterparty": "Puanlanacak taraf yok"}
+        raise HTTPException(status_code=400, detail=messages.get(result["error"], "Puanlanamadı"))
+    return {"success": True, "role": result.get("role")}
+
+@app.get("/api/tickets/{ticket_id}/rating")
+async def ticket_rating_state_ep(ticket_id: int, http_request: Request):
+    """Bu kullanicinin bileti puanlayabilir mi + verdigi puan (varsa)."""
+    user_id = await _require_user(http_request)
+    return await get_ticket_rating_state(ticket_id, user_id)
+
+@app.get("/api/tickets/{ticket_id}/customer-reputation")
+async def ticket_customer_reputation_ep(ticket_id: int, http_request: Request):
+    """Atanan uzman (veya admin) bu biletin MUSTERISININ itibarini gorur —
+    sorunlu musteriyi onceden tanimak icin. Musteri kendi tarafinda bunu
+    cagirsa bile karsi taraf (uzman) kimligi ASLA donmez."""
+    user_id = await _require_user(http_request)
+    role, ticket = await get_ticket_role(ticket_id, user_id)
+    if role not in ("expert", "admin") or not ticket:
+        raise HTTPException(status_code=403, detail="Yetkiniz yok")
+    return await get_customer_reputation(ticket.get("user_id"))
+
 @app.get("/api/tickets/{ticket_id}/tasks")
 async def ticket_tasks_ep(ticket_id: int, http_request: Request):
     _user_id, role = await _require_ticket_access(ticket_id, http_request)
@@ -1134,11 +1174,12 @@ async def admin_set_ticket_type_active_ep(ticket_type_id: int, body: TicketTypeA
 
 class ExpertFlagRequest(BaseModel):
     is_expert: bool
+    ticket_type_ids: list[int] = []  # uzmanlik alanlari (yetki verilirken secilir)
 
 @app.post("/api/admin/users/{user_id}/expert-flag")
 async def admin_set_expert_flag(user_id: str, body: ExpertFlagRequest, http_request: Request):
     await _require_admin_scope(http_request, "tickets")
-    if not await admin_set_is_expert(user_id, body.is_expert):
+    if not await admin_set_is_expert(user_id, body.is_expert, body.ticket_type_ids):
         raise HTTPException(status_code=400, detail="Güncellenemedi")
     return {"success": True}
 
