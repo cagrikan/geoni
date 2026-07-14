@@ -2911,8 +2911,18 @@ async def notify_ticket_event(ticket_id: int, event: str, actor_role: str = "") 
                 sends.append((expert, f"Müşteri itirazı — {ref}", "Teslimatınıza itiraz edildi",
                               ["Admin kararını bekleyin; gerekirse bilet size iade edilecek."]))
 
+        # Her alici icin dogru sekme + BILETE ozel URL: uzman -> expert
+        # sekmesi, musteri -> my_tickets, admin -> tickets. Frontend bu
+        # parametrelerle acilista ilgili sekmeyi ve bileti otomatik acar.
         for to, subject, heading, lines in sends:
-            asyncio.create_task(send_ticket_email(to, subject, heading, lines))
+            if to == expert:
+                tab = "expert"
+            elif to == customer:
+                tab = "my_tickets"
+            else:
+                tab = "tickets"
+            cta_url = f"https://app.geoni.ai/dashboard?tab={tab}&ticket={ticket_id}"
+            asyncio.create_task(send_ticket_email(to, subject, heading, lines, cta_url=cta_url))
     except Exception as e:
         logger.warning(f"notify_ticket_event error: {e}")
 
