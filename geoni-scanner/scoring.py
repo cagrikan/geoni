@@ -42,7 +42,11 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-SCORING_VERSION = "v3"
+# v4 (2026-07-14): otorite bacaginda Open PageRank aktif — onceden anahtar
+# yapilandirilmamisti ve otorite fiilen Tavily bahis sayacina dusuyordu
+# (7 dis domain = 90'a doyum; buyuk markalara gurultulu/dusuk deger).
+# Formul agirliklari degismedi; yalnizca authority'nin ic bilesimi duzeldi.
+SCORING_VERSION = "v4"
 
 OPENPAGERANK_API_KEY = __import__("os").environ.get("OPENPAGERANK_API_KEY", "")
 
@@ -140,21 +144,26 @@ def compute_ai_access_score(indexing_status: dict, crawl_result: dict) -> dict:
 # ── Otorite: uc dayanakli yapi (Madde 2.4) ─────────────────────────────────
 
 async def _open_pagerank_score(domain: str) -> float | None:
-    """Open PageRank API'sinden 0-10 araligindaki domain skorunu 0-100'e normalize eder."""
+    """Open PageRank API'sinden 0-10 araligindaki domain skorunu 0-100'e
+    normalize eder. v4: eski openpagerank.com API'si kapandi; servis
+    Keywords Everywhere catisina tasindi (opr_live_ anahtarlari yalnizca
+    yeni bulk endpoint'te gecerli). Domain OPR veritabaninda YOKSA
+    (found=false — yeni/kucuk siteler) None doner ve bacak atlanir:
+    kucuk site cezalanmaz, otorite Tavily bacagiyla olculur."""
     if not OPENPAGERANK_API_KEY:
         return None
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                "https://openpagerank.com/api/v1.0/getPageRank",
-                params={"domains[]": domain},
-                headers={"API-OPR": OPENPAGERANK_API_KEY},
+            resp = await client.post(
+                "https://openpagerank.keywordseverywhere.com/v1/domains/bulk",
+                json={"domains": [domain]},
+                headers={"Authorization": f"Bearer {OPENPAGERANK_API_KEY}"},
                 timeout=10,
             )
             if resp.status_code == 200:
-                items = resp.json().get("response", [])
-                if items and items[0].get("status_code") == 200:
-                    rank_decimal = float(items[0].get("page_rank_decimal", 0) or 0)
+                items = resp.json().get("results", [])
+                if items and items[0].get("found"):
+                    rank_decimal = float(items[0].get("open_page_rank", 0) or 0)
                     return min(100.0, rank_decimal * 10)
     except Exception as e:
         logger.info(f"Open PageRank check failed for {domain}: {e}")
