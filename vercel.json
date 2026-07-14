@@ -62,6 +62,10 @@
       "destination": "/guides/chatgpt-visibility.html"
     },
     {
+      "source": "/guides/brand-not-in-chatgpt",
+      "destination": "/guides/brand-not-in-chatgpt.html"
+    },
+    {
       "source": "/download",
       "destination": "/download.html"
     },
