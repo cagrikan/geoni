@@ -99,7 +99,7 @@ tbody tr:nth-child(1) .rank{color:#F5A623}
 .sealcol{width:64px;text-align:center}
 .sealchip{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;border:1px solid rgba(47,189,132,.5);background:rgba(47,189,132,.12);color:#2fbd84;font-weight:800;font-size:.85rem}
 .nochip{color:#3a3f55}
-.date{color:#6E7391;font-size:.82rem;width:106px}
+.date{color:#6E7391;font-size:.82rem;width:106px;white-space:nowrap}
 .empty{padding:36px 16px;text-align:center;color:#6E7391}
 @media (max-width:480px){.date,thead th:nth-child(5){display:none}td{padding:11px 8px}thead th{padding:10px 8px}.rank{width:28px}.score,.sealcol{width:46px}table{font-size:.88rem}}
 .cta{margin-top:36px;background:#10121A;border:1px solid rgba(124,134,245,.3);border-radius:14px;padding:30px 26px;text-align:center}
