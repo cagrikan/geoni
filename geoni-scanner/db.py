@@ -10,7 +10,7 @@ import time
 import uuid
 import logging
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, quote
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -1917,6 +1917,38 @@ async def mark_ticket_submitted(ticket_id: int) -> bool:
         return False
 
 
+# Hizmet bagimliligi: iki temel hizmet (AI bot erisimi + schema) otonom teslim
+# edilir ve TEMELDIR. Ileri hizmetler (guvenilir kaynaklarda gorunurluk, icerik,
+# entity) bu ikisi yapilmadan bos kalir — o yuzden once bunlar alinmali.
+FOUNDATION_SERVICE_KEYS = ("llms_robots", "schema_setup")
+
+
+async def missing_service_prerequisites(user_id: str, service_key: str, target: str = "") -> list[str]:
+    """Ileri bir hizmet icin, kullanicinin (ayni hedef icin) henuz almadigi TEMEL
+    hizmet key'lerini dondurur. Temel hizmette ya da yapilandirma yoksa bos liste.
+    Hata olursa bos liste (fail-open — gecici hata odeme/UX'i engellemesin)."""
+    if service_key in FOUNDATION_SERVICE_KEYS or not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return []
+    try:
+        async with httpx.AsyncClient() as client:
+            fr = await client.get(
+                f"{SUPABASE_URL}/rest/v1/ticket_types?key=in.({','.join(FOUNDATION_SERVICE_KEYS)})&select=id,key",
+                headers=_headers(), timeout=10)
+            key_by_id = {row["id"]: row["key"] for row in (fr.json() if fr.status_code == 200 else [])}
+            if not key_by_id:
+                return []
+            q = f"{SUPABASE_URL}/rest/v1/tickets?user_id=eq.{user_id}&select=ticket_type_id"
+            if target:
+                q += f"&target=eq.{quote(target, safe='')}"
+            tr = await client.get(q, headers=_headers(), timeout=10)
+            have = {row["ticket_type_id"] for row in (tr.json() if tr.status_code == 200 else [])}
+            # Temel hizmetin adini (name) da dondurebilmek icin key yeter; cagiran cevirir.
+            return [k for i, k in key_by_id.items() if i not in have]
+    except Exception as e:
+        logger.warning(f"missing_service_prerequisites: {e}")
+        return []
+
+
 async def purchase_ticket(user_id: str, ticket_type_id: int, audit_id: str | None = None, target: str = "") -> dict:
     """Deducts token_cost from the buyer's balance and creates the ticket -
     both steps must succeed together, so balance is checked and the profile
@@ -1927,6 +1959,10 @@ async def purchase_ticket(user_id: str, ticket_type_id: int, audit_id: str | Non
     ticket_type = await _get_ticket_type(ticket_type_id)
     if not ticket_type or not ticket_type.get("is_active"):
         return {"success": False, "error": "invalid_ticket_type"}
+    # Ileri hizmet: once iki temel hizmet alinmis olmali (yoksa bos kalir).
+    missing = await missing_service_prerequisites(user_id, ticket_type.get("key", ""), target)
+    if missing:
+        return {"success": False, "error": "prereq_missing", "missing": missing}
     cost = ticket_type["token_cost"]
     try:
         async with httpx.AsyncClient() as client:

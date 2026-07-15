@@ -37,6 +37,7 @@ from db import (
     get_credit_transaction, transaction_exists, record_refund, get_package_by_apple_product_id, delete_user_account,
     update_user_social, get_share_result, get_ai_friendly_list,
     get_ticket_type_by_apple_product_id, create_iap_intent, consume_iap_intent, create_paid_ticket,
+    missing_service_prerequisites,
     get_manual_cost, set_manual_cost, list_campaigns, create_campaign, delete_campaign,
     is_expert, list_ticket_types, purchase_ticket, list_user_tickets, list_expert_tickets,
     submit_ticket_evidence, start_ticket_work, admin_list_tickets, admin_assign_ticket, admin_verify_ticket,
@@ -1037,6 +1038,7 @@ async def create_ticket(body: TicketPurchaseRequest, http_request: Request):
             "invalid_ticket_type": "Geçersiz bilet türü",
             "insufficient_balance": "Yetersiz token bakiyesi",
             "user_not_found": "Kullanıcı bulunamadı",
+            "prereq_missing": "Bu hizmet için önce iki temel hizmeti almalısınız: AI Botlarına Erişim İzni ve Sitenizin AI Tarafından Doğru Anlaşılması. Onlar olmadan bu adım sonuç vermez.",
         }
         raise HTTPException(status_code=400, detail=messages.get(result["error"], "Bilet satın alınamadı"))
     key = result.get("ticket_type_key")
@@ -1482,7 +1484,16 @@ async def iap_intent(body: IapIntentRequest, http_request: Request):
     'hangi hedef icin' bilgisini kaydeder ki satin alma webhook'u bileti dogru
     hedefle acabilsin."""
     user_id = await _require_user(http_request)
-    ok = await create_iap_intent(user_id, body.product_id, (body.target or "").strip())
+    target = (body.target or "").strip()
+    # Para (IAP) yolu: odeme YAPILMADAN once ileri hizmetin on-kosulunu dogrula
+    # (token yolundaki purchase_ticket ile ayni kural). Boylece kullanici bos bir
+    # ileri hizmete para odemez.
+    svc = await get_ticket_type_by_apple_product_id(body.product_id)
+    if svc:
+        missing = await missing_service_prerequisites(user_id, svc.get("key", ""), target)
+        if missing:
+            raise HTTPException(status_code=400, detail="Bu hizmet için önce iki temel hizmeti almalısınız: AI Botlarına Erişim İzni ve Sitenizin AI Tarafından Doğru Anlaşılması.")
+    ok = await create_iap_intent(user_id, body.product_id, target)
     if not ok:
         raise HTTPException(status_code=500, detail="Niyet kaydedilemedi")
     return {"success": True}
