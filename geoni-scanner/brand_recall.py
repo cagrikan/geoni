@@ -754,6 +754,24 @@ def _model_score_from_components(taniyor: bool, guven: float, dogruluk_skoru: fl
     return round(score, 1)
 
 
+def _model_score_shadow(taniyor: bool, guven: float, dogruluk_skoru: float,
+                        uzunluk_skoru: float, uydurma_suphesi: bool, celiski_var: bool) -> float:
+    """Grup B faz-1 GOLGE skoru: B7 = sert 30 tavani yerine KADEMELI ceza
+    (celiski agir ×0.55, uydurma orta ×0.70). Manseti DEGISTIRMEZ; yalniz
+    score_shadow karsilastirmasi icin. Tek bit'lik yargi skoru %70 tirasliyordu."""
+    if not taniyor:
+        return 0.0
+    guven = max(0.0, min(100.0, guven or 0))
+    dogruluk = max(0.0, min(100.0, dogruluk_skoru or 0))
+    uzunluk = max(0.0, min(100.0, uzunluk_skoru or 0))
+    score = dogruluk * 0.70 + guven * 0.25 + uzunluk * 0.05
+    if celiski_var:
+        score *= 0.55
+    if uydurma_suphesi:
+        score *= 0.70
+    return round(score, 1)
+
+
 def _legacy_granular_score(response: str, name: str, via_web: bool = False) -> float:
     """
     Eski (uzunluk tabanli) skorlama — yalnizca score_legacy karsilastirmasi
@@ -1011,6 +1029,7 @@ async def check_brand_recall(
     model_results = {}
     per_model_final_score = {}
     per_model_legacy_score = {}
+    per_model_shadow_score = {}   # Grup B faz-1 golge skor (B6+B7)
     dogruluk_values = []
 
     display_names = {"claude": "Claude", "openai": "ChatGPT", "gemini": "Gemini", "perplexity": "Perplexity"}
@@ -1028,6 +1047,7 @@ async def check_brand_recall(
             if WEIGHTS.get(key, 0) > 0:
                 dogruluk_values.append(dogruluk)
             formulation_scores = []
+            shadow_scores = []
             for p in data["formulation_parses"]:
                 uzunluk = _length_band_score(p.get("yanit", "")) if p.get("taniyor") else 0.0
                 s = _model_score_from_components(
@@ -1035,7 +1055,12 @@ async def check_brand_recall(
                     judge["uydurma_suphesi"], judge["celiski_var"],
                 )
                 formulation_scores.append(s)
+                shadow_scores.append(_model_score_shadow(
+                    p.get("taniyor", False), p.get("guven", 0), dogruluk, uzunluk,
+                    judge["uydurma_suphesi"], judge["celiski_var"],
+                ))
             raw_median = statistics.median(formulation_scores) if formulation_scores else 0.0
+            shadow_median = statistics.median(shadow_scores) if shadow_scores else 0.0
             # v4: via_web asimetrik tavani KALDIRILDI. Eski kod web-destekli
             # (GEONI-failover) cevabi 10-20 banda kilitliyordu; native-web
             # (Perplexity/Gemini-grounded) muaf oldugundan AYNI bilgiye asimetrik
@@ -1043,14 +1068,17 @@ async def check_brand_recall(
             # Judge zaten dogrulugu olcuyor; web kaynagi data["via_web"] rozetinde
             # bilgi amacli kalir, ceza degil.
             final_score = raw_median
+            shadow_final = shadow_median
             score_source = "judge_v2"
         else:
             # judge_fallback: judge cagrisi basarisiz oldu, legacy skora dus
             logger.info(f"judge_fallback: model={key} icin legacy skora dusuldu")
             final_score = legacy_score
+            shadow_final = legacy_score
             score_source = "legacy_judge_fallback"
 
         per_model_final_score[key] = final_score
+        per_model_shadow_score[key] = shadow_final
 
         model_results[key] = {
             "recognized": data["recognized"],
@@ -1119,6 +1147,20 @@ async def check_brand_recall(
         _overall += sov_result["score"] * base_weights["share_of_voice"]
     overall_score = int(round(_overall))
 
+    # ---- GOLGE SKOR (Grup B faz-1) — manseti DEGISTIRMEZ, score_shadow olarak
+    # saklanir. B7: per_model_shadow_score kademeli tavan tasir. B6: quality
+    # (dogruluk ort.) cift-sayim payi modellere verilir (quality kanalindan
+    # cikarilir). v4 ile dagilim karsilastirilip stabil olunca faz-2'de gecirilir.
+    _qw = base_weights.get("response_quality", 0.0)
+    eff_shadow = {k: model_w[k] * ((M + _qw) / avail) for k in measured} if avail > 0 else {}
+    _shadow = (
+        sum(per_model_shadow_score[k] * eff_shadow.get(k, 0.0) for k in model_keys)
+        + relevance_score * base_weights["topic_relevance"]
+    )
+    if sov_checked:
+        _shadow += sov_result["score"] * base_weights["share_of_voice"]
+    score_shadow = int(round(_shadow))
+
     # Karsilastirma icin eski (legacy) skor da hesaplanir
     legacy_quality_score = sum(_length_band_score(t) for t in representative_texts.values()) / max(len(representative_texts), 1)
     legacy_overall_score = int(round(
@@ -1160,6 +1202,7 @@ async def check_brand_recall(
         "recognition_count": recognition_count,
         "score": overall_score,
         "score_legacy": legacy_overall_score,
+        "score_shadow": score_shadow,  # Grup B faz-1 golge skor (B6+B7); manset degil
         "scoring_version": SCORING_VERSION,
         "score_breakdown": score_breakdown,
         "sov": sov_result,
