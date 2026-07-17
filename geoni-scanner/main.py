@@ -42,6 +42,7 @@ from db import (
     is_expert, list_ticket_types, purchase_ticket, list_user_tickets, list_expert_tickets,
     submit_ticket_evidence, start_ticket_work, admin_list_tickets, admin_assign_ticket, admin_verify_ticket,
     admin_create_ticket_type, admin_set_ticket_type_active, admin_set_is_expert, list_experts,
+    admin_get_payouts, admin_mark_payout_paid,
     rate_ticket, get_ticket_rating_state, get_customer_reputation, notify_experts_new_task,
     has_admin_scope, is_user_suspended, admin_get_user_detail,
     admin_get_user_audits, admin_get_user_transactions, admin_get_user_tickets, admin_set_user_notes,
@@ -1293,6 +1294,23 @@ async def admin_set_expert_flag(user_id: str, body: ExpertFlagRequest, http_requ
 async def admin_experts(http_request: Request):
     await _require_admin_scope(http_request, "tickets")
     return await list_experts()
+
+@app.get("/api/admin/payouts")
+async def admin_payouts(http_request: Request, period: str | None = None):
+    """Muhasebe defteri: uzman/influencer kazanclari (%33 teslim + %10 referral).
+    Finansal veri -> full-admin. period='YYYY-MM' verilirse o aya filtreler."""
+    await _require_full_admin(http_request)
+    return await admin_get_payouts(period)
+
+class PayoutPaidRequest(BaseModel):
+    paid: bool = True
+
+@app.post("/api/admin/payouts/{payout_id}/paid")
+async def admin_payout_paid(payout_id: int, body: PayoutPaidRequest, http_request: Request):
+    admin_id = await _require_full_admin(http_request)
+    if not await admin_mark_payout_paid(payout_id, admin_id, body.paid):
+        raise HTTPException(status_code=400, detail="Güncellenemedi")
+    return {"success": True}
 
 @app.get("/api/credit-packages")
 async def credit_packages():

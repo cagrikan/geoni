@@ -2634,6 +2634,108 @@ async def list_experts() -> list:
     return experts
 
 
+async def admin_get_payouts(period_month: str | None = None) -> dict:
+    """Admin muhasebe defteri: uzman/influencer kazanclari (%33 teslim + %10
+    referral) kisi-bazli ozet + satirlar + sozlesme durumu. period_month
+    'YYYY-MM' ya da 'YYYY-MM-01' verilirse o aya filtreler."""
+    empty = {"experts": [], "payouts": [], "totals": {"earned": 0, "paid": 0, "outstanding": 0}}
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return empty
+    if period_month and len(period_month) == 7:
+        period_month = period_month + "-01"
+    try:
+        async with httpx.AsyncClient() as client:
+            q = f"{SUPABASE_URL}/rest/v1/expert_payouts?select=*&order=created_at.desc"
+            if period_month:
+                q += f"&period_month=eq.{period_month}"
+            pr = await client.get(q, headers=_headers(), timeout=15)
+            payouts = pr.json() if pr.status_code == 200 else []
+
+            # Ilgili profiller (uzman + musteri) tek seferde
+            pids = {p[k] for p in payouts for k in ("expert_id", "customer_id") if p.get(k)}
+            profs: dict[str, dict] = {}
+            contracts: dict[str, dict] = {}
+            if pids:
+                id_list = ",".join(f'"{i}"' for i in pids)
+                nr = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/profiles?id=in.({id_list})&select=id,full_name,instagram_handle,expert_mode",
+                    headers=_headers(), timeout=10)
+                for row in (nr.json() if nr.status_code == 200 else []):
+                    profs[row["id"]] = row
+            expert_ids = {p["expert_id"] for p in payouts if p.get("expert_id")}
+            if expert_ids:
+                cid = ",".join(f'"{i}"' for i in expert_ids)
+                cr = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/expert_contracts?expert_id=in.({cid})&select=expert_id,mode,starts_at,ends_at,status&order=created_at.desc",
+                    headers=_headers(), timeout=10)
+                for row in (cr.json() if cr.status_code == 200 else []):
+                    contracts.setdefault(row["expert_id"], row)  # order desc -> en yeni
+            emails = await _fetch_all_auth_emails()
+
+            def nm(i):
+                p = profs.get(i) or {}
+                return p.get("full_name") or p.get("instagram_handle") or (str(i)[:8] if i else "")
+
+            lines, agg = [], {}
+            for p in payouts:
+                eid = p.get("expert_id")
+                amt = float(p.get("amount") or 0)
+                lines.append({
+                    "id": p["id"], "expert_id": eid, "expert_name": nm(eid),
+                    "kind": p.get("kind"), "amount": amt,
+                    "basis_amount": float(p.get("basis_amount") or 0),
+                    "rate": float(p.get("rate") or 0), "currency": p.get("currency") or "USD",
+                    "status": p.get("status"), "period_month": p.get("period_month"),
+                    "created_at": p.get("created_at"), "paid_at": p.get("paid_at"),
+                    "ticket_id": p.get("ticket_id"), "customer_name": nm(p.get("customer_id")),
+                    "note": p.get("note"),
+                })
+                a = agg.setdefault(eid, {
+                    "expert_id": eid, "name": nm(eid), "email": emails.get(eid, ""),
+                    "expert_mode": (profs.get(eid) or {}).get("expert_mode"),
+                    "delivery_earned": 0.0, "referral_earned": 0.0,
+                    "total_earned": 0.0, "total_paid": 0.0, "outstanding": 0.0,
+                    "contract": contracts.get(eid),
+                })
+                a["total_earned"] += amt
+                a["delivery_earned" if p.get("kind") == "delivery" else "referral_earned"] += amt
+                if p.get("status") == "paid":
+                    a["total_paid"] += amt
+                elif p.get("status") != "void":
+                    a["outstanding"] += amt
+
+            experts = sorted(agg.values(), key=lambda x: x["outstanding"], reverse=True)
+            for e in experts:
+                for k in ("delivery_earned", "referral_earned", "total_earned", "total_paid", "outstanding"):
+                    e[k] = round(e[k], 2)
+            totals = {
+                "earned": round(sum(e["total_earned"] for e in experts), 2),
+                "paid": round(sum(e["total_paid"] for e in experts), 2),
+                "outstanding": round(sum(e["outstanding"] for e in experts), 2),
+            }
+            return {"experts": experts, "payouts": lines, "totals": totals}
+    except Exception as e:
+        logger.warning(f"admin_get_payouts error: {e}")
+        return empty
+
+
+async def admin_mark_payout_paid(payout_id: int, admin_id: str, paid: bool = True) -> bool:
+    """Bir payout satirini odendi/beklemede olarak isaretler (admin muhasebe)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            body = ({"status": "paid", "paid_at": datetime.now(timezone.utc).isoformat(), "paid_by": admin_id}
+                    if paid else {"status": "pending", "paid_at": None, "paid_by": None})
+            r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/expert_payouts?id=eq.{int(payout_id)}",
+                headers=_headers(), json=body, timeout=10)
+            return r.status_code in (200, 204)
+    except Exception as e:
+        logger.warning(f"admin_mark_payout_paid error: {e}")
+        return False
+
+
 async def rate_ticket(ticket_id: int, rater_id: str, stars: int, comment: str = "") -> dict:
     """Cift yonlu puanlama. Rol biletten cikarilir: bilet sahibi ->
     'customer' (uzmani puanlar), atanan uzman -> 'expert' (musteriyi puanlar).
