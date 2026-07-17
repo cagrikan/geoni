@@ -50,6 +50,7 @@ from db import (
     get_ticket_role, list_ticket_messages, add_ticket_message, create_ticket_upload_url, mark_ticket_read, notify_ticket_event,
     list_ticket_tasks, toggle_ticket_task, dispute_ticket, confirm_ticket,
 )
+from self_improve import run_improvement_cycle, get_signals, improvement_loop
 from anthropic_admin import get_anthropic_cost_summary
 from aws_cost import get_aws_cost_summary
 from openai_admin import get_openai_cost_summary
@@ -140,6 +141,9 @@ async def _start_monitor():
     # Haftalik icerik uretimi: gercek tarama verisinden sosyal icerik uretip
     # kurucuya e-postalar (bkz. content_gen.py). Post/DM ATMAZ.
     asyncio.create_task(content_loop())
+    # Oz-gelisim motoru: gunluk olarak taramalardan sinyal turetir (kendi
+    # gorunurluk, icerik boslugu, nis aci, kalite). Riskli degisiklik yapmaz.
+    asyncio.create_task(improvement_loop())
 
 
 jobs_store = {}
@@ -1301,6 +1305,19 @@ async def admin_payouts(http_request: Request, period: str | None = None):
     Finansal veri -> full-admin. period='YYYY-MM' verilirse o aya filtreler."""
     await _require_full_admin(http_request)
     return await admin_get_payouts(period)
+
+@app.get("/api/admin/improvement")
+async def admin_improvement(http_request: Request, cycle_date: str | None = None):
+    """Oz-gelisim sinyalleri (en son donem): kendi-gorunurluk, icerik boslugu,
+    nis aci, kalite. Salt okuma."""
+    await _require_full_admin(http_request)
+    return await get_signals(cycle_date)
+
+@app.post("/api/admin/improvement/run")
+async def admin_improvement_run(http_request: Request, days: int = 7):
+    """Oz-gelisim dongusunu elle tetikle (harvest+analyze+yaz), digest doner."""
+    await _require_full_admin(http_request)
+    return await run_improvement_cycle(days=max(1, min(days, 90)))
 
 class PayoutPaidRequest(BaseModel):
     paid: bool = True
