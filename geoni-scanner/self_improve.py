@@ -102,6 +102,8 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25) -> dict:
     m_acc_n = defaultdict(int)
     m_hallu = defaultdict(int)                # uydurma_suphesi
     m_contra = defaultdict(int)               # celiski_var
+    shadow_deltas = []                        # Grup B: v4 score - score_shadow (flip karari)
+    shadow_tail = 0                           # |delta| > 10 (KUYRUK — B7'nin etkiledigi uc vakalar)
     scanned = 0
 
     for a in rows:
@@ -114,6 +116,13 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25) -> dict:
         score = rj.get("score")
         if isinstance(score, (int, float)) and topic:
             niche_scores[topic].append(float(score))
+        # Grup B flip-karari: v4 manset ile golge (B6+B7) skoru karsilastir.
+        shadow = rj.get("score_shadow")
+        if isinstance(score, (int, float)) and isinstance(shadow, (int, float)):
+            d = float(score) - float(shadow)
+            shadow_deltas.append(d)
+            if abs(d) > 10:
+                shadow_tail += 1
         stab = rj.get("stability")
         # stability bir obje: {delta, smoothed_score, prev_score, ...}. Oynaklik
         # olcusu = |delta| (skorun bir onceki taramaya gore ne kadar sicradigi).
@@ -214,6 +223,16 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25) -> dict:
                     "metric": avg_stab, "detail": {"n": len(stabilities)}})
     signals.append({"kind": "quality_overall", "subject": "ungrounded_mentions",
                     "metric": no_source, "detail": {"note": "cevaplandi ama kaynak yok"}})
+    # Grup B flip-karari sinyali: v4 vs golge (B6+B7). ORTALAMAYA degil KUYRUGA bak
+    # (Fable): tail = |v4 - shadow| > 10 vaka. metric = ort kayma; detail.tail_rate
+    # kritik. Faz-2 gecis karari yeterli tail vakasi + kabul edilebilir kayma ile.
+    if shadow_deltas:
+        _n = len(shadow_deltas)
+        signals.append({"kind": "shadow_compare", "subject": "v4_vs_shadow",
+                        "metric": round(sum(shadow_deltas) / _n, 1),
+                        "detail": {"n": _n, "tail_gt10": shadow_tail,
+                                   "tail_rate": round(shadow_tail / _n, 3),
+                                   "max_abs": round(max(abs(d) for d in shadow_deltas), 1)}})
 
     # ---- Yaz (bugun icin idempotent: once bugunku sil) ----
     written = 0
