@@ -42,6 +42,10 @@
       "destination": "/rehber/markam-chatgptde-gorunmuyor.html"
     },
     {
+      "source": "/rehber/geo-nedir",
+      "destination": "/rehber/geo-nedir.html"
+    },
+    {
       "source": "/indir",
       "destination": "/indir.html"
     },
@@ -64,6 +68,10 @@
     {
       "source": "/guides/brand-not-in-chatgpt",
       "destination": "/guides/brand-not-in-chatgpt.html"
+    },
+    {
+      "source": "/guides/what-is-geo",
+      "destination": "/guides/what-is-geo.html"
     },
     {
       "source": "/download",
