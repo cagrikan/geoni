@@ -25,14 +25,33 @@ logger = logging.getLogger("self_improve")
 _GEONI = re.compile(r"geoni", re.I)
 
 
+SELF_SCAN_DOMAIN = "geoni.ai"
+
+
+async def self_scan() -> int | None:
+    """geoni.ai'yi tarar (kendi AI-gorunurluk skor trendimiz icin) ve audits'e
+    yazar. monitor._scan_web_item'i tekrar kullanir; haftada bir yeter."""
+    try:
+        from monitor import _scan_web_item
+        score = await _scan_web_item({"target": {"domain": SELF_SCAN_DOMAIN}})
+        logger.info(f"self-scan {SELF_SCAN_DOMAIN}: score={score}")
+        return score
+    except Exception as e:
+        logger.warning(f"self_scan error: {e}")
+        return None
+
+
 async def improvement_loop():
     """Always-on: gunde bir kez oz-gelisim dongusunu calistirir (harvest+analyze+
-    yaz). Riskli hicbir sey otomatik degistirmez; sadece sinyal uretir."""
+    yaz) + haftada bir geoni.ai self-scan. Riskli hicbir sey otomatik degistirmez;
+    sadece sinyal/olcum uretir."""
     await asyncio.sleep(300)  # servis otursun
     while True:
         try:
             d = await run_improvement_cycle(days=7)
             logger.info(f"improvement_loop ran: {d.get('signals_written')} signals")
+            if datetime.now(timezone.utc).weekday() == 0:  # Pazartesi: haftalik self-scan
+                await self_scan()
         except Exception as e:
             logger.warning(f"improvement_loop error: {e}")
         await asyncio.sleep(24 * 3600)  # gunluk

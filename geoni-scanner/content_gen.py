@@ -62,13 +62,33 @@ async def _fetch_stats(client: httpx.AsyncClient) -> dict:
             "dusuk": sum(1 for s in sc if s < 40), "yuksek": sum(1 for s in sc if s >= 70)}
 
 
-async def _generate(client: httpx.AsyncClient, stats: dict) -> str | None:
+async def _fetch_top_questions(client: httpx.AsyncClient, limit: int = 10) -> list[str]:
+    """Oz-gelisim motorunun urettigi 'icerik boslugu' sinyalleri: kullanicilarin
+    AI'a sordugu en sik gercek sorular. content_gen bunlari icerik/rehber fikrine
+    cevirir (dongu C: gercek soru -> icerik -> AI-cited)."""
+    try:
+        r = await client.get(
+            f"{SUPABASE_URL}/rest/v1/improvement_signals?kind=eq.content_gap"
+            f"&select=subject&order=cycle_date.desc,metric.desc&limit={limit}",
+            headers=_h(), timeout=10)
+        rows = r.json() if r.status_code == 200 else []
+        return [x["subject"] for x in rows if x.get("subject")]
+    except Exception:
+        return []
+
+
+async def _generate(client: httpx.AsyncClient, stats: dict, questions: list[str] | None = None) -> str | None:
     if not ANTHROPIC_KEY:
         return None
+    q_block = ""
+    if questions:
+        q_block = ("\n\nKullanıcıların AI'a sorduğu en sık GERÇEK sorular (bunlara "
+                   "cevap veren rehber/içerik fikirleri de üret — GEO açısından bu "
+                   "sorularda görünür olmak hedef):\n- " + "\n- ".join(questions[:10]))
     prompt = (f"Bu haftanın gerçek verisi: toplam {stats['toplam']} tarama, son 7 günde "
               f"{stats['son7g']}. Ortalama skorlar — web: {stats['ort_web']}/100, marka/kişi: "
               f"{stats['ort_marka']}/100. {stats['dusuk']} tarama 40 altında, {stats['yuksek']} "
-              f"tanesi 70+. Bu verilerden bu haftanın içeriğini üret.")
+              f"tanesi 70+. Bu verilerden bu haftanın içeriğini üret." + q_block)
     r = await client.post("https://api.anthropic.com/v1/messages",
                           headers={"x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01",
                                    "content-type": "application/json"},
@@ -112,7 +132,8 @@ async def content_loop():
                 async with httpx.AsyncClient() as client:
                     if await _last_sent_week(client) != week:
                         stats = await _fetch_stats(client)
-                        content = await _generate(client, stats)
+                        questions = await _fetch_top_questions(client)
+                        content = await _generate(client, stats, questions)
                         if content:
                             lines = [f"Bu haftanın verisi: {stats}", "", content, "",
                                      "— Otomatik üretildi (content_gen). Yayın senin kararın; "
