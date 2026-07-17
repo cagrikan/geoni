@@ -67,7 +67,7 @@ def _next_tavily_key() -> tuple[str, str]:
     _tavily_rr["i"] += 1
     return TAVILY_API_KEYS[idx], f"tavily-{idx + 1}"
 
-SCORING_VERSION = "v3-sov"
+SCORING_VERSION = "v4-sov"
 
 # Canli SSE ilerleme mesajlari (dil secimine gore, bkz. check_brand_recall(lang=))
 PROGRESS_MESSAGES = {
@@ -97,11 +97,14 @@ PROGRESS_MESSAGES = {
 RECALL_TEMPERATURE = 0.1
 
 # SOV olculemedeginde kullanilan (eski v2) agirliklar
+# NOT (v4): gemini entegrasyon hatasi duzeltilene+stabilize olana dek GOLGE MODDA
+# (agirlik 0); model_results'ta gosterilir ama manseti etkilemez. Eski 0.24 pay
+# claude/openai/perplexity'ye oranli dagitildi (0.16/0.24/0.16 -> 0.23/0.34/0.23).
 WEIGHTS = {
-    "claude":           0.16,
-    "openai":           0.24,
-    "gemini":           0.24,
-    "perplexity":       0.16,
+    "claude":           0.23,
+    "openai":           0.34,
+    "gemini":           0.0,
+    "perplexity":       0.23,
     "response_quality": 0.10,
     "topic_relevance":  0.10,
 }
@@ -110,10 +113,10 @@ WEIGHTS = {
 # Tanima (recall) markayi BILEN kullaniciyi, SOV ise markayi BILMEYEN
 # kullaniciyi temsil eder — GEO'nun asil ticari degeri ikincisidir.
 WEIGHTS_SOV = {
-    "claude":           0.12,
-    "openai":           0.18,
-    "gemini":           0.18,
-    "perplexity":       0.12,
+    "claude":           0.17,
+    "openai":           0.26,
+    "gemini":           0.0,     # v4: golge mod (bkz. WEIGHTS notu); 0.18 dagitildi
+    "perplexity":       0.17,
     "response_quality": 0.05,
     "topic_relevance":  0.05,
     "share_of_voice":   0.30,
@@ -344,13 +347,21 @@ async def _ask_gemini(prompt: str, temperature: float = RECALL_TEMPERATURE, max_
                 "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
                 headers={"x-goog-api-key": GOOGLE_API_KEY},
                 json={"contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                      "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature}},
+                      "generationConfig": {"maxOutputTokens": max(max_tokens, 1500), "temperature": temperature,
+                                           "thinkingConfig": {"thinkingBudget": 0}}},
                 timeout=30,
             )
             if r.status_code == 200:
                 asyncio.create_task(log_provider_call("google"))
-                parts = r.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
-                return " ".join(p.get("text", "") for p in parts).strip()
+                cand = r.json().get("candidates", [{}])[0]
+                # Kesik cevabi puanlamaya sizdirma: bittiginde metin yoksa None
+                # ("olculemedi"), sahte-taninma degil.
+                if cand.get("finishReason") in ("MAX_TOKENS", "SAFETY", "RECITATION"):
+                    logger.warning(f"Gemini finishReason={cand.get('finishReason')} — atlandi")
+                    return None
+                parts = cand.get("content", {}).get("parts", [])
+                text = " ".join(p.get("text", "") for p in parts).strip()
+                return text or None
             logger.warning(f"Gemini {r.status_code}: {r.text[:200]}")
     except Exception as e:
         logger.warning(f"Gemini query failed: {e}")
@@ -378,13 +389,16 @@ async def _ask_gemini_grounded(prompt: str, temperature: float = 0.3, max_tokens
                 json={
                     "contents": [{"role": "user", "parts": [{"text": prompt}]}],
                     "tools": [{"google_search": {}}],
-                    "generationConfig": {"maxOutputTokens": max_tokens, "temperature": temperature},
+                    "generationConfig": {"maxOutputTokens": max(max_tokens, 1500), "temperature": temperature},
                 },
                 timeout=40,
             )
             if r.status_code == 200:
                 asyncio.create_task(log_provider_call("google"))
                 cand = r.json().get("candidates", [{}])[0]
+                if cand.get("finishReason") in ("MAX_TOKENS", "SAFETY", "RECITATION"):
+                    logger.warning(f"Gemini grounded finishReason={cand.get('finishReason')} — atlandi")
+                    return None
                 parts = cand.get("content", {}).get("parts", [])
                 text = " ".join(p.get("text", "") for p in parts).strip()
                 citations = []
@@ -523,12 +537,14 @@ def _parse_recognition(raw: str | None, name: str) -> dict:
             "structured": True,
         }
 
-    # Yedek mekanizma: JSON parse edilemedi
-    logger.info("json_parse_fallback: recognition icin kalip eslestirmeye dusuldu")
-    recognized = _is_recognized(raw, name)
+    # Yedek mekanizma: structured JSON parse edilemedi -> KONSERVATIF.
+    # Eski davranis "inkar kalibi yoksa taniyor say" (default-True) idi; kesik/
+    # bozuk metin bunu gecip sahte-taninma uretiyordu. Belirsiz = tanimiyor:
+    # olculemeyen cevaptan taninma iddia etme (A1 finishReason ile kesiklik zaten azaldi).
+    logger.info("json_parse_fallback: structured parse basarisiz — konservatif (taniyor=False)")
     return {
-        "taniyor": recognized,
-        "guven": 60.0 if recognized else 0.0,
+        "taniyor": False,
+        "guven": 0.0,
         "yanit": raw.strip(),
         "structured": False,
     }
@@ -960,7 +976,10 @@ async def check_brand_recall(
 
     def safe(d):
         if isinstance(d, Exception):
-            return {"formulation_parses": [], "representative_text": "", "recognized": False, "via_web": False}
+            # A5: olculemedi (API hatasi) -> measured=False; skorda 0 sayilmayip
+            # agirligi mevcut motorlara renormalize edilir.
+            return {"formulation_parses": [], "representative_text": "", "recognized": False, "via_web": False, "measured": False}
+        d["measured"] = True
         return d
 
     model_raw = {
@@ -1001,10 +1020,13 @@ async def check_brand_recall(
                 )
                 formulation_scores.append(s)
             raw_median = statistics.median(formulation_scores) if formulation_scores else 0.0
-            if data["via_web"] and raw_median > 0:
-                final_score = round(max(10.0, min(20.0, 10 + (raw_median / 100) * 10)), 1)
-            else:
-                final_score = raw_median
+            # v4: via_web asimetrik tavani KALDIRILDI. Eski kod web-destekli
+            # (GEONI-failover) cevabi 10-20 banda kilitliyordu; native-web
+            # (Perplexity/Gemini-grounded) muaf oldugundan AYNI bilgiye asimetrik
+            # ceza cikiyordu (Claude %76 via_web + 80 dogruluk -> 20'ye eziliyordu).
+            # Judge zaten dogrulugu olcuyor; web kaynagi data["via_web"] rozetinde
+            # bilgi amacli kalir, ceza degil.
+            final_score = raw_median
             score_source = "judge_v2"
         else:
             # judge_fallback: judge cagrisi basarisiz oldu, legacy skora dus
@@ -1062,20 +1084,23 @@ async def check_brand_recall(
     relevance_score = _topic_relevance_score(web_results, name, topic)
 
     sov_checked = bool(sov_result.get("checked")) and sov_result.get("score") is not None
+    base_weights = WEIGHTS_SOV if sov_checked else WEIGHTS
+    # A5: olculemeyen motorun (measured=False) agirligini dus, kalan agirliklari
+    # 1'e renormalize et — "olculemedi" != "gorunmuyor" (kesintide skor sebepsiz
+    # dusmesin). gemini zaten agirlik 0 oldugundan hatasi etkisizdir.
+    eff = {k: (0.0 if (k in model_keys and not model_raw[k].get("measured", True)) else v)
+           for k, v in base_weights.items()}
+    _tot = sum(eff.values())
+    if _tot > 0:
+        eff = {k: v / _tot for k, v in eff.items()}
+    _overall = (
+        sum(per_model_final_score[k] * eff.get(k, 0.0) for k in model_keys)
+        + quality_score * eff.get("response_quality", 0.0)
+        + relevance_score * eff.get("topic_relevance", 0.0)
+    )
     if sov_checked:
-        weights = WEIGHTS_SOV
-        overall_score = int(round(
-            sum(per_model_final_score[k] * weights[k] for k in model_keys) +
-            quality_score * weights["response_quality"] +
-            relevance_score * weights["topic_relevance"] +
-            sov_result["score"] * weights["share_of_voice"]
-        ))
-    else:
-        overall_score = int(round(
-            sum(per_model_final_score[k] * WEIGHTS[k] for k in model_keys) +
-            quality_score * WEIGHTS["response_quality"] +
-            relevance_score * WEIGHTS["topic_relevance"]
-        ))
+        _overall += sov_result["score"] * eff.get("share_of_voice", 0.0)
+    overall_score = int(round(_overall))
 
     # Karsilastirma icin eski (legacy) skor da hesaplanir
     legacy_quality_score = sum(_length_band_score(t) for t in representative_texts.values()) / max(len(representative_texts), 1)
