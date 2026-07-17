@@ -208,33 +208,17 @@ async def deduct_credits(user_id: str, amount: int, description: str, reference_
         return False
     try:
         async with httpx.AsyncClient() as client:
-            # Get current balance
-            r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credit_balance,total_credits_spent",
+            # Atomik kosullu dusum (yaris/double-spend guvenli): yeterli bakiye
+            # varsa TEK UPDATE ile duser ve doner, yoksa satir donmez.
+            rpc_r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/deduct_credits_if_enough",
                 headers=_headers(),
+                json={"p_user_id": user_id, "p_amount": amount},
                 timeout=10,
             )
-            if r.status_code != 200:
+            if rpc_r.status_code != 200 or not rpc_r.json():
+                logger.warning(f"Insufficient credits (atomic) for user {user_id}: amount {amount}")
                 return False
-            data = r.json()
-            if not data:
-                return False
-            current_balance = data[0].get("credit_balance", 0)
-            current_spent = data[0].get("total_credits_spent") or 0
-            if current_balance < amount:
-                logger.warning(f"Insufficient credits for user {user_id}: {current_balance} < {amount}")
-                return False
-
-            # Update balance
-            await client.patch(
-                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
-                headers=_headers(),
-                json={
-                    "credit_balance": current_balance - amount,
-                    "total_credits_spent": current_spent + amount,
-                },
-                timeout=10,
-            )
 
             # Record transaction
             await client.post(
@@ -1971,25 +1955,17 @@ async def purchase_ticket(user_id: str, ticket_type_id: int, audit_id: str | Non
     cost = ticket_type["token_cost"]
     try:
         async with httpx.AsyncClient() as client:
-            r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credit_balance,total_credits_spent",
-                headers=_headers(), timeout=10,
-            )
-            if r.status_code != 200 or not r.json():
-                return {"success": False, "error": "user_not_found"}
-            row = r.json()[0]
-            balance = row.get("credit_balance", 0)
-            if balance < cost:
-                return {"success": False, "error": "insufficient_balance"}
-
-            patch_r = await client.patch(
-                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
+            # Atomik kosullu dusum: yeterli bakiye varsa TEK UPDATE ile duser ve
+            # yeni bakiyeyi doner; yoksa satir donmez. Eszamanli satin almalarda
+            # double-spend'i onler (eski oku-kontrol-yaz yarisa acikti).
+            rpc_r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/deduct_credits_if_enough",
                 headers=_headers(),
-                json={"credit_balance": balance - cost, "total_credits_spent": (row.get("total_credits_spent") or 0) + cost},
+                json={"p_user_id": user_id, "p_amount": cost},
                 timeout=10,
             )
-            if patch_r.status_code not in (200, 204):
-                return {"success": False, "error": "balance_update_failed"}
+            if rpc_r.status_code != 200 or not rpc_r.json():
+                return {"success": False, "error": "insufficient_balance"}
 
             await client.post(
                 f"{SUPABASE_URL}/rest/v1/credit_transactions",
@@ -2011,6 +1987,11 @@ async def purchase_ticket(user_id: str, ticket_type_id: int, audit_id: str | Non
                 timeout=10,
             )
             if ticket_r.status_code not in (200, 201) or not ticket_r.json():
+                # Bilet olusmadi ama kredi dustu -> atomik geri al (refund).
+                await client.post(
+                    f"{SUPABASE_URL}/rest/v1/rpc/deduct_credits_if_enough",
+                    headers=_headers(), json={"p_user_id": user_id, "p_amount": -cost}, timeout=10,
+                )
                 return {"success": False, "error": "ticket_create_failed"}
             new_ticket = ticket_r.json()[0]
             await _clone_ticket_tasks(client, new_ticket["id"], ticket_type_id)
