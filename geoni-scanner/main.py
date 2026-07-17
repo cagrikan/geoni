@@ -443,12 +443,12 @@ async def health():
 def _daily_display_count() -> int:
     """
     Vitrin sayaci (kullanici istegi): "Bugun X tarama tamamlandi".
-    Gune gore deterministik — gun boyu herkes ayni sayiyi gorur, gece
-    yarisi degisir. Tempo GUNLUK: 239'dan baslayip her gun bilesik
-    %35-75 rastgele buyur (~2 haftada 200 bin bandi), sonrasinda her gun
-    80 bin - 240 bin arasinda rastgele salinir (bir gun 82.988, ertesi
-    gun 239.341 gibi; monoton degildir). Gercek toplam sayac admin
-    istatistiklerinde durmaya devam eder (get_total_scan_count).
+    Gune gore deterministik VE MONOTON — gun boyu herkes ayni sayiyi gorur
+    (web + app tek endpoint'ten okur), gece yarisi artar, ASLA dusmez.
+    239'dan baslar; olgun banda (200k) kadar gunluk %35-75 buyur, sonrasinda
+    gunluk %0.4-1.0 yavas ama hep artan tempoya gecer. Boylece geri donen
+    ziyaretci dun 239k bugun 83k gibi fake-ele-veren bir dusus gormez.
+    Gercek toplam sayac admin istatistiklerinde durur (get_total_scan_count).
     """
     import hashlib
     from datetime import date, timedelta
@@ -461,15 +461,12 @@ def _daily_display_count() -> int:
     days = max(0, (today - launch).days)
 
     val = 239.0
-    for n in range(1, min(days, 40) + 1):
+    for n in range(1, days + 1):
         d = launch + timedelta(days=n)
-        val *= 1.35 + day_seed(d) * 0.40  # gunluk +%35..%75
-        if val >= 200000:
-            break
-
-    if val >= 200000:
-        # Olgun donem: 80k-240k arasi gunluk salinim
-        return int(80000 + day_seed(today) * 160000)
+        if val < 200000:
+            val *= 1.35 + day_seed(d) * 0.40   # buyume: gunluk +%35..%75 (monoton)
+        else:
+            val *= 1.004 + day_seed(d) * 0.006  # olgun: gunluk +%0.4..%1.0 (yavas, monoton)
     return int(val)
 
 
