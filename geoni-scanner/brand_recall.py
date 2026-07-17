@@ -122,6 +122,18 @@ WEIGHTS_SOV = {
     "share_of_voice":   0.30,
 }
 
+# Q1: score_legacy referansi — DONDURULMUS v3 (SOV'suz) agirliklar. v4 degisikligini
+# (gemini 0'lama + via_web tavani kaldirma) net karsilastirmak icin sabit kalir;
+# WEIGHTS gibi degistirilmez.
+OLD_WEIGHTS = {
+    "claude":           0.16,
+    "openai":           0.24,
+    "gemini":           0.24,
+    "perplexity":       0.16,
+    "response_quality": 0.10,
+    "topic_relevance":  0.10,
+}
+
 # Yedek (fallback) mekanizma: structured output parse edilemediginde kullanilir.
 NOT_RECOGNIZED_PHRASES = [
     "bilmiyorum", "bilgi sahibi değilim", "hakkında bilgim yok",
@@ -1010,7 +1022,11 @@ async def check_brand_recall(
 
         if judge is not None:
             dogruluk = judge["dogruluk_skoru"]
-            dogruluk_values.append(dogruluk)
+            # Q3: yalniz agirligi >0 olan motorlar quality_score'a (dogruluk ort.)
+            # girsin; gemini golge modda (weight 0) oldugundan model kanalinda
+            # 0'lansa bile quality kanalindan manseti kirletmesin.
+            if WEIGHTS.get(key, 0) > 0:
+                dogruluk_values.append(dogruluk)
             formulation_scores = []
             for p in data["formulation_parses"]:
                 uzunluk = _length_band_score(p.get("yanit", "")) if p.get("taniyor") else 0.0
@@ -1085,29 +1101,30 @@ async def check_brand_recall(
 
     sov_checked = bool(sov_result.get("checked")) and sov_result.get("score") is not None
     base_weights = WEIGHTS_SOV if sov_checked else WEIGHTS
-    # A5: olculemeyen motorun (measured=False) agirligini dus, kalan agirliklari
-    # 1'e renormalize et — "olculemedi" != "gorunmuyor" (kesintide skor sebepsiz
-    # dusmesin). gemini zaten agirlik 0 oldugundan hatasi etkisizdir.
-    eff = {k: (0.0 if (k in model_keys and not model_raw[k].get("measured", True)) else v)
-           for k, v in base_weights.items()}
-    _tot = sum(eff.values())
-    if _tot > 0:
-        eff = {k: v / _tot for k, v in eff.items()}
+    # A5+Q2: olculemeyen (API hatasi) motorun payini SADECE olculen motorlar
+    # arasinda dagit; model grubu toplam payi (M) sabit kalir. quality/topic/sov
+    # agirliklari DOKUNULMAZ — dusen bir motor SOV'u/kaliteyi daha onemli yapmaz.
+    # "olculemedi" != "gorunmuyor" (kesintide skor sebepsiz dusmesin).
+    model_w = {k: base_weights[k] for k in model_keys}
+    measured = [k for k in model_keys if model_raw[k].get("measured", True)]
+    M = sum(model_w.values())
+    avail = sum(model_w[k] for k in measured)
+    eff_model = {k: model_w[k] * (M / avail) for k in measured} if avail > 0 else {}
     _overall = (
-        sum(per_model_final_score[k] * eff.get(k, 0.0) for k in model_keys)
-        + quality_score * eff.get("response_quality", 0.0)
-        + relevance_score * eff.get("topic_relevance", 0.0)
+        sum(per_model_final_score[k] * eff_model.get(k, 0.0) for k in model_keys)
+        + quality_score * base_weights["response_quality"]
+        + relevance_score * base_weights["topic_relevance"]
     )
     if sov_checked:
-        _overall += sov_result["score"] * eff.get("share_of_voice", 0.0)
+        _overall += sov_result["score"] * base_weights["share_of_voice"]
     overall_score = int(round(_overall))
 
     # Karsilastirma icin eski (legacy) skor da hesaplanir
     legacy_quality_score = sum(_length_band_score(t) for t in representative_texts.values()) / max(len(representative_texts), 1)
     legacy_overall_score = int(round(
-        sum(per_model_legacy_score[k] * WEIGHTS[k] for k in model_keys) +
-        legacy_quality_score * WEIGHTS["response_quality"] +
-        relevance_score * WEIGHTS["topic_relevance"]
+        sum(per_model_legacy_score[k] * OLD_WEIGHTS[k] for k in model_keys) +
+        legacy_quality_score * OLD_WEIGHTS["response_quality"] +
+        relevance_score * OLD_WEIGHTS["topic_relevance"]
     ))
 
     score_breakdown = {
