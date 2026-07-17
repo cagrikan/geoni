@@ -645,7 +645,9 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
         # Skip rate limit for premium/admin users
         is_premium2 = await check_is_premium(user_id_rl2)
         if not is_premium2 and not _is_internal_scan(http_request):
-            enforce_audit_rate_limits(client_ip, request.email, request.name)
+            # T3: kimlik kovasi user_id olsun (email varsayilani anonymous@geoni.ai
+            # -> tum premium-olmayanlar ayni kovayi paylasip birbirine 429 yediriyordu).
+            enforce_audit_rate_limits(client_ip, user_id_rl2, request.name)
     except RateLimitExceeded as e:
         raise HTTPException(
             status_code=429,
@@ -700,7 +702,7 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
     auth_header = http_request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
     brand_req = BrandCheckRequest(
-        type="brand",
+        type="social",  # T3: sosyal tarama "brand" degil "social" kaydedilsin (gecmis/istatistik/kart ayirt etsin)
         name=f"@{handle}",
         topic=(request.niche or "").strip(),
         email=request.email,
@@ -718,7 +720,17 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
 @app.get("/api/brand-check/{job_id}")
 async def get_brand_check_status(job_id: str):
     if job_id not in brand_checks_store:
-        raise HTTPException(status_code=404, detail="Brand check job not found")
+        # T1: bellek miss (API restart / coklu-instance ALB) -> DB fallback.
+        # brand/person/social sonucu save_brand_check ile audits'e yaziliyor;
+        # kredisi dusulmus tarama sonsuza dek "not found" donmesin (web'deki desen).
+        row = await get_audit_row(job_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Brand check job not found")
+        if row["status"] == "complete":
+            return {"job_id": job_id, "status": "complete", "result": row.get("result_json")}
+        if row["status"] == "failed":
+            raise HTTPException(status_code=500, detail="Brand check failed")
+        return {"job_id": job_id, "status": row["status"], "created_at": row.get("created_at")}
     job = brand_checks_store[job_id]
     if job["status"] == "complete":
         return {"job_id": job_id, "status": "complete", "result": job["result"]}

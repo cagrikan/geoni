@@ -224,7 +224,11 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
                 return []
 
             parsed = urlparse(url)
-            if parsed.netloc and domain not in parsed.netloc:
+            # T3: substring degil exact/subdomain eslesme (acme.com taramasi
+            # acme.com.evil.com / notacme.com'a tasmasin).
+            dom = domain.lower()
+            host = (parsed.netloc or "").split(":")[0].lower()
+            if parsed.netloc and not (host == dom or host.endswith("." + dom)):
                 return []  # stay on-domain
 
             if not robots.can_fetch("GeoniBot", url):
@@ -247,8 +251,8 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
                             "a[href]", "els => els.map(e => e.href)"
                         )
                         for href in hrefs:
-                            href_parsed = urlparse(href)
-                            if href_parsed.netloc and domain in href_parsed.netloc:
+                            hp = (urlparse(href).netloc or "").split(":")[0].lower()
+                            if hp and (hp == dom or hp.endswith("." + dom)):
                                 clean = href.split("#")[0]
                                 if clean not in visited:
                                     new_links.append(clean)

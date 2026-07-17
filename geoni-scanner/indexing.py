@@ -107,7 +107,13 @@ async def check_llms_txt(domain: str) -> bool:
     try:
         async with httpx.AsyncClient(follow_redirects=True) as client:
             resp = await client.get(llms_url, timeout=8, headers=HEADERS)
-            return resp.status_code == 200 and len(resp.text.strip()) > 0
+            # T3: SPA soft-404 -> her path'e 200 + index.html doner. HTML iceren
+            # yaniti llms.txt sayma (yanlis pozitif hem skoru hem "llms_robots"
+            # bilet satisini yaniltir). content-type html ya da <!doctype/<html reddet.
+            text = resp.text.strip()
+            ctype = resp.headers.get("content-type", "").lower()
+            is_html = "text/html" in ctype or text[:200].lower().lstrip().startswith(("<!doctype", "<html"))
+            return resp.status_code == 200 and len(text) > 0 and not is_html
     except Exception as e:
         logger.info(f"llms.txt check failed for {domain}: {e}")
         return False

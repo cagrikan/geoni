@@ -1163,7 +1163,10 @@ async def check_brand_recall(
         "scoring_version": SCORING_VERSION,
         "score_breakdown": score_breakdown,
         "sov": sov_result,
-        "topic": topic,
+        # T2: cikarilan topic'i (sov_topic) DONDUR ki kayda islensin. Eskiden
+        # orijinal (cogu kez bos) topic donuyordu -> DB'de bos kaliyor, izleme
+        # her seferinde sifirdan cikarip oynaklik+maliyet uretiyordu (12/61 bilmecesi).
+        "topic": sov_topic or topic,
         "raw_list": raw_list,
         "model_results": model_results,
         "google_result_count": len(web_results),

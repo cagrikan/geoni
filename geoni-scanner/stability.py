@@ -27,12 +27,15 @@ DRIVER_MIN_SHARE = 0.5             # baskin bilesen esigi
 
 # Kisi/marka taramasinda breakdown anahtari -> skor agirligi eslemesi
 # (bkz. brand_recall.WEIGHTS / WEIGHTS_SOV). SOV'lu ve SOV'suz iki duzen.
+# v4 (brand_recall.WEIGHTS ile senkron): gemini golge modda (0), payi
+# claude/openai(chatgpt)/perplexity'ye dagitildi. "Degisim kaynagi" rozeti
+# skora hic girmeyen gemini bacagina yanlis atfetmesin diye guncel tutulur.
 _BRAND_WEIGHTS_SOV = {
-    "claude": 0.12, "chatgpt": 0.18, "gemini": 0.18, "perplexity": 0.12,
+    "claude": 0.17, "chatgpt": 0.26, "gemini": 0.0, "perplexity": 0.17,
     "yanit_kalitesi": 0.05, "konu_uyumu": 0.05, "kategori_gorunurlugu": 0.30,
 }
 _BRAND_WEIGHTS = {
-    "claude": 0.16, "chatgpt": 0.24, "gemini": 0.24, "perplexity": 0.16,
+    "claude": 0.23, "chatgpt": 0.34, "gemini": 0.0, "perplexity": 0.23,
     "yanit_kalitesi": 0.10, "konu_uyumu": 0.10,
 }
 
