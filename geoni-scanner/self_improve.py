@@ -99,8 +99,10 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25) -> dict:
         if isinstance(score, (int, float)) and topic:
             niche_scores[topic].append(float(score))
         stab = rj.get("stability")
-        if isinstance(stab, (int, float)):
-            stabilities.append(float(stab))
+        # stability bir obje: {delta, smoothed_score, prev_score, ...}. Oynaklik
+        # olcusu = |delta| (skorun bir onceki taramaya gore ne kadar sicradigi).
+        if isinstance(stab, dict) and isinstance(stab.get("delta"), (int, float)):
+            stabilities.append(abs(float(stab["delta"])))
         for comp in (sov.get("competitors") or []):
             nm = comp.get("name") if isinstance(comp, dict) else comp
             if nm and topic:
