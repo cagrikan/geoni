@@ -2697,12 +2697,15 @@ async def admin_get_payouts(period_month: str | None = None) -> dict:
                     "total_earned": 0.0, "total_paid": 0.0, "outstanding": 0.0,
                     "contract": contracts.get(eid),
                 })
-                a["total_earned"] += amt
-                a["delivery_earned" if p.get("kind") == "delivery" else "referral_earned"] += amt
-                if p.get("status") == "paid":
-                    a["total_paid"] += amt
-                elif p.get("status") != "void":
-                    a["outstanding"] += amt
+                # F4: void (iptal) satir muhasebe TOPLAMLARINA girmez (earned dahil);
+                # satir listesinde yine gorunur. earned = paid + outstanding tutar.
+                if p.get("status") != "void":
+                    a["total_earned"] += amt
+                    a["delivery_earned" if p.get("kind") == "delivery" else "referral_earned"] += amt
+                    if p.get("status") == "paid":
+                        a["total_paid"] += amt
+                    else:
+                        a["outstanding"] += amt
 
             experts = sorted(agg.values(), key=lambda x: x["outstanding"], reverse=True)
             for e in experts:
@@ -2727,10 +2730,16 @@ async def admin_mark_payout_paid(payout_id: int, admin_id: str, paid: bool = Tru
         async with httpx.AsyncClient() as client:
             body = ({"status": "paid", "paid_at": datetime.now(timezone.utc).isoformat(), "paid_by": admin_id}
                     if paid else {"status": "pending", "paid_at": None, "paid_by": None})
+            # F4: void satir degistirilemez (status=neq.void -> un-void / void'i odeme yok).
+            # return=representation ile eslesent satir sayisini dogrula: yok/void id'de
+            # PostgREST 0-satirda da 200 doner, sahte basari vermesin.
             r = await client.patch(
-                f"{SUPABASE_URL}/rest/v1/expert_payouts?id=eq.{int(payout_id)}",
-                headers=_headers(), json=body, timeout=10)
-            return r.status_code in (200, 204)
+                f"{SUPABASE_URL}/rest/v1/expert_payouts?id=eq.{int(payout_id)}&status=neq.void",
+                headers={**_headers(), "Prefer": "return=representation"}, json=body, timeout=10)
+            if r.status_code != 200:
+                return False
+            rows = r.json()
+            return isinstance(rows, list) and len(rows) > 0
     except Exception as e:
         logger.warning(f"admin_mark_payout_paid error: {e}")
         return False

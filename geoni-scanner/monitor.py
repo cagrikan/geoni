@@ -102,6 +102,10 @@ async def _scan_web_item(item: dict) -> int | None:
             "inferred_topic": identity["topic"],
         },
         "sov": brand_recall_result.get("sov"),
+        # F1: 4-motor model_results'i top-level'a tasi — geoni.ai self-scan'in
+        # own_recognition sinyali (self_improve) bunu buradan okur; eskiden yoktu
+        # ve ozellik sessizce olulyordu.
+        "model_results": brand_recall_result.get("model_results") or {},
         "stability": await build_stability("web", domain,
                                            score_result["overall_score"],
                                            score_result["breakdown"],

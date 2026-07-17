@@ -129,21 +129,24 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25) -> dict:
             qt = str(q.get("query") or "").strip()
             if qt:
                 query_freq[qt] += 1
-            snippet = str(q.get("answer_snippet") or "")
             for eng, ed in (q.get("engines") or {}).items():
                 if not isinstance(ed, dict):
                     continue
                 q_total += 1
-                answered = bool(ed.get("answered"))
                 srcs = ed.get("sources") or []
-                if answered:
-                    q_answered += 1
-                    eng_answered[eng] += 1
+                if not ed.get("answered"):
+                    continue
+                q_answered += 1
+                eng_answered[eng] += 1
+                # F2: geoni gecisini motor BASINA yalniz o motorun kaynaklarindan
+                # say (motor-bazli, guvenilir) ve YALNIZ answered iken -> mention_rate
+                # = own_mention/eng_answered artik 1'i (%100) asamaz. (Eski kod sorgu
+                # seviyesindeki tek 'answer_snippet'i her motora sayip sisiriyordu.)
                 if srcs:
                     eng_hassrc[eng] += 1
-                if _GEONI.search(snippet + " " + " ".join(str(s) for s in srcs)):
-                    own_mention[eng] += 1
-                if answered and not srcs:
+                    if _GEONI.search(" ".join(str(s) for s in srcs)):
+                        own_mention[eng] += 1
+                else:
                     no_source += 1
         # 4-MOTOR kalite (model_results): taninma + dogruluk + halusinasyon + celiski
         for meng, mv in (rj.get("model_results") or {}).items():
@@ -217,9 +220,15 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25) -> dict:
     try:
         async with httpx.AsyncClient() as client:
             today = datetime.now(timezone.utc).date().isoformat()
-            await client.delete(
+            # F3: delete basarisizsa insert ETME (yoksa gunun sinyalleri duplike
+            # olur). delete OK degilse bu dongu yazmayi atlar; bir sonraki dongu
+            # (ya da manuel /run) temiz yeniden yazar.
+            dr = await client.delete(
                 f"{SUPABASE_URL}/rest/v1/improvement_signals?cycle_date=eq.{today}",
                 headers=_headers(), timeout=15)
+            if dr.status_code not in (200, 204):
+                logger.warning(f"signal delete failed ({dr.status_code}) — insert atlandi")
+                return {"ok": False, "error": "delete_failed"}
             if signals:
                 rows_out = [{**s, "cycle_date": today} for s in signals]
                 w = await client.post(
