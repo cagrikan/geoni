@@ -1929,6 +1929,11 @@ async def missing_service_prerequisites(user_id: str, service_key: str, target: 
     Hata olursa bos liste (fail-open — gecici hata odeme/UX'i engellemesin)."""
     if service_key in FOUNDATION_SERVICE_KEYS or not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return []
+    # Ileri hizmet HEDEFSIZ alinamaz: on-kosul hedef bazlidir; hedef yoksa
+    # dogrulanamaz. Ayrica bu, "temeli baska hedefte al, ileriyi bos hedefle
+    # gecir" baypasini kapatir. Hedefsiz -> hepsi eksik say (engelle).
+    if not (target or "").strip():
+        return list(FOUNDATION_SERVICE_KEYS)
     try:
         async with httpx.AsyncClient() as client:
             fr = await client.get(
