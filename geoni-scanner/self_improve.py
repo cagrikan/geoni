@@ -63,6 +63,7 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25) -> dict:
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return {"ok": False, "error": "not_configured"}
     since = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
+    geoni_mr = {}
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(
@@ -72,6 +73,15 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25) -> dict:
                 headers=_headers(), timeout=40,
             )
             rows = r.json() if r.status_code == 200 else []
+            # geoni.ai self-scan (varsa): 4-motor kendi taninma (own_recognition)
+            gm = await client.get(
+                f"{SUPABASE_URL}/rest/v1/audits?type=eq.web&domain=eq.geoni.ai"
+                f"&status=eq.complete&select=result_json&order=created_at.desc&limit=1",
+                headers=_headers(), timeout=15,
+            )
+            g = gm.json() if gm.status_code == 200 else []
+            if g:
+                geoni_mr = (g[0].get("result_json") or {}).get("model_results") or {}
     except Exception as e:
         logger.warning(f"harvest fetch error: {e}")
         return {"ok": False, "error": "fetch_failed"}
@@ -85,7 +95,13 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25) -> dict:
     stabilities = []                          # Q4
     q_total = 0                               # Q1 denom (sorgu-motor cifti)
     q_answered = 0                            # Q1: cevaplanan
-    ungrounded = 0                            # Q5: mentioned=true ama kaynak yok
+    no_source = 0                             # Q5: cevaplandi ama HIC kaynak yok
+    m_total = defaultdict(int)                # 4-motor (model_results: claude/gemini/openai/perplexity)
+    m_recog = defaultdict(int)                # taninma
+    m_acc_sum = defaultdict(float)            # dogruluk_skoru toplami
+    m_acc_n = defaultdict(int)
+    m_hallu = defaultdict(int)                # uydurma_suphesi
+    m_contra = defaultdict(int)               # celiski_var
     scanned = 0
 
     for a in rows:
@@ -127,8 +143,24 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25) -> dict:
                     eng_hassrc[eng] += 1
                 if _GEONI.search(snippet + " " + " ".join(str(s) for s in srcs)):
                     own_mention[eng] += 1
-                if ed.get("mentioned") and not srcs:
-                    ungrounded += 1
+                if answered and not srcs:
+                    no_source += 1
+        # 4-MOTOR kalite (model_results): taninma + dogruluk + halusinasyon + celiski
+        for meng, mv in (rj.get("model_results") or {}).items():
+            if not isinstance(mv, dict):
+                continue
+            m_total[meng] += 1
+            if mv.get("recognized"):
+                m_recog[meng] += 1
+            j = mv.get("judge") or {}
+            acc = j.get("dogruluk_skoru")
+            if isinstance(acc, (int, float)):
+                m_acc_sum[meng] += acc
+                m_acc_n[meng] += 1
+            if j.get("uydurma_suphesi"):
+                m_hallu[meng] += 1
+            if j.get("celiski_var"):
+                m_contra[meng] += 1
 
     # ---- Sinyalleri kur ----
     signals = []
@@ -155,6 +187,22 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25) -> dict:
                         "metric": round(sum(scores) / len(scores), 1),
                         "detail": {"scans": len(scores), "top_competitors": top_comp}})
 
+    # Q: 4-MOTOR kalite (claude/gemini/openai/perplexity) — model_results'tan
+    for meng in m_total:
+        tot = m_total[meng]
+        signals.append({"kind": "quality_model", "subject": meng,
+                        "metric": round(m_recog[meng] / tot, 3) if tot else 0,
+                        "detail": {"scans": tot, "recognized": m_recog[meng],
+                                   "accuracy_avg": round(m_acc_sum[meng] / m_acc_n[meng], 1) if m_acc_n[meng] else None,
+                                   "hallucination_rate": round(m_hallu[meng] / tot, 3) if tot else 0,
+                                   "contradiction_rate": round(m_contra[meng] / tot, 3) if tot else 0}})
+    # A: geoni.ai self-scan'den 4-motor kendi taninma
+    for meng, mv in (geoni_mr or {}).items():
+        if isinstance(mv, dict):
+            signals.append({"kind": "own_recognition", "subject": meng,
+                            "metric": 1 if mv.get("recognized") else 0,
+                            "detail": {"score": mv.get("score")}})
+
     avg_stab = round(sum(stabilities) / len(stabilities), 1) if stabilities else None
     signals.append({"kind": "quality_overall", "subject": "answer_rate",
                     "metric": round(q_answered / q_total, 3) if q_total else 0,
@@ -162,7 +210,7 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25) -> dict:
     signals.append({"kind": "quality_overall", "subject": "score_stability",
                     "metric": avg_stab, "detail": {"n": len(stabilities)}})
     signals.append({"kind": "quality_overall", "subject": "ungrounded_mentions",
-                    "metric": ungrounded, "detail": None})
+                    "metric": no_source, "detail": {"note": "cevaplandi ama kaynak yok"}})
 
     # ---- Yaz (bugun icin idempotent: once bugunku sil) ----
     written = 0
@@ -191,7 +239,8 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25) -> dict:
              for t, s in niche_scores.items()),
             key=lambda x: x["avg_score"])[:10],
         "quality": {"answer_rate": round(q_answered / q_total, 3) if q_total else 0,
-                    "avg_stability": avg_stab, "ungrounded_mentions": ungrounded},
+                    "avg_stability": avg_stab, "answers_no_source": no_source},
+        "model_recognition": {e: round(m_recog[e] / m_total[e], 3) if m_total[e] else 0 for e in m_total},
         "signals_written": written,
     }
     logger.info(f"improvement cycle: {scanned} audits, {written} signals")
