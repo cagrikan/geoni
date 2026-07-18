@@ -553,7 +553,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
             "name": "GEONI hangi hizmetleri sunuyor?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "GEONI; web sitesi, kişi ve marka için AI görünürlük taraması sunar. Kullanım token bazlıdır - 100, 500 ve 1000 token'lık paketler mevcuttur; yüksek hacimli kurumsal ihtiyaçlar için bizimle iletişime geçebilirsiniz."
+              "text": "GEONI; web sitesi, kişi ve marka için AI görünürlük taraması sunar. Kullanım token bazlıdır - 100'den 5000'e kadar token paketleri (100, 500, 1000, 2500, 5000) mevcuttur; yüksek hacimli kurumsal ihtiyaçlar için bizimle iletişime geçebilirsiniz."
             }
           },
           {
@@ -632,7 +632,6 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
     <li><a href="#paketler" data-i18n="nav_packages">Paketler</a></li>
   </ul>
   <div class="nav-toggles">
-    <a href="https://app.geoni.ai" class="nav-cta" data-i18n="nav_cta">Ücretsiz Tara</a>
     <button type="button" class="nav-toggle-btn" id="theme-toggle" title="Tema" aria-label="Tema degistir">
       <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></svg>
     </button>
@@ -890,7 +889,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
         <ul class="pkg-feats" data-i18n-list="pkg2_feats">
           <li>≈100 web sitesi taraması</li>
           <li>veya ≈50 kişi/marka kontrolü</li>
-          <li>veya uzman hizmetleri: örn. Şema Kurulumu (150) + İçerik Paketi (250)</li>
+          <li>veya temel uzman hizmetleri: AI Bot Erişimi (100) + Şema Kurulumu (150)</li>
           <li>Takip listesi ile periyodik yeniden tarama</li>
           <li>Süresiz kullanım, ay sonunda sıfırlanmaz</li>
         </ul>
@@ -903,8 +902,32 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
         <ul class="pkg-feats" data-i18n-list="pkg3_feats">
           <li>≈200 web sitesi taraması</li>
           <li>veya ≈100 kişi/marka kontrolü</li>
-          <li>veya 5 uzman hizmetinin tamamı — tam 1000 token</li>
+          <li>veya temel uzman hizmetleri (AI Bot Erişimi, Şema Kurulumu)</li>
           <li>Token başına en düşük maliyet</li>
+          <li>Süresiz kullanım, ay sonunda sıfırlanmaz</li>
+        </ul>
+        <a href="https://app.geoni.ai/dashboard?tab=credits" class="pkg-btn" data-i18n="pkg_btn_buy">Satın Alın →</a>
+      </div>
+      <div class="pkg reveal">
+        <div class="pkg-tier" data-i18n="pkg5_tier">Pro</div>
+        <div class="pkg-name">2500 Token</div>
+        <div class="pkg-price" data-i18n="pkg5_price">Premium uzman hizmetleri için.<br><strong>$179,99</strong></div>
+        <ul class="pkg-feats" data-i18n-list="pkg5_feats">
+          <li>1 premium uzman hizmeti: İçerik Paketi (2000), Güvenilir Kaynaklarda Görünürlük (1500) veya Marka Kimlik Kaydı (1200)</li>
+          <li>artı bol tarama bakiyesi</li>
+          <li>Token başına düşük maliyet</li>
+          <li>Süresiz kullanım, ay sonunda sıfırlanmaz</li>
+        </ul>
+        <a href="https://app.geoni.ai/dashboard?tab=credits" class="pkg-btn" data-i18n="pkg_btn_buy">Satın Alın →</a>
+      </div>
+      <div class="pkg reveal">
+        <div class="pkg-tier" data-i18n="pkg6_tier">Ajans</div>
+        <div class="pkg-name">5000 Token</div>
+        <div class="pkg-price" data-i18n="pkg6_price">Birden fazla premium hizmet için en avantajlı.<br><strong>$299,99</strong></div>
+        <ul class="pkg-feats" data-i18n-list="pkg6_feats">
+          <li>Birden fazla premium uzman hizmeti</li>
+          <li>veya çoklu marka için yoğun tarama + takip</li>
+          <li>Token başına EN düşük maliyet</li>
           <li>Süresiz kullanım, ay sonunda sıfırlanmaz</li>
         </ul>
         <a href="https://app.geoni.ai/dashboard?tab=credits" class="pkg-btn" data-i18n="pkg_btn_buy">Satın Alın →</a>
@@ -1089,17 +1112,33 @@ const I18N = {
     "pkg2_feats": [
       "≈100 web sitesi taraması",
       "veya ≈50 kişi/marka kontrolü",
-      "veya uzman hizmetleri: örn. Şema Kurulumu (150) + İçerik Paketi (250)",
+      "veya temel uzman hizmetleri: AI Bot Erişimi (100) + Şema Kurulumu (150)",
       "Takip listesi ile periyodik yeniden tarama",
       "Süresiz kullanım, ay sonunda sıfırlanmaz"
     ],
     "pkg3_tier": "Ölçek",
-    "pkg3_price": "Ekip ve ajanslar için en avantajlı birim fiyat.<br><strong>$79,99</strong>",
+    "pkg3_price": "Ekip ve ajanslar için yoğun tarama.<br><strong>$79,99</strong>",
     "pkg3_feats": [
       "≈200 web sitesi taraması",
       "veya ≈100 kişi/marka kontrolü",
-      "veya 5 uzman hizmetinin tamamı — tam 1000 token",
-      "Token başına en düşük maliyet",
+      "veya temel uzman hizmetleri (AI Bot Erişimi, Şema Kurulumu)",
+      "Takip listesi ile periyodik yeniden tarama",
+      "Süresiz kullanım, ay sonunda sıfırlanmaz"
+    ],
+    "pkg5_tier": "Pro",
+    "pkg5_price": "Premium uzman hizmetleri için.<br><strong>$179,99</strong>",
+    "pkg5_feats": [
+      "1 premium uzman hizmeti: İçerik Paketi (2000), Güvenilir Kaynaklarda Görünürlük (1500) veya Marka Kimlik Kaydı (1200)",
+      "artı bol tarama bakiyesi",
+      "Token başına düşük maliyet",
+      "Süresiz kullanım, ay sonunda sıfırlanmaz"
+    ],
+    "pkg6_tier": "Ajans",
+    "pkg6_price": "Birden fazla premium hizmet için en avantajlı.<br><strong>$299,99</strong>",
+    "pkg6_feats": [
+      "Birden fazla premium uzman hizmeti",
+      "veya çoklu marka için yoğun tarama + takip",
+      "Token başına EN düşük maliyet",
       "Süresiz kullanım, ay sonunda sıfırlanmaz"
     ],
     "pkg4_tier": "Kurumsal",
@@ -1245,17 +1284,33 @@ const I18N = {
     "pkg2_feats": [
       "≈100 website scans",
       "or ≈50 person/brand checks",
-      "or expert services, e.g. Schema Setup (150) + Content Package (250)",
+      "or foundation expert services: AI Bot Access (100) + Schema Setup (150)",
       "Periodic rescans via the watchlist",
       "No expiry, never resets at month-end"
     ],
     "pkg3_tier": "Scale",
-    "pkg3_price": "The best unit price for teams and agencies.<br><strong>$79.99</strong>",
+    "pkg3_price": "High-volume scanning for teams and agencies.<br><strong>$79.99</strong>",
     "pkg3_feats": [
       "≈200 website scans",
       "or ≈100 person/brand checks",
-      "or all five expert services combined — exactly 1000 tokens",
-      "Lowest cost per token",
+      "or foundation expert services (AI Bot Access, Schema Setup)",
+      "Periodic rescans via the watchlist",
+      "No expiry, never resets at month-end"
+    ],
+    "pkg5_tier": "Pro",
+    "pkg5_price": "For premium expert services.<br><strong>$179.99</strong>",
+    "pkg5_feats": [
+      "1 premium expert service: Content Package (2000), Visibility in Trusted Sources (1500) or Brand Entity Registration (1200)",
+      "plus a generous scan balance",
+      "Low cost per token",
+      "No expiry, never resets at month-end"
+    ],
+    "pkg6_tier": "Agency",
+    "pkg6_price": "Best value for multiple premium services.<br><strong>$299.99</strong>",
+    "pkg6_feats": [
+      "Multiple premium expert services",
+      "or high-volume scanning + tracking for many brands",
+      "LOWEST cost per token",
       "No expiry, never resets at month-end"
     ],
     "pkg4_tier": "Enterprise",
