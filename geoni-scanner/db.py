@@ -1846,6 +1846,9 @@ async def list_ticket_types(active_only: bool = True, lang: str = "tr") -> list:
                 rows = r.json()
                 # İngilizce istenirse name/description'i EN karsiligiyla degistir
                 # (yoksa TR'ye geri duser). Boylece istemci tarafinda ek is yok.
+                for row in rows:
+                    # Hangi tarama hedefine uygulanabilir (UI/öneri filtresi için).
+                    row["applicable_targets"] = applicable_targets_for(row.get("key", ""))
                 if lang == "en":
                     for row in rows:
                         if row.get("name_en"):
@@ -1927,6 +1930,25 @@ def normalize_domain(target: str) -> str | None:
     if "." in t and re.match(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", t):
         return t
     return None
+
+
+# Hizmet × hedef-tipi matrisi (kurgu düzeltmesi): hangi hizmet hangi tarama
+# hedefine uygulanabilir. "domain" = web taraması / web sitesi olan hedef.
+# İlk iki hizmet WEB-YÜZEYİ (yalnız domain); diğer üçü VARLIK (entity) hizmeti
+# (kişi/marka/sosyal dahil her hedefe uygulanır — sosyal influencer için asıl
+# değer buradadır). UI/öneri bu matrise göre filtreler; bilinmeyen key → hepsi.
+SERVICE_APPLICABLE_TARGETS = {
+    "llms_robots":        ["domain"],
+    "schema_setup":       ["domain"],
+    "wikidata_entity":    ["domain", "person", "brand", "social"],
+    "content_package":    ["domain", "person", "brand", "social"],
+    "citation_placement": ["domain", "person", "brand", "social"],
+}
+_ALL_TARGET_KINDS = ["domain", "person", "brand", "social"]
+
+
+def applicable_targets_for(service_key: str) -> list[str]:
+    return SERVICE_APPLICABLE_TARGETS.get(service_key, _ALL_TARGET_KINDS)
 
 
 async def missing_service_prerequisites(user_id: str, service_key: str, target: str = "") -> list[str]:
