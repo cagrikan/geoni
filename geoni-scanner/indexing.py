@@ -23,6 +23,8 @@ from urllib.robotparser import RobotFileParser
 
 import httpx
 
+from ssrf_guard import assert_public_host, BlockedHostError, safe_get
+
 logger = logging.getLogger(__name__)
 
 # Egitim (training) crawler'lar: modelin egitim verisine bu sitenin
@@ -63,8 +65,10 @@ async def check_robots_ai_access(domain: str) -> dict:
     robots_found = False
 
     try:
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            resp = await client.get(robots_url, timeout=10, headers=HEADERS)
+        # SSRF-guvenli: safe_get her redirect hop'unu dogrular (apex<->www gibi
+        # mesru kanonik redirect'ler korunur, ic adrese sicrama engellenir).
+        async with httpx.AsyncClient() as client:
+            resp = await safe_get(client, robots_url, timeout=10, headers=HEADERS)
             if resp.status_code == 200:
                 robots_found = True
                 rp = RobotFileParser()
@@ -105,8 +109,9 @@ async def check_llms_txt(domain: str) -> bool:
     """
     llms_url = f"https://{domain}/llms.txt"
     try:
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            resp = await client.get(llms_url, timeout=8, headers=HEADERS)
+        # SSRF-guvenli redirect takibi (bkz. check_robots_ai_access).
+        async with httpx.AsyncClient() as client:
+            resp = await safe_get(client, llms_url, timeout=8, headers=HEADERS)
             # T3: SPA soft-404 -> her path'e 200 + index.html doner. HTML iceren
             # yaniti llms.txt sayma (yanlis pozitif hem skoru hem "llms_robots"
             # bilet satisini yaniltir). content-type html ya da <!doctype/<html reddet.
@@ -168,6 +173,19 @@ async def check_indexing_status(pages: list[dict]) -> dict:
 
     from urllib.parse import urlparse
     domain = urlparse(pages[0]["url"]).netloc or urlparse(pages[0]["url"]).path
+
+    # SSRF savunma-derinligi: domain crawl asamasinda dogrulaniyor ama indexing
+    # bagimsiz cagrilabilir; host public degilse (ic-IP/metadata) hic istek atma.
+    host = (domain or "").split(":")[0]
+    try:
+        await asyncio.to_thread(assert_public_host, host)
+    except BlockedHostError:
+        logger.warning(f"indexing atlandi, public olmayan host: {host}")
+        return {
+            "indexed_count": 0, "google": 0,
+            "bot_access": {"egitim": {}, "arama": {}, "robots_found": False},
+            "llms_txt": False, "openai": False, "anthropic": False, "perplexity": False,
+        }
 
     google_count, ai_access, llms_txt = await asyncio.gather(
         check_google_indexed(domain),

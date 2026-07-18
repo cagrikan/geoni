@@ -12,8 +12,10 @@ reddeder. DNS cozumu bloklayici oldugu icin async baglamda
 `await asyncio.to_thread(assert_public_host, host)` ile cagrilmali.
 """
 
+import asyncio
 import ipaddress
 import socket
+from urllib.parse import urljoin, urlparse
 
 # Cozumden bagimsiz, isim bazli kara liste (bazilari DNS'e cikmadan yakalanir)
 _BLOCKED_NAMES = {"localhost", "metadata", "metadata.google.internal"}
@@ -91,3 +93,28 @@ def assert_public_host(host: str) -> None:
     bad = [a for a in addrs if not _is_public_ip(a)]
     if bad:
         raise BlockedHostError(f"host ic adrese cozuluyor ({host} -> {', '.join(sorted(bad))})")
+
+
+async def safe_get(client, url: str, *, max_redirects: int = 3, **kwargs):
+    """SSRF-guvenli GET. follow_redirects KAPALI tutulur; her 3xx yanitinda
+    Location host'u assert_public_host ile dogrulanip elle takip edilir (en cok
+    max_redirects hop). Boylece apex<->www gibi MESRU kanonik redirect'ler
+    korunurken (robots/sitemap/llms sinyalleri kaybolmaz) 30x ile ic adrese
+    (169.254.x, 10.x, metadata) sicrama engellenir. httpx'in kor
+    follow_redirects=True'su bu ara host'lari dogrulamadigi icin kullanilamaz."""
+    kwargs.pop("follow_redirects", None)
+    current = url
+    resp = None
+    for _ in range(max_redirects + 1):
+        resp = await client.get(current, follow_redirects=False, **kwargs)
+        if resp.status_code in (301, 302, 303, 307, 308):
+            loc = resp.headers.get("location")
+            if not loc:
+                return resp
+            nxt = urljoin(current, loc)
+            host = urlparse(nxt).hostname or ""
+            await asyncio.to_thread(assert_public_host, host)  # her hop dogrulanir
+            current = nxt
+            continue
+        return resp
+    return resp  # cok fazla redirect: son yaniti dondur

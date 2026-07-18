@@ -1691,15 +1691,20 @@ async function runWebCheck() {
     if (!res.ok) throw new Error(data.error || 'lookup error');
 
     localStorage.setItem('geoni_web_query_count', queryCount + 1);
+    // Guvenlik (XSS): description/sector/website + model anahtarlari /api/lookup
+    // uzerinden LLM/web taramasindan gelir. innerHTML'e ham basilinca dusman bir
+    // sitenin meta'sina gomdugu payload, o alani sorgulayan herkeste calisirdi.
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const badgeClass = data.known ? 'web-result__badge--yes' : 'web-result__badge--no';
     const badgeText = data.known ? `✓ ${dict.demo_web_known}` : `✗ ${dict.demo_web_unknown}`;
-    const desc = data.description ? `<div class="web-result__desc">${data.description}</div>` : '';
-    const meta = [data.sector, data.website].filter(Boolean).join(' · ');
+    const desc = data.description ? `<div class="web-result__desc">${esc(data.description)}</div>` : '';
+    const meta = [data.sector, data.website].filter(Boolean).map(esc).join(' · ');
     // "tavily" ic servis adi kullaniciya gosterilmez - urundeki adiyla "Web"
     const modelLabels = { claude: 'Claude', chatgpt: 'ChatGPT', gemini: 'Gemini', tavily: 'Web' };
     const modelEntries = Object.entries(data.models || {});
     const modelsHtml = modelEntries.map(([key, m]) =>
-      `<span class="web-result__model ${m.known ? 'web-result__model--yes' : 'web-result__model--no'}">${m.known ? '✓' : '✗'} ${modelLabels[key] || key}</span>`
+      `<span class="web-result__model ${m.known ? 'web-result__model--yes' : 'web-result__model--no'}">${m.known ? '✓' : '✗'} ${modelLabels[key] || esc(key)}</span>`
     ).join('');
     // Taninirlik cubugu: kac kaynak taniyor - urundeki skor esikleriyle ayni
     // oranlar (>=%65 iyi, >=%40 orta, alti zayif). Sahte 0-100 skor UYDURULMAZ;
@@ -2091,13 +2096,17 @@ async function lookupCompany(company) {
     const data = await res.json();
     auditData.companyKnown = data.known;
 
+    // Guvenlik (XSS): /api/lookup verisi (name/description/website) LLM/web
+    // kaynakli — innerHTML'e ham gomme.
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const statusClass = data.known ? 'status-known' : 'status-unknown';
     const statusText = data.known ? '✓ AI bilgi tabanında yer alıyor' : '✗ AI bilgi tabanında görünmüyor';
     const cardHtml = `
       <div class="company-card">
-        <div class="company-card-name">${data.name || company}</div>
-        ${data.description ? `<div class="company-card-desc">${data.description}</div>` : ''}
-        ${data.website ? `<div style="font-size:.75rem;color:#64748B;margin-bottom:8px;font-family:var(--mono)">${data.website}</div>` : ''}
+        <div class="company-card-name">${esc(data.name || company)}</div>
+        ${data.description ? `<div class="company-card-desc">${esc(data.description)}</div>` : ''}
+        ${data.website ? `<div style="font-size:.75rem;color:#64748B;margin-bottom:8px;font-family:var(--mono)">${esc(data.website)}</div>` : ''}
         <span class="company-card-status ${statusClass}">${statusText}</span>
       </div>
     `;

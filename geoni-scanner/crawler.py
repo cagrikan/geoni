@@ -14,7 +14,7 @@ from urllib.robotparser import RobotFileParser
 import httpx
 from playwright.async_api import async_playwright
 
-from ssrf_guard import assert_public_host, BlockedHostError
+from ssrf_guard import assert_public_host, BlockedHostError, safe_get
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ async def fetch_robots_txt(client: httpx.AsyncClient, base_url: str) -> RobotFil
     rp = RobotFileParser()
     robots_url = urljoin(base_url, "/robots.txt")
     try:
-        resp = await client.get(robots_url, timeout=10)
+        resp = await safe_get(client, robots_url, timeout=10)
         if resp.status_code == 200:
             rp.parse(resp.text.splitlines())
         else:
@@ -58,7 +58,7 @@ async def fetch_sitemap(client: httpx.AsyncClient, base_url: str, limit: int = 2
     lastmods: list[str] = []
     found = False
     try:
-        resp = await client.get(sitemap_url, timeout=10)
+        resp = await safe_get(client, sitemap_url, timeout=10)
         if resp.status_code == 200:
             # Very simple XML parse without extra deps
             import re
@@ -199,7 +199,9 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
     queue: list[tuple[str, int]] = [(base_url, 0)]  # (url, depth)
     results: list[dict] = []
 
-    async with httpx.AsyncClient(follow_redirects=True) as client:
+    # SSRF: robots/sitemap alt-istekleri redirect KAPALI. Domain yukarida
+    # assert_public_host'tan gecti; 30x ile ic adrese sicramasin.
+    async with httpx.AsyncClient(follow_redirects=False) as client:
         robots = await fetch_robots_txt(client, base_url)
         sitemap = await fetch_sitemap(client, base_url, limit=page_limit)
         for su in sitemap["urls"]:

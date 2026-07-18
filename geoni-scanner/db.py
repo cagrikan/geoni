@@ -8,6 +8,7 @@ import asyncio
 import os
 import time
 import uuid
+import html
 import logging
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse, parse_qs, quote
@@ -208,6 +209,27 @@ async def deduct_credits(user_id: str, amount: int, description: str, reference_
         return False
     try:
         async with httpx.AsyncClient() as client:
+            # Idempotency (F-KRITIK-1): ayni reference_id (job_id) icin daha once
+            # 'spend' islendiyse tekrar DUSME. SQS worker crash/timeout'ta mesaj
+            # yeniden teslim edilir ve ayni job bastan islenir; bu kontrol olmadan
+            # kullanicidan 2-3 kat fazla tahsilat oluyordu. Yeniden teslimler
+            # visibility timeout (900s) sonrasi SIRALI geldiginden pre-check yeterli.
+            if reference_id:
+                chk = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/credit_transactions",
+                    headers=_headers(),
+                    params={
+                        "reference_id": f"eq.{reference_id}",
+                        "type": "eq.spend",
+                        "select": "id",
+                        "limit": "1",
+                    },
+                    timeout=10,
+                )
+                if chk.status_code == 200 and chk.json():
+                    logger.info(f"deduct_credits idempotent no-op: reference_id={reference_id} zaten dusuldu")
+                    return True
+
             # Atomik kosullu dusum (yaris/double-spend guvenli): yeterli bakiye
             # varsa TEK UPDATE ile duser ve doner, yoksa satir donmez.
             rpc_r = await client.post(
@@ -650,49 +672,33 @@ async def record_purchase(user_id: str, credits: int, amount_paid: float, curren
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not credits:
         return False
     try:
+        # Karar B: atomik + idempotent. Onceki oku-degistir-yaz (GET+PATCH)
+        # eszamanli spend ile lost-update, cift webhook ile yaris uretiyordu.
+        # apply_credit_change ledger'i ONCE ekler (external_id UNIQUE -> cift
+        # teslim kaynagında durur), sonra bakiyeyi ayni transaction'da artirir.
         async with httpx.AsyncClient() as client:
-            dup = await client.get(
-                f"{SUPABASE_URL}/rest/v1/credit_transactions?select=id&external_id=eq.{external_id}",
-                headers=_headers(), timeout=10,
-            )
-            if dup.status_code == 200 and dup.json():
-                logger.info(f"record_purchase: external_id {external_id} already recorded, skipping")
-                return True
-
-            r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credit_balance,total_credits_purchased",
-                headers=_headers(), timeout=10,
-            )
-            if r.status_code != 200 or not r.json():
-                return False
-            row = r.json()[0]
-            new_balance = (row.get("credit_balance") or 0) + credits
-            new_purchased = (row.get("total_credits_purchased") or 0) + credits
-            patch_r = await client.patch(
-                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
-                headers=_headers(),
-                json={"credit_balance": new_balance, "total_credits_purchased": new_purchased},
-                timeout=10,
-            )
-            if patch_r.status_code not in (200, 204):
-                return False
-
-            await client.post(
-                f"{SUPABASE_URL}/rest/v1/credit_transactions",
+            rpc = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/apply_credit_change",
                 headers=_headers(),
                 json={
-                    "user_id": user_id,
-                    "amount": credits,
-                    "type": "purchase",
-                    "description": description,
-                    "channel": channel,
-                    "amount_paid": amount_paid,
-                    "currency_paid": currency_paid,
-                    "external_id": external_id,
+                    "p_user_id": user_id, "p_amount": credits, "p_type": "purchase",
+                    "p_description": description, "p_channel": channel,
+                    "p_external_id": external_id, "p_purchased_delta": credits,
+                    "p_amount_paid": amount_paid, "p_currency": currency_paid,
+                    "p_idempotent": True,
                 },
                 timeout=10,
             )
-            return True
+            if rpc.status_code != 200:
+                logger.warning(f"record_purchase rpc failed {rpc.status_code}: {rpc.text[:200]}")
+                return False
+            res = rpc.json()
+            # applied=true (ilk teslim) VEYA reason=duplicate (mukerrer webhook) ->
+            # ikisi de cagiran icin BASARI (idempotent no-op).
+            if isinstance(res, dict) and (res.get("applied") or res.get("reason") == "duplicate"):
+                return True
+            logger.warning(f"record_purchase not applied: {res}")
+            return False
     except Exception as e:
         logger.warning(f"record_purchase error: {e}")
     return False
@@ -912,38 +918,28 @@ async def record_refund(user_id: str, credits: int, external_id: str, descriptio
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not credits:
         return False
     try:
+        # Karar B: bakiyeyi atomik dus (oku-degistir-yaz -> lost-update kapandi).
+        # Idempotency cagirandadir (transaction_exists); external_id ledger'a
+        # yazilir (partial UNIQUE ayni refund'i tekrar yazmaya calisirsa
+        # transaction icinde reddedilir -> atomik geri sarilir). Bakiye eksiye
+        # inebilir (iade karari admin'in), o yuzden p_clip_zero=false.
         async with httpx.AsyncClient() as client:
-            r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credit_balance,total_credits_purchased",
-                headers=_headers(), timeout=10,
-            )
-            if r.status_code != 200 or not r.json():
-                return False
-            row = r.json()[0]
-            patch_r = await client.patch(
-                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
+            rpc = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/apply_credit_change",
                 headers=_headers(),
                 json={
-                    "credit_balance": (row.get("credit_balance") or 0) - credits,
-                    "total_credits_purchased": (row.get("total_credits_purchased") or 0) - credits,
+                    "p_user_id": user_id, "p_amount": -credits, "p_type": "refund",
+                    "p_description": description, "p_channel": "refund",
+                    "p_external_id": external_id, "p_purchased_delta": -credits,
+                    "p_idempotent": False,
                 },
                 timeout=10,
             )
-            if patch_r.status_code not in (200, 204):
+            if rpc.status_code != 200:
+                logger.warning(f"record_refund rpc failed {rpc.status_code}: {rpc.text[:200]}")
                 return False
-            await client.post(
-                f"{SUPABASE_URL}/rest/v1/credit_transactions",
-                headers=_headers(),
-                json={
-                    "user_id": user_id,
-                    "amount": -credits,
-                    "type": "refund",
-                    "description": description,
-                    "external_id": external_id,
-                },
-                timeout=10,
-            )
-            return True
+            res = rpc.json()
+            return isinstance(res, dict) and bool(res.get("applied"))
     except Exception as e:
         logger.warning(f"record_refund error: {e}")
     return False
@@ -1434,38 +1430,30 @@ async def admin_adjust_credits(user_id: str, delta: int, reason: str = "") -> bo
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not delta:
         return False
     try:
+        # Karar B: atomik (satir kilidi) + clip. Onceki max(0,...) oku-degistir-yaz
+        # hem lost-update hem ledger tutarsizligi (klip'te tam delta yaziliyordu)
+        # uretiyordu. RPC bakiyeyi 0 altina indirmez ve ledger'a GERCEK uygulanan
+        # miktari yazar. Bagis yalniz delta>0'da total_credits_gifted'a islenir.
         async with httpx.AsyncClient() as client:
-            r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=credit_balance,total_credits_gifted",
-                headers=_headers(), timeout=10,
-            )
-            if r.status_code != 200 or not r.json():
-                return False
-            row = r.json()[0]
-            new_balance = max(0, row.get("credit_balance", 0) + delta)
-            update = {"credit_balance": new_balance}
-            if delta > 0:
-                update["total_credits_gifted"] = (row.get("total_credits_gifted") or 0) + delta
-
-            patch_r = await client.patch(
-                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
-                headers=_headers(), json=update, timeout=10,
-            )
-            if patch_r.status_code not in (200, 204):
-                return False
-
-            await client.post(
-                f"{SUPABASE_URL}/rest/v1/credit_transactions",
+            rpc = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/apply_credit_change",
                 headers=_headers(),
                 json={
-                    "user_id": user_id,
-                    "amount": delta,
-                    "type": "admin_grant" if delta > 0 else "admin_deduct",
-                    "description": reason or "Admin manuel duzeltme",
+                    "p_user_id": user_id, "p_amount": delta,
+                    "p_type": "admin_grant" if delta > 0 else "admin_deduct",
+                    "p_description": reason or "Admin manuel duzeltme",
+                    "p_channel": "admin",
+                    "p_gifted_delta": delta if delta > 0 else 0,
+                    "p_clip_zero": True,
+                    "p_idempotent": False,
                 },
                 timeout=10,
             )
-            return True
+            if rpc.status_code != 200:
+                logger.warning(f"admin_adjust_credits rpc failed {rpc.status_code}: {rpc.text[:200]}")
+                return False
+            res = rpc.json()
+            return isinstance(res, dict) and bool(res.get("applied"))
     except Exception as e:
         logger.warning(f"admin_adjust_credits error: {e}")
     return False
@@ -1761,9 +1749,20 @@ async def get_latest_web_audit_by_domain(domain: str) -> dict | None:
         return None
     try:
         async with httpx.AsyncClient() as client:
+            # F-ORTA-10: domain kullanici girdisi (bilet target'i). f-string'e
+            # gomulunce &/,/( gibi karakterlerle PostgREST filtre enjeksiyonu
+            # (yanlis satir/veri sizintisi) mumkundu; httpx encode etsin diye
+            # params ile gonder.
             r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/audits?domain=eq.{domain}&type=eq.web&status=eq.complete"
-                f"&select=*&order=created_at.desc&limit=1",
+                f"{SUPABASE_URL}/rest/v1/audits",
+                params={
+                    "domain": f"eq.{domain}",
+                    "type": "eq.web",
+                    "status": "eq.complete",
+                    "select": "*",
+                    "order": "created_at.desc",
+                    "limit": "1",
+                },
                 headers=_headers(), timeout=10,
             )
             if r.status_code == 200 and r.json():
@@ -3061,7 +3060,11 @@ async def notify_ticket_event(ticket_id: int, event: str, actor_role: str = "") 
         types = await list_ticket_types(active_only=False)
         tt = next((t for t in types if t["id"] == ticket.get("ticket_type_id")), {})
         name = tt.get("name", "Hizmet")
-        ref = f"{ticket.get('ref_code') or ('#' + str(ticket_id))} · {name}" + (f" ({ticket.get('target')})" if ticket.get("target") else "")
+        # Guvenlik: name + target kullanici girdisi ve e-posta HTML'ine (admin
+        # dahil) giriyor. &<> escape (quote=False -> subject satiri temiz kalir).
+        _name_e = html.escape(str(name), quote=False)
+        _tgt = ticket.get("target")
+        ref = f"{ticket.get('ref_code') or ('#' + str(ticket_id))} · {_name_e}" + (f" ({html.escape(str(_tgt), quote=False)})" if _tgt else "")
 
         sends = []  # (email, subject, heading, lines)
         if event == "message":

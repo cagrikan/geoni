@@ -6,6 +6,7 @@ so email delivery issues never block or fail the audit job itself.
 """
 
 import os
+import html
 import logging
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -13,6 +14,12 @@ from zoneinfo import ZoneInfo
 import httpx
 
 logger = logging.getLogger(__name__)
+
+# E-posta gövdesi HTML. Dinamik degerler (domain, LLM konu basliklari, SOV
+# sorgulari, bilet target'i, watchlist label) buradan gecmeden gomulmesin —
+# aksi halde taranan siteden/kullanicidan gelen HTML enjekte edilebiliyordu.
+def esc(v) -> str:
+    return html.escape(str(v if v is not None else ""))
 
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "GEONI <mail@geoni.ai>")
@@ -118,7 +125,7 @@ def _render_topic_list(topics: list[dict], empty_text: str) -> str:
         return f'<p style="color:#8893AB;font-size:14px;">{empty_text}</p>'
     items = ""
     for t in topics[:5]:
-        items += f'<li style="margin-bottom:8px;color:#F1F5F9;">{t.get("topic", "")}</li>'
+        items += f'<li style="margin-bottom:8px;color:#F1F5F9;">{esc(t.get("topic", ""))}</li>'
     return f'<ul style="padding-left:18px;margin:0;">{items}</ul>'
 
 
@@ -137,8 +144,8 @@ def _build_report_html(domain: str, result: dict, lang: str = "tr") -> str:
         label = breakdown_labels.get(key, key)
         breakdown_rows += f"""
         <tr>
-          <td style="padding:6px 0;color:#94A3B8;font-size:13px;">{label}</td>
-          <td style="padding:6px 0;color:#F1F5F9;font-size:13px;text-align:right;">{value}</td>
+          <td style="padding:6px 0;color:#94A3B8;font-size:13px;">{esc(label)}</td>
+          <td style="padding:6px 0;color:#F1F5F9;font-size:13px;text-align:right;">{esc(value)}</td>
         </tr>
         """
 
@@ -152,11 +159,11 @@ def _build_report_html(domain: str, result: dict, lang: str = "tr") -> str:
         for item in (sov.get("queries") or [])[:5]:
             mark = "✓" if item.get("mentioned") else "✗"
             mark_color = "#3FB950" if item.get("mentioned") else "#F85149"
-            qtext = str(item.get("query", ""))[:110]
+            qtext = esc(str(item.get("query", ""))[:110])
             rows += (f'<tr><td style="padding:4px 8px 4px 0;color:{mark_color};font-size:13px;'
                      f'vertical-align:top;">{mark}</td>'
                      f'<td style="padding:4px 0;color:#94A3B8;font-size:13px;">{qtext}</td></tr>')
-        sources = [src.get("domain", "") for src in (sov.get("sources") or [])[:5] if src.get("domain")]
+        sources = [esc(src.get("domain", "")) for src in (sov.get("sources") or [])[:5] if src.get("domain")]
         sources_html = ""
         if sources:
             sources_html = (f'<p style="color:#64748B;font-size:12px;margin:10px 0 0;">'
@@ -193,7 +200,7 @@ def _build_report_html(domain: str, result: dict, lang: str = "tr") -> str:
 
           <div style="background:rgba(129,140,248,0.08);border:1px solid rgba(129,140,248,0.2);border-radius:10px;padding:14px 18px;margin:0 0 24px;">
             <div style="color:#64748B;font-size:11px;letter-spacing:1px;text-transform:uppercase;margin:0 0 4px;">{text["scanned_domain"]}</div>
-            <div style="color:#FFFFFF;font-size:18px;font-weight:bold;">{domain}</div>
+            <div style="color:#FFFFFF;font-size:18px;font-weight:bold;">{esc(domain)}</div>
           </div>
 
           <div style="text-align:center;margin-bottom:24px;">
@@ -223,7 +230,7 @@ def _build_report_html(domain: str, result: dict, lang: str = "tr") -> str:
         <div style="padding:20px 32px;border-top:1px solid rgba(129,140,248,0.15);text-align:center;">
           <p style="color:#64748B;font-size:11px;margin:0 0 4px;">{text["footer_brand"]}</p>
           <p style="color:#475569;font-size:11px;margin:0;">
-            {text["footer_note"].format(domain=domain)}
+            {text["footer_note"].format(domain=esc(domain))}
           </p>
         </div>
       </div>
@@ -364,12 +371,13 @@ async def send_monitor_email(to_email: str, label: str, old_score: int, new_scor
     arrow = "▲" if delta > 0 else "▼"
     yon = "yükseldi" if delta > 0 else "düştü"
     subject = f"GEONI İzleme: {label} skoru {old_score}→{new_score} {arrow}"
+    label_e = esc(label)  # HTML gövdesine ham gomulmesin (watchlist label kullanici girdisi)
     return await send_ticket_email(
         to_email,
         subject,
-        f"{label} için AI görünürlük skoru {yon}",
+        f"{label_e} için AI görünürlük skoru {yon}",
         [
-            f"Düzenli otomatik taramada <strong style=\"color:#EDEFF5\">{label}</strong> skoru "
+            f"Düzenli otomatik taramada <strong style=\"color:#EDEFF5\">{label_e}</strong> skoru "
             f"<strong style=\"color:#EDEFF5\">{old_score}</strong> → "
             f"<strong style=\"color:{'#3FB950' if delta > 0 else '#F85149'}\">{new_score}</strong> olarak ölçüldü ({arrow}{abs(delta)} puan).",
             "Raporun tamamını ve değişen boyutları panelinizde görebilirsiniz.",

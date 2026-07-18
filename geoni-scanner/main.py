@@ -29,7 +29,7 @@ from mailer import send_audit_report_email, send_purchase_email, send_refund_ema
 from brand_recall import check_brand_recall, infer_brand_identity
 from db import (
     create_pending_audit, update_audit_status, get_audit_row,
-    save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits,
+    save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits, get_credit_balance,
     is_strict_admin, get_admin_summary, get_admin_scans_daily, get_admin_credits_stats, get_admin_provider_usage,
     admin_list_users, admin_list_audits, admin_get_audit, admin_adjust_credits, admin_set_is_admin,
     get_manual_balances, set_manual_balance, get_manual_topups_total, list_manual_topups, add_manual_topup,
@@ -229,6 +229,20 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
 
     slot_acquired = False
     try:
+        # Kredi kacagi (guvenlik #1): private tarama gercek 4-motor maliyeti
+        # uretir ama kontor SONRA dusuluyordu ve donus kontrol edilmiyordu ->
+        # bakiyesi 0 kullanici sinirsiz gizli tarama calistirabiliyordu.
+        # Pahali isi baslatmadan ONCE bakiye on-kontrolu; basarida atomik dusum
+        # asagida (yalnizca basariyi ucretlendir). Anonim private de reddedilir.
+        if request.private:
+            pre_user = await get_user_id_from_token(token) if token else None
+            if not pre_user or await get_credit_balance(pre_user) < 5:
+                jobs_store[job_id].update({"status": "failed", "error": "insufficient_credits"})
+                if sqs_enabled():
+                    await update_audit_status(job_id, "failed")
+                logger.warning(f"Private audit {job_id} reddedildi: yetersiz bakiye / auth")
+                return
+
         # Tarama kuyrugu: ayni anda en cok SCAN_CONCURRENCY tarama (bkz. scanqueue.py).
         # Slot doluysa kullaniciya tahmini bekleme suresi soylenir; release
         # asagidaki finally'de — pipeline nasil biterse bitsin slot birakilir.
@@ -321,8 +335,16 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
         # aynen olustugu icin kontor yine de dusulur (suistimali onlemek icin).
         user_id = await get_user_id_from_token(token) if token else None
         if request.private:
-            if user_id:
-                await deduct_credits(user_id, 5, "web_audit_private", job_id)
+            # F3: dusum donusunu KONTROL et. On-kontrol ile bu nokta arasinda
+            # eszamanli baska bir private tarama bakiyeyi tuketmis olabilir;
+            # atomik dusum False donerse ucretsiz sonuc TESLIM ETME.
+            charged = await deduct_credits(user_id, 5, "web_audit_private", job_id) if user_id else False
+            if not charged:
+                jobs_store[job_id].update({"status": "failed", "error": "insufficient_credits"})
+                if sqs_enabled():
+                    await update_audit_status(job_id, "failed")
+                logger.warning(f"Private audit {job_id}: dusum basarisiz, teslim iptal")
+                return
             # SQS modunda 'queued' satiri onceden acildi (user_id=None ile,
             # gecmis listesinde gorunmez); sonucu satira isle ki polling bitsin.
             if sqs_enabled():
@@ -365,6 +387,18 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
 
     slot_acquired2 = False
     try:
+        # Kredi kacagi (guvenlik #1): private kisi/marka taramasi 10 kontor,
+        # gercek 4-motor maliyeti uretir. Pahali isten ONCE bakiye on-kontrolu;
+        # basarida atomik dusum asagida. Anonim private reddedilir.
+        if request.private:
+            pre_user2 = await get_user_id_from_token(token) if token else None
+            if not pre_user2 or await get_credit_balance(pre_user2) < 10:
+                jobs_store[job_id].update({"status": "failed", "error": "insufficient_credits"})
+                if sqs_enabled():
+                    await update_audit_status(job_id, "failed")
+                logger.warning(f"Private brand check {job_id} reddedildi: yetersiz bakiye / auth")
+                return
+
         # Ayni tarama kuyrugu (bkz. scanqueue.py) — kisi taramasi da LLM yogun
         wait_s2 = estimate_wait_seconds()
         if wait_s2 > 0:
@@ -423,8 +457,19 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
         # aynen olustugu icin kontor yine de dusulur (suistimali onlemek icin).
         user_id = await get_user_id_from_token(token) if token else None
         if request.private:
-            if user_id:
-                await deduct_credits(user_id, 10, f"{request.type or 'person'}_check_private", job_id)
+            if not result.get("checked", False):
+                # F5: hicbir motor olculemedi (tumu API hatasi + SOV yok) -> skor
+                # ~0, guvenilmez sonuc. Standalone brand'de scoring fallback yok;
+                # kullaniciyi bos rapora ucretlendirme.
+                logger.warning(f"Private brand {job_id}: checked=False, kontor dusulmedi")
+            else:
+                # F3: dusum donusunu KONTROL et; on-kontrol ile bu nokta arasinda
+                # eszamanli baska tarama bakiyeyi tuketmis olabilir -> teslim etme.
+                charged = await deduct_credits(user_id, 10, f"{request.type or 'person'}_check_private", job_id) if user_id else False
+                if not charged:
+                    brand_checks_store[job_id].update({"status": "failed", "error": "insufficient_credits"})
+                    logger.warning(f"Private brand {job_id}: dusum basarisiz, teslim iptal")
+                    return
             logger.info(f"Private brand check job {job_id} completed for '{request.name}', not saved")
         else:
             # Sosyal taramalar ucretsiz (website audit gibi) - kaydet ama kredi dusme.
