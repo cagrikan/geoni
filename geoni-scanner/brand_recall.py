@@ -571,6 +571,19 @@ _JSON_INSTRUCTION = (
     "\n\nYanıtını YALNIZCA şu JSON formatında ver, başka hiçbir açıklama, markdown ya da metin ekleme:\n"
     '{"taniyor": true veya false, "guven": 0-100 arası bir sayı, "yanit": "serbest metin değerlendirmen (Türkçe)"}'
 )
+# Y7: olcumun kendisi (soru + serbest-metin dili) `lang`'e baglanir. JSON
+# ANAHTARLARI (taniyor/guven/yanit) parse sozlesmesi geregi degismez; yalnizca
+# soru dili ve 'yanit' serbest metni degisir. Ingilizce pazardaki marka Turkce
+# soruya zayif/bos yanit verip sistematik dusuk skor aliyordu.
+_JSON_INSTRUCTION_EN = (
+    "\n\nReply ONLY in the following JSON format, with no other explanation, markdown or text. "
+    "Use these EXACT keys:\n"
+    '{"taniyor": true or false, "guven": a number between 0-100, "yanit": "your free-text assessment (in English)"}'
+)
+
+
+def _json_instr(lang: str) -> str:
+    return _JSON_INSTRUCTION_EN if lang == "en" else _JSON_INSTRUCTION
 
 
 def _extract_structured_json(raw: str) -> dict | None:
@@ -623,36 +636,64 @@ def _parse_recognition(raw: str | None, name: str) -> dict:
     }
 
 
-def _build_formulations(name: str, topic: str) -> list[str]:
-    """Madde 2.7: her model icin 3 farkli formulasyon (varyans azaltma)."""
+def _build_formulations(name: str, topic: str, lang: str = "tr") -> list[str]:
+    """Madde 2.7: her model icin 3 farkli formulasyon (varyans azaltma).
+    Y7: soru dili `lang`'e baglidir (EN pazar markasi Turkce soruya zayif yanit
+    verip dusuk skor aliyordu). JSON anahtarlari degismez (bkz. _json_instr)."""
     has_topic = bool(topic) and topic.strip().lower() != name.strip().lower()
+    instr = _json_instr(lang)
+    if lang == "en":
+        topic_part = f" (in {topic})" if has_topic else ""
+        topic_prefix = f"in {topic}, " if has_topic else ""
+        topic_suffix = f" (regarding {topic})" if has_topic else ""
+        f1 = (
+            f"Who is {name}{topic_part}? Explain in English based on your own knowledge. "
+            f"If you have no information about it, state that clearly." + instr
+        )
+        f2 = (
+            f"Do you know {topic_prefix}{name}? If so, explain who they are in English. "
+            f"If not, state that clearly." + instr
+        )
+        f3 = (
+            f"What do you know about {name}?{topic_suffix} Summarize what you know in English. "
+            f"If you know nothing, state that clearly." + instr
+        )
+        return [f1, f2, f3]
+
     topic_part = f" ({topic} alanında)" if has_topic else ""
     topic_prefix = f"{topic} alanında " if has_topic else ""
     topic_suffix = f" ({topic} alanıyla ilgili olarak)" if has_topic else ""
-
     f1 = (
         f"{name}{topic_part} kimdir? Kendi bilgine dayanarak Türkçe olarak anlat. "
-        f"Eğer hakkında hiçbir bilgin yoksa bunu açıkça belirt." + _JSON_INSTRUCTION
+        f"Eğer hakkında hiçbir bilgin yoksa bunu açıkça belirt." + instr
     )
     f2 = (
         f"{topic_prefix}{name}'i tanıyor musun? Tanıyorsan kim olduğunu Türkçe olarak anlat. "
-        f"Tanımıyorsan bunu açıkça belirt." + _JSON_INSTRUCTION
+        f"Tanımıyorsan bunu açıkça belirt." + instr
     )
     f3 = (
         f"{name} hakkında ne biliyorsun?{topic_suffix} Bildiklerini Türkçe olarak özetle. "
-        f"Hiçbir şey bilmiyorsan bunu açıkça belirt." + _JSON_INSTRUCTION
+        f"Hiçbir şey bilmiyorsan bunu açıkça belirt." + instr
     )
     return [f1, f2, f3]
 
 
-def _build_failover_prompt(name: str, topic: str, web_results: list) -> str:
+def _build_failover_prompt(name: str, topic: str, web_results: list, lang: str = "tr") -> str:
     has_topic = bool(topic) and topic.strip().lower() != name.strip().lower()
-    topic_part = f" ({topic} alanında)" if has_topic else ""
     context = _format_web_context(web_results, limit=5)
+    instr = _json_instr(lang)
+    if lang == "en":
+        topic_part = f" (in {topic})" if has_topic else ""
+        return (
+            f"Who is {name}{topic_part}?{context}\n"
+            f"Based on this information, assess {name} in English. "
+            f"If there is still no information, state that clearly." + instr
+        )
+    topic_part = f" ({topic} alanında)" if has_topic else ""
     return (
         f"{name}{topic_part} kimdir?{context}\n"
         f"Bu bilgilere dayanarak {name} hakkında Türkçe olarak değerlendir. "
-        f"Eğer hakkında hâlâ bilgi yoksa bunu açıkça belirt." + _JSON_INSTRUCTION
+        f"Eğer hakkında hâlâ bilgi yoksa bunu açıkça belirt." + instr
     )
 
 
@@ -664,14 +705,14 @@ def _pick_representative(parses: list[dict]) -> dict:
     return max(pool, key=lambda p: p.get("guven", 0))
 
 
-async def _check_model_two_phase(name: str, topic: str, web_results: list, ask_fn) -> dict:
+async def _check_model_two_phase(name: str, topic: str, web_results: list, ask_fn, lang: str = "tr") -> dict:
     """
     Bir model icin: 3 formulasyonla paralel parametrik sorgu (Asama 1),
     hicbiri tanimazsa web verisiyle tek failover sorgusu (Asama 2).
     Final skorlama check_brand_recall() seviyesinde (judge sonrasi) yapilir;
     burada yalnizca ham parse verisi dondurulur.
     """
-    formulations = _build_formulations(name, topic)
+    formulations = _build_formulations(name, topic, lang)
     raw_list = await asyncio.gather(*[ask_fn(p) for p in formulations], return_exceptions=True)
     parses = []
     got_any_response = False  # Y2: motor hakikaten olculdu mu?
@@ -686,7 +727,7 @@ async def _check_model_two_phase(name: str, topic: str, web_results: list, ask_f
     via_web = False
 
     if not any_recognized and web_results:
-        p2_prompt = _build_failover_prompt(name, topic, web_results)
+        p2_prompt = _build_failover_prompt(name, topic, web_results, lang)
         p2_raw = await ask_fn(p2_prompt)
         if p2_raw:
             got_any_response = True
@@ -1094,10 +1135,10 @@ async def check_brand_recall(
 
     emit(msgs["querying_models"])
     claude_data, openai_data, gemini_data, perplexity_data = await asyncio.gather(
-        _tracked(_check_model_two_phase(name, topic, web_results, _ask_claude), "Claude"),
-        _tracked(_check_model_two_phase(name, topic, web_results, _ask_openai), "ChatGPT"),
-        _tracked(_check_model_two_phase(name, topic, web_results, _ask_gemini), "Gemini"),
-        _tracked(_check_model_two_phase(name, topic, web_results, _ask_perplexity), "Perplexity"),
+        _tracked(_check_model_two_phase(name, topic, web_results, _ask_claude, lang), "Claude"),
+        _tracked(_check_model_two_phase(name, topic, web_results, _ask_openai, lang), "ChatGPT"),
+        _tracked(_check_model_two_phase(name, topic, web_results, _ask_gemini, lang), "Gemini"),
+        _tracked(_check_model_two_phase(name, topic, web_results, _ask_perplexity, lang), "Perplexity"),
         return_exceptions=True,
     )
 
@@ -1217,6 +1258,7 @@ async def check_brand_recall(
         custom_queries=custom_queries,
         own_domain=website or "",
         social=social,
+        lang=lang,
     )
     topics_task = _generate_brand_topics(name, topic, web_results, representative_texts)
     sov_result, topics = await asyncio.gather(sov_task, topics_task)

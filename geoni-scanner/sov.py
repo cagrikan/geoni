@@ -140,10 +140,17 @@ def sanitize_custom_queries(raw) -> list[str]:
     return out[:MAX_CUSTOM_QUERIES]
 
 
-def _fallback_queries(topic: str) -> list[str]:
+def _fallback_queries(topic: str, lang: str = "tr") -> list[str]:
     """Sablon sorgular — YALNIZCA gecerli bir alan (topic) varken kullanilir.
-    Alan yokken 'bu alan' gibi anlamsiz sorgular uretilmez; SOV atlanir."""
+    Alan yokken 'bu alan' gibi anlamsiz sorgular uretilmez; SOV atlanir.
+    Y7: EN'de global sablonlar (TR'de 'Türkiye'de' yerel kalir)."""
     t = topic.strip()
+    if lang == "en":
+        return [
+            f"Who are the best providers of {t}?",
+            f"Which companies or people would you recommend for {t}?",
+            f"Which brands stand out in {t}?",
+        ]
     return [
         f"Türkiye'de en iyi {t} hizmeti verenler kimler?",
         f"{t} için hangi firma veya kişileri önerirsin?",
@@ -159,6 +166,10 @@ _RECOMMEND_CUES = (
     "hangi danışman", "hangi kurum", "hangi marka", "hangi ajans", "hangisini",
     "öner", "tavsiye", "en iyi", "en iyileri", "öne çıkan", "lider",
     "markalar", "firmalar", "şirketler", "sağlayıcılar", "kuruluşlar",
+    # Y7: EN ipuclari — yoksa EN sorular oneri-filtresinden gecemez, SOV hep sablona duser.
+    "who are", "which company", "which companies", "which brand", "which agency",
+    "which firm", "which provider", "recommend", "best", "top ", "leading",
+    "stand out", "providers", "firms", "brands", "companies", "who would you",
 )
 
 
@@ -209,7 +220,7 @@ async def infer_topic(name: str, web_results: list, ask_llm) -> str:
     return ""
 
 
-async def generate_category_queries(name: str, topic: str, ask_llm, social: bool = False) -> list[dict]:
+async def generate_category_queries(name: str, topic: str, ask_llm, social: bool = False, lang: str = "tr") -> list[dict]:
     """
     Markayi bilmeyen bir kullanicinin soracagi kategori/niyet sorgulari uretir:
     3 soru birincil alandan + 2 soru EN YAKIN KOMSU alandan (komsu alani
@@ -227,7 +238,34 @@ async def generate_category_queries(name: str, topic: str, ask_llm, social: bool
     if not has_usable_topic(name, topic):
         return []
 
-    if social:
+    if lang == "en" and social:
+        prompt = (
+            f"Write realistic ENGLISH questions that a user interested in '{topic}' but who "
+            f"knows NO account names would ask an AI assistant:\n"
+            f"- {SOV_QUERY_COUNT} questions directly about '{topic}',\n"
+            f"- {SOV_ADJACENT_COUNT} questions about the CLOSEST adjacent topic (you pick it).\n"
+            f"RULE: Every question MUST ask for a SOCIAL MEDIA ACCOUNT/PERSON to follow "
+            f"('who should I follow', 'best Instagram/TikTok/YouTube accounts', 'which accounts "
+            f"do you recommend'). Do NOT write 'how to' method questions. No account name in the questions.\n"
+            f'Return ONLY in this JSON format: '
+            f'{{"komsu_alan": "...", "queries": [{{"soru": "...", "alan": "birincil"}}, '
+            f'{{"soru": "...", "alan": "komsu"}}]}}'
+        )
+    elif lang == "en":
+        prompt = (
+            f"Write realistic ENGLISH questions that a user looking for services/products in "
+            f"'{topic}' but who knows NO brand names would ask an AI assistant:\n"
+            f"- {SOV_QUERY_COUNT} questions directly about '{topic}',\n"
+            f"- {SOV_ADJACENT_COUNT} questions about the CLOSEST adjacent field (you pick it; "
+            f"e.g. 'digital transformation consulting' -> 'management consulting').\n"
+            f"RULE: Every question MUST ask for names/recommendations ('who are the...', 'which "
+            f"companies/people would you recommend', 'which are the best'). Do NOT write 'how to' / "
+            f"method questions (those never get brand names). No brand name in the questions.\n"
+            f'Return ONLY in this JSON format: '
+            f'{{"komsu_alan": "...", "queries": [{{"soru": "...", "alan": "birincil"}}, '
+            f'{{"soru": "...", "alan": "komsu"}}]}}'
+        )
+    elif social:
         prompt = (
             f"'{topic}' konusuyla ilgilenen ama hicbir hesap adi BILMEYEN bir "
             f"kullanicinin bir AI asistanina soracagi gercekci Turkce sorular yaz:\n"
@@ -280,7 +318,7 @@ async def generate_category_queries(name: str, topic: str, ask_llm, social: bool
             # Birincil taraf eksik kaldiysa sablonlarla tamamla
             if len(primary) < SOV_QUERY_COUNT:
                 existing = {q["query"] for q in out}
-                for tq in _fallback_queries(topic):
+                for tq in _fallback_queries(topic, lang):
                     if len([q for q in out if not q.get("adjacent")]) >= SOV_QUERY_COUNT:
                         break
                     if tq not in existing:
@@ -289,7 +327,7 @@ async def generate_category_queries(name: str, topic: str, ask_llm, social: bool
                 return out
     except Exception as e:
         logger.info(f"SOV query generation failed, falling back to templates: {e}")
-    return [{"query": q, "adjacent": False, "topic": topic} for q in _fallback_queries(topic)]
+    return [{"query": q, "adjacent": False, "topic": topic} for q in _fallback_queries(topic, lang)]
 
 
 async def _extract_competitors(answers: list[str], own_name: str, ask_llm, social: bool = False) -> list[dict]:
@@ -356,7 +394,7 @@ async def _extract_competitors(answers: list[str], own_name: str, ask_llm, socia
 
 async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
                                ask_google=None, custom_queries: list | None = None,
-                               own_domain: str = "", social: bool = False) -> dict:
+                               own_domain: str = "", social: bool = False, lang: str = "tr") -> dict:
     """
     Tam SOV olcumu (cok motorlu + atif istihbarati):
       - Sorgular: kullanici tanimli (varsa) yoksa 3 uretilmis kategori sorgusu
@@ -396,7 +434,7 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
         logger.info(f"SOV skipped for '{name}': alan bilgisi yok")
         return {**empty, "skipped_reason": "no_topic"}
     else:
-        queries = await generate_category_queries(name, topic, ask_llm, social=social)
+        queries = await generate_category_queries(name, topic, ask_llm, social=social, lang=lang)
     if not queries:
         return empty
 
