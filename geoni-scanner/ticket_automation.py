@@ -607,6 +607,156 @@ async def fulfill_content_ticket(ticket_id: int, target: str) -> bool:
         return False
 
 
+# ── citation_placement yarı-otonom istihbarat katmanı (2.4) ─────────────────
+# İstihbarat + malzeme (%40) otomatik; yerleştirme (üçüncü tarafın kararı) İNSAN.
+# Hedef tablosu TAMAMEN deterministik (sov.sources/citation_gap/competitors),
+# outreach şablonları LLM. Teslim 'submitted' YAPILMAZ — uzman bitirir.
+
+def _query_domain_map(sov: dict) -> dict:
+    """Hangi domain hangi sorgularda atıf aldı → {domain: [query,...]}.
+    sov.queries[].engines[].sources'tan deterministik türetilir."""
+    m: dict[str, set] = {}
+    for q in (sov.get("queries") or []):
+        qt = _sanitize_text(q.get("query") or "", 80)
+        if not qt:
+            continue
+        for eng in (q.get("engines") or {}).values():
+            for d in (eng.get("sources") or []):
+                m.setdefault(d, set()).add(qt)
+    return {d: sorted(qs) for d, qs in m.items()}
+
+
+def generate_citation_targets(audit: dict | None) -> str | None:
+    """DETERMİNİSTİK 'Atıf Hedef Listesi' (LLM YOK) — hepsi gerçek taramadan:
+    citation_gap (rakip anan/marka yok) + sov.sources(own=False) birincil hedef;
+    her satıra hangi sorgularda atıf aldığı + rakip eşlemesi bağlanır. Yeterli
+    kaynak yoksa None (insana düşer)."""
+    result = (audit or {}).get("result_json") or {}
+    sov = result.get("sov") or {}
+    if not sov.get("checked"):
+        return None
+    qmap = _query_domain_map(sov)
+    # Birincil: citation_gap (T3 — rakip anan, markayı anmayan). Sonra sov.sources own=False.
+    seen, rows = set(), []
+    for g in (sov.get("citation_gap") or []):
+        d = (g.get("domain") or "").strip().lower()
+        if d and d not in seen:
+            seen.add(d)
+            rows.append((d, int(g.get("mentions") or 0), qmap.get(d, []), True))
+    for s in (sov.get("sources") or []):
+        if s.get("own"):
+            continue
+        d = (s.get("domain") or "").strip().lower()
+        if d and d not in seen:
+            seen.add(d)
+            rows.append((d, int(s.get("mentions") or 0), qmap.get(d, []), False))
+    if not rows:
+        return None
+    rows.sort(key=lambda r: r[1], reverse=True)
+    rows = rows[:12]
+
+    comps = [(_sanitize_text(c.get("name") if isinstance(c, dict) else c, 60),
+              int(c.get("mentions") or 0) if isinstance(c, dict) else 0)
+             for c in (sov.get("competitors") or [])]
+    comps = [(n, m) for n, m in comps if n]
+
+    today = date.today().isoformat()
+    out = [f"# Atıf Hedef Listesi (taramadan üretildi, {today})", "",
+           "AI motorlarının bu kategoride **gerçekten atıf yaptığı** kaynaklar. "
+           "`gap` = rakiplerinizin anıldığı ama sizin anılmadığınız kaynak (en öncelikli).", "",
+           "| # | Kaynak | Neden hedef | Önerilen aksiyon | Öncelik |",
+           "|---|--------|-------------|------------------|---------|"]
+    for i, (d, m, qs, is_gap) in enumerate(rows, 1):
+        why = ("rakip anıldı, siz yoksunuz" if is_gap else "AI bu kategoride atıf yaptı")
+        if qs:
+            why += f" ({len(qs)} sorguda: " + ", ".join(f"“{q}”" for q in qs[:2]) + ")"
+        elif m:
+            why += f" ({m} yanıtta)"
+        action = "dizin kaydı / listicle'a ekleme talebi / misafir yazı (uzman belirler)"
+        pri = "Yüksek" if is_gap or m >= 3 else "Orta"
+        out.append(f"| {i} | {d} | {why} | {action} | {pri} |")
+    if comps:
+        out += ["", "## Rakip-kaynak eşlemesi",
+                "AI'ın bu kategoride andığı rakipler (hangi içerikte geçtiklerini bulmak outreach hedefidir):", ""]
+        for n, m in comps[:8]:
+            out.append(f"- **{n}**" + (f" — {m} yanıtta anıldı" if m else ""))
+    out += ["", "> Kırmızı çizgi: satın alınmış/spam link YOK. Anılma bağlam içinde "
+            "(marka + ne yaptığı + kategori aynı cümlede). Her yerleşim URL + arşivle kanıtlanır.",
+            "> Ölçüm vaadi: 4-8 hafta sonra tekrar tarama — `own_cited` ve kategori görünürlüğü artışını birlikte görürüz."]
+    return "\n".join(out)
+
+
+async def generate_outreach_templates(name: str, topic: str, lang: str) -> str | None:
+    """Markaya/kategoriye özel 2-3 outreach şablonu (LLM). content ile aynı zincir."""
+    lang_name = "İngilizce" if (lang or "tr").startswith("en") else "Türkçe"
+    prompt = (
+        f"Sen bir dijital PR / linkbuilding uzmanısın. '{name}' ({topic or 'kategori'}) "
+        f"için yapay zekâ motorlarının alıntıladığı güvenilir kaynaklarda anılmayı "
+        f"sağlayacak 2-3 kısa outreach ŞABLONU yaz ({lang_name}):\n"
+        f"1) Listicle/derleme ekleme talebi (rakip zaten listede; markanın somut farkını 1 cümlede ver)\n"
+        f"2) Sektör medyasına misafir yazı pitch'i (özgün açı: kategoride AI görünürlüğü verisi bile bir hikâye)\n"
+        f"3) Uzman görüşü/röportaj teklifi\n\n"
+        f"Her şablon: kısa, kişiselleştirilebilir [KÖŞELİ PARANTEZ] alanlı, spam DEĞİL, "
+        f"editoryal değer vurgulu. Yalnız şablonları markdown ver."
+    )
+    return await _llm_text(prompt, max_tokens=1400)
+
+
+async def prepare_citation_ticket(ticket_id: int, target: str) -> bool:
+    """Yarı-otonom hazırlık: 'Atıf İstihbarat Raporu' (hedef tablo + şablonlar)
+    bilete düşer, müşteri ANINDA değer görür. 'submitted' YAPILMAZ — outreach'i
+    uzman yürütür (notify_experts'i dispatch çağırır, burada DEĞİL). Yeterli veri
+    yoksa False (yine de uzman bilgilendirilecek; müşteriye dürüst not düşülür)."""
+    try:
+        audit = await get_latest_audit_by_target(target)
+        targets = generate_citation_targets(audit)
+        if not targets:
+            await add_ticket_message(ticket_id, None, "system", body=(
+                "Güvenilir kaynaklarda görünürlük hizmeti için hedef listesini "
+                "taramanızın **ölçülmüş kaynak verisinden** (AI'ın kategoride kime "
+                "atıf yaptığı) çıkarıyoruz. Bu hedef için bu veriyi taşıyan bir tarama "
+                "bulunamadı.\n\nUzmanımız sizinle iletişime geçip hedefleri elle "
+                "belirleyecek; dilerseniz güncel bir tarama yaptırın, listeyi hemen çıkaralım."
+            ))
+            logger.info(f"prepare_citation_ticket: sov verisi yok (t={ticket_id}), uzmana devir")
+            return False
+
+        result = (audit or {}).get("result_json") or {}
+        brand = result.get("brand_recall") or {}
+        name = _sanitize_text(brand.get("inferred_name") or "", 60) or (
+            normalize_domain(target) or target)
+        topic = _sanitize_text(brand.get("inferred_topic") or "", 200)
+        lang = (audit or {}).get("lang") or result.get("lang") or "tr"
+        templates = await generate_outreach_templates(name, topic, lang)
+
+        msg = (
+            f"# Atıf İstihbarat Raporunuz hazır\n\n{name} için yapay zekâ motorlarının "
+            f"bu kategoride **gerçekten atıf yaptığı** kaynakların ölçülmüş listesini "
+            f"çıkardık (aşağıda + dosya olarak). Uzmanımız bu hedeflere göre outreach'e "
+            f"başlıyor; yerleşimleri kanıtlarıyla (URL + arşiv) size teslim edecek.\n\n"
+            f"---\n\n{targets}\n"
+        )
+        msg = _lint_delivery_message(msg)
+        if not msg:
+            return False
+        await add_ticket_message(ticket_id, None, "system", body=msg)
+
+        targets_url = await upload_ticket_file(ticket_id, "atif-hedef-listesi.md", targets)
+        if targets_url:
+            await add_ticket_message(ticket_id, None, "system",
+                                     attachment_url=targets_url, attachment_name="atif-hedef-listesi.md")
+        if templates and templates.strip():
+            tpl_url = await upload_ticket_file(ticket_id, "outreach-sablonlari.md", templates.strip())
+            if tpl_url:
+                await add_ticket_message(ticket_id, None, "system",
+                                         attachment_url=tpl_url, attachment_name="outreach-sablonlari.md")
+        # NOT: mark_ticket_submitted YOK — yerleştirme insan işi (yarı-otonom).
+        return True
+    except Exception as e:
+        logger.warning(f"prepare_citation_ticket error: {e}")
+        return False
+
+
 def _lint_delivery_message(text: str) -> str | None:
     """2.1 ortak teslim korkuluğu: otomasyonun ürettiği müşteri mesajı teslim
     edilmeden ÖNCE denetlenir. Doldurulmamış `{...}` placeholder ya da boş/çok kısa
@@ -625,8 +775,8 @@ def _lint_delivery_message(text: str) -> str | None:
 # hedef tipinde çalışır (hammaddesini get_latest_audit_by_target'tan alır).
 AUTO_FULFILL_KEYS = {"llms_robots", "schema_setup", "content_package"}
 # Yarı-otonom: otomasyon istihbarat/taslak HAZIRLAR ama teslimi (submitted) İNSAN
-# yapar. Satın almada hazırlık koşar + notify_experts ATLANMAZ. 2.4/2.5'te dolar.
-SEMI_AUTO_KEYS: set[str] = set()
+# yapar. Satın almada hazırlık koşar + notify_experts ATLANMAZ. wikidata_entity 2.5'te.
+SEMI_AUTO_KEYS: set[str] = {"citation_placement"}
 
 
 async def fulfill_auto_ticket(key: str, ticket_id: int, target: str) -> bool:
@@ -662,7 +812,9 @@ async def fulfill_auto_ticket(key: str, ticket_id: int, target: str) -> bool:
 async def prepare_semi_ticket(key: str, ticket_id: int, target: str) -> bool:
     """Yarı-otonom hazırlık dispatcher: istihbarat/taslak üretir, bilete ekler ama
     'submitted' YAPMAZ (teslimi uzman tamamlar). Çağıran (main.py) bundan bağımsız
-    olarak notify_experts_new_task'ı HER ZAMAN çağırır. 2.4/2.5'te doldurulacak."""
+    olarak notify_experts_new_task'ı HER ZAMAN çağırır."""
+    if key == "citation_placement":
+        return await prepare_citation_ticket(ticket_id, target)
     return False
 
 
