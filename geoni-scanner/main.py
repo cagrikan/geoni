@@ -49,6 +49,7 @@ from db import (
     admin_set_suspended, admin_set_admin_scopes,
     get_ticket_role, list_ticket_messages, add_ticket_message, create_ticket_upload_url, mark_ticket_read, notify_ticket_event,
     list_ticket_tasks, toggle_ticket_task, dispute_ticket, confirm_ticket,
+    get_ticket_by_id, get_latest_audit_by_target,
 )
 from self_improve import run_improvement_cycle, get_signals, improvement_loop
 from anthropic_admin import get_anthropic_cost_summary
@@ -62,6 +63,7 @@ import polar
 import iap
 from ticket_automation import (
     fulfill_auto_ticket, prepare_semi_ticket, AUTO_FULFILL_KEYS, SEMI_AUTO_KEYS,
+    build_expert_audit_context,
 )
 
 class AuditRequest(BaseModel):
@@ -1196,11 +1198,29 @@ async def _require_ticket_access(ticket_id: int, http_request: Request) -> tuple
 
 @app.get("/api/tickets/{ticket_id}/messages")
 async def ticket_messages_ep(ticket_id: int, http_request: Request):
-    user_id, _role = await _require_ticket_access(ticket_id, http_request)
-    messages = await list_ticket_messages(ticket_id)
+    user_id, role = await _require_ticket_access(ticket_id, http_request)
+    messages = await list_ticket_messages(ticket_id, viewer_role=role)
     # Okundu isareti yaniti bekletmesin - mesajlar aninda insin
     asyncio.create_task(mark_ticket_read(ticket_id, user_id))
     return messages
+
+@app.get("/api/tickets/{ticket_id}/audit-context")
+async def ticket_audit_context_ep(ticket_id: int, http_request: Request):
+    """A-1: uzman/admin, biletin dayandığı taramanın bulgularını görür (kör
+    çalışmasın). Müşteriye KAPALI (kendi sonucunu zaten görüyor + uzman çalışma
+    verisi). Bilet audit_id'sini, yoksa hedefin en yeni taramasını kullanır."""
+    _user_id, role = await _require_ticket_access(ticket_id, http_request)
+    if role not in ("expert", "admin"):
+        raise HTTPException(status_code=403, detail="Bu veri uzman/yönetici içindir.")
+    ticket = await get_ticket_by_id(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Bilet bulunamadı")
+    audit = None
+    if ticket.get("audit_id"):
+        audit = await admin_get_audit(ticket["audit_id"])
+    if not audit:
+        audit = await get_latest_audit_by_target(ticket.get("target") or "")
+    return build_expert_audit_context(audit)
 
 class TicketMessageRequest(BaseModel):
     body: Optional[str] = ""

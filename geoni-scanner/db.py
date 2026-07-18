@@ -2377,6 +2377,24 @@ async def list_user_tickets(user_id: str) -> list:
     return []
 
 
+async def get_ticket_by_id(ticket_id: int) -> dict | None:
+    """A-1: bilet satırını (target/audit_id/type dahil) getirir — uzman audit
+    bağlamı için. Erişim kontrolü ÇAĞIRANIN sorumluluğu (endpoint _require_ticket_access)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}&select=*",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code == 200 and r.json():
+                return r.json()[0]
+    except Exception as e:
+        logger.warning(f"get_ticket_by_id error: {e}")
+    return None
+
+
 async def list_expert_tickets(expert_id: str) -> list:
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return []
@@ -3028,7 +3046,12 @@ async def get_ticket_role(ticket_id: int, user_id: str) -> tuple[str | None, dic
     return None, ticket
 
 
-async def list_ticket_messages(ticket_id: int) -> list:
+async def list_ticket_messages(ticket_id: int, viewer_role: str = "customer") -> list:
+    """C-4: author_email mesaj-seviyesinde ROL KAPILI. Müşteri (viewer_role=
+    'customer') gerçek e-posta ADRESLERİNİ GÖRMEZ — mesajlar author_role
+    etiketiyle ('GEONI Uzmanı' vb.) sunulur; aksi halde atanan uzmanın kişisel
+    e-postası müşteriye sızardı. Yalnız staff (expert/admin) e-postaları görür
+    (koordinasyon). how_to gating (C-1) ile aynı desen."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return []
     try:
@@ -3041,9 +3064,13 @@ async def list_ticket_messages(ticket_id: int) -> list:
     except Exception as e:
         logger.warning(f"list_ticket_messages error: {e}")
         return []
-    emails = await _fetch_all_auth_emails()
-    for m in messages:
-        m["author_email"] = emails.get(m.get("author_id"), "")
+    if viewer_role in ("expert", "admin"):
+        emails = await _fetch_all_auth_emails()
+        for m in messages:
+            m["author_email"] = emails.get(m.get("author_id"), "")
+    else:
+        for m in messages:  # müşteri: e-posta sızdırma, yalnız rol etiketi
+            m["author_email"] = ""
     return messages
 
 

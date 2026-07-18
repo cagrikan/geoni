@@ -757,6 +757,38 @@ async def prepare_citation_ticket(ticket_id: int, target: str) -> bool:
         return False
 
 
+def build_expert_audit_context(audit: dict | None) -> dict:
+    """A-1: uzman bileti KÖR çalışmasın — taramanın bulgularını (otomasyonun da
+    kullandığı deterministik malzeme) kompakt bir özet olarak verir. Uzman panelde
+    biletin yanında bunu görür: hangi sorgularda anılmıyor, fırsat/güçlü konular,
+    rakipler, citation_gap, AI'ın güvendiği kaynaklar."""
+    if not audit:
+        return {"available": False}
+    result = (audit or {}).get("result_json") or {}
+    sov = result.get("sov") or {}
+    sel = _select_content_topics(audit)
+    brand = result.get("brand_recall") or {}
+    return {
+        "available": True,
+        "target": audit.get("domain") or audit.get("name") or "",
+        "type": audit.get("type") or "web",
+        "lang": (audit.get("lang") or result.get("lang") or "tr"),
+        "score": result.get("score"),
+        "inferred_name": _sanitize_text(brand.get("inferred_name") or "", 80),
+        "inferred_topic": _sanitize_text(brand.get("inferred_topic") or "", 200),
+        "sov_score": sov.get("score"),
+        "unmentioned_queries": sel["gaps"],      # AI'ın markayı anmadığı sorgular
+        "opportunities": sel["opportunities"],
+        "strengths": sel["strengths"],
+        "competitors": sel["competitors"],
+        "citation_gap": [_sanitize_text(g.get("domain") if isinstance(g, dict) else g, 80)
+                         for g in (sov.get("citation_gap") or [])][:10],
+        "top_sources": [_sanitize_text(s.get("domain") or "", 80)
+                        for s in (sov.get("sources") or []) if not s.get("own")][:10],
+        "audit_created_at": audit.get("created_at"),
+    }
+
+
 def _lint_delivery_message(text: str) -> str | None:
     """2.1 ortak teslim korkuluğu: otomasyonun ürettiği müşteri mesajı teslim
     edilmeden ÖNCE denetlenir. Doldurulmamış `{...}` placeholder ya da boş/çok kısa
