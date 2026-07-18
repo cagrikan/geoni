@@ -232,18 +232,33 @@ def _length_band_score(text: str) -> float:
 
 
 def _topic_relevance_score(google_results: list, name: str, topic: str) -> float:
-    """Score 0-100 based on Tavily result count and name presence in snippets."""
+    """Konu-uyumu 0-100: sonuclarin ne kadari HEM adi HEM konuyu iceriyor.
+
+    Y4: eski kod `topic`'i HIC kullanmiyordu (imzada vardi, govdede yoktu) ve
+    `count_score = len*12.5` Tavily hemen her sorguda 8 sonuc dondurdugu icin
+    fiilen sabit 100'du (ayirt edici degildi). Artik isim-varligi + konu-varligi
+    birlikte olculur; adas (namesake) sonuclari konu eslesmedigi icin puani
+    sismez. Konu yoksa yalnizca isim-varligina duser."""
     if not google_results:
         return 0.0
-    count_score = min(100, len(google_results) * 12.5)  # 8 results = 100
+    total = len(google_results)
     name_tokens = [t for t in _normalize(name).split() if len(t) > 2]
-    snippet_hits = 0
+    topic_tokens = [t for t in _normalize(topic or "").split() if len(t) > 2]
+    name_hits = topic_and_name_hits = 0
     for r in google_results:
-        snippet_norm = _normalize(r.get("snippet", "") + r.get("title", ""))
-        if any(t in snippet_norm for t in name_tokens):
-            snippet_hits += 1
-    snippet_score = (snippet_hits / max(len(google_results), 1)) * 100
-    return (count_score + snippet_score) / 2
+        blob = _normalize(r.get("snippet", "") + " " + r.get("title", ""))
+        has_name = any(t in blob for t in name_tokens) if name_tokens else False
+        has_topic = any(t in blob for t in topic_tokens) if topic_tokens else False
+        if has_name:
+            name_hits += 1
+        if has_name and has_topic:
+            topic_and_name_hits += 1
+    name_score = (name_hits / total) * 100
+    if not topic_tokens:
+        return round(name_score, 1)  # konu bilinmiyor: eski isim-varligi sinyali
+    # Isim+konu birlikte gecen sonuc en guclu sinyal; isim-tek ikincil.
+    both_score = (topic_and_name_hits / total) * 100
+    return round(both_score * 0.6 + name_score * 0.4, 1)
 
 
 # ── Tavily web search ────────────────────────────────────────────────────

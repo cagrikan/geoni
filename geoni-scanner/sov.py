@@ -443,13 +443,20 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
         if mentioned:
             per_query[qi]["mentioned"] = True
 
-    answered = sum(1 for pq in per_query if any(e["answered"] for e in pq["engines"].values()))
+    # Y6: komsu-alan (adjacent) sorgulari SOV PAYDASINA girmez. Marka komsu
+    # alanda tanim geregi zayif oldugundan, oradaki iskalar skoru mekanik olarak
+    # asagi cekiyordu (~%60 tavan). Payda = yanit veren PRIMARY sorgular; komsu
+    # alanda geciyorsa bu bir BONUS (paya eklenir), paydayi sismez.
+    primary_q = [pq for pq in per_query if not pq.get("adjacent")]
+    answered = sum(1 for pq in primary_q if any(e["answered"] for e in pq["engines"].values()))
     if answered == 0:
-        # Hicbir motor yanit veremedi: SOV olculemedi, skoru cezalandirma
+        # Hicbir PRIMARY sorgu yanit alamadi: SOV olculemedi, skoru cezalandirma
         return {**empty, "queries": per_query}
 
-    mention_count = sum(1 for pq in per_query if pq["mentioned"])
-    score = round((mention_count / answered) * 100, 1)
+    primary_mentions = sum(1 for pq in primary_q if pq["mentioned"])
+    adjacent_mentions = sum(1 for pq in per_query if pq.get("adjacent") and pq["mentioned"])
+    mention_count = primary_mentions + adjacent_mentions  # komsu-alan = bonus
+    score = round(min(100.0, (mention_count / answered) * 100), 1)
     competitors = await _extract_competitors(answers, name, ask_llm, social=social)
 
     sources = [
