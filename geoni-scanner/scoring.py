@@ -49,6 +49,15 @@ logger = logging.getLogger(__name__)
 SCORING_VERSION = "v4"
 
 OPENPAGERANK_API_KEY = __import__("os").environ.get("OPENPAGERANK_API_KEY", "")
+# T8: Google Knowledge Graph varlik kontrolu icin mevcut GOOGLE_API_KEY
+# altyapisi (kgsearch.googleapis.com ucretsiz sorgulanir). Anahtar yoksa
+# KG bacagi sessizce atlanir (otorite notr kalir).
+GOOGLE_API_KEY = __import__("os").environ.get("GOOGLE_API_KEY", "")
+
+# KG resultScore esigi: adaslik/gurultuyu elemek icin kaba taban. KG "present"
+# yalnizca ad-eslesmesi + bu skorun ustunde. Google resultScore olceginde
+# taninir varliklar genellikle >20, cogu >100 doner; kucuk/adas eslesmeler dusuk.
+_KG_MIN_SCORE = 20.0
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; GeoniBot/1.0; +https://geoni.ai/bot)"
@@ -93,16 +102,31 @@ def _indexability_score(pages: list[dict]) -> float:
 
 
 def compute_index_coverage(crawl_result: dict, indexing_status: dict) -> dict:
-    """v3: Google site: orneklemesi (0.5) + indekslenebilirlik (0.5) harmani."""
+    """v3: Google site: orneklemesi + indekslenebilirlik harmani.
+
+    T5: Brave indeks sinyali (indexing.check_brave_index) DEVREDEYSE ucuncu bacak
+    olarak katilir (google 0.4 + indexability 0.4 + brave 0.2) — Brave, Claude'un
+    retrieval indeksidir ve Google/Bing'den bagimsiz ikinci bir sinyal verir.
+    Anahtar yoksa `brave_indexed` None gelir ve mevcut davranis (0.5/0.5) AYNEN
+    korunur.
+    """
     pages = crawl_result.get("pages", [])
     total_pages = max(len(pages), 1)
     indexed = indexing_status.get("indexed_count", 0)
     google_coverage = min(100.0, (indexed / total_pages) * 100)
     indexability = _indexability_score(pages)
+
+    brave = indexing_status.get("brave_indexed")  # None: Brave devrede degil
+    if brave is None:
+        score = google_coverage * 0.5 + indexability * 0.5
+    else:
+        brave_score = 100.0 if brave else 0.0
+        score = google_coverage * 0.4 + indexability * 0.4 + brave_score * 0.2
     return {
-        "score": google_coverage * 0.5 + indexability * 0.5,
+        "score": score,
         "google_coverage": round(google_coverage, 1),
         "indexability": round(indexability, 1),
+        "brave_indexed": brave,
     }
 
 
@@ -265,6 +289,59 @@ async def _wikidata_presence(name: str) -> bool:
     return False
 
 
+def _parse_kg_response(data: dict, name: str) -> dict:
+    """
+    T8: Google KG entities:search yanitini parse eder (saf/offline test edilebilir).
+    En iyi ADI ESLESEN sonucu bulur; resultScore >= esik ise present=True.
+    Ad eslesmesi _norm_label ile normalize edilir (adas/uzanti toleransi:
+    'GEONI' ~ 'Geoni.ai'). Eslesme yoksa present=False, score=0.
+    Donus: {"present": bool, "score": float}.
+    """
+    norm_name = _norm_label(name)
+    if not norm_name:
+        return {"present": False, "score": 0.0}
+    elements = (data or {}).get("itemListElement", []) or []
+    for el in elements:
+        result = (el or {}).get("result", {}) or {}
+        label = _norm_label(result.get("name", ""))
+        try:
+            rscore = float(el.get("resultScore", 0) or 0)
+        except (TypeError, ValueError):
+            rscore = 0.0
+        if label and (norm_name in label or label in norm_name):
+            return {"present": rscore >= _KG_MIN_SCORE, "score": rscore}
+    return {"present": False, "score": 0.0}
+
+
+async def _google_kg_presence(name: str) -> dict | None:
+    """
+    T8: Google Knowledge Graph varlik kontrolu. Gemini/AIO'nun asil dogrulama
+    kaynagi KG'dir (AIO seciminde KG-baglanti yogunlugu r≈0.76); markanin/kisinin
+    orada bir 'entity' karsiligi var mi + resultScore. Mevcut GOOGLE_API_KEY ile
+    tek GET (ucretsiz). Anahtar yoksa / cagri duserse None doner -> otorite
+    notr kalir, tarama bozulmaz.
+    Donus: {"present": bool, "score": float} veya None (olculemedi).
+    """
+    if not GOOGLE_API_KEY or not name or not name.strip():
+        return None
+    if len(_norm_label(name)) < 3:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://kgsearch.googleapis.com/v1/entities:search",
+                params={"query": name.strip(), "key": GOOGLE_API_KEY,
+                        "limit": 5, "indent": "false"},
+                timeout=8, headers=HEADERS,
+            )
+            if resp.status_code == 200:
+                return _parse_kg_response(resp.json(), name)
+            logger.info(f"Google KG check HTTP {resp.status_code} for '{name}'")
+    except Exception as e:
+        logger.info(f"Google KG check failed for '{name}': {e}")
+    return None
+
+
 async def estimate_authority_score(domain: str, brand_name: str = "", web_results: list | None = None) -> dict:
     """
     v3 otorite skoru: Open PageRank (0.55) + Tavily dis-domain bahsi (0.45)
@@ -302,7 +379,16 @@ async def estimate_authority_score(domain: str, brand_name: str = "", web_result
         score = min(100.0, score + 8.0)
         legs["wikidata_bonus"] = 8.0
 
-    return {"score": score, "legs": legs}
+    # T8: Google Knowledge Graph varligi ek otorite sinyali — Gemini/AIO'nun
+    # dogrulama kaynagi. Wikipedia/Wikidata'dan BAGIMSIZ eklenir (ust uste
+    # binebilir; KG cogu zaman ikisiyle ortusur ama tek basina da olabilir).
+    # Anahtar yoksa kg None doner ve bonus/diagnostics eklenmez (notr).
+    kg = await _google_kg_presence(brand_name or domain)
+    if kg and kg.get("present"):
+        score = min(100.0, score + 8.0)
+        legs["kg_bonus"] = 8.0
+
+    return {"score": score, "legs": legs, "kg": kg}
 
 
 def _parse_any_date(raw: str) -> datetime | None:
@@ -500,6 +586,7 @@ async def compute_ai_visibility_score(crawl_result: dict, indexing_status: dict,
     index_coverage = index["score"]
     authority = await estimate_authority_score(domain, brand_name=brand_name, web_results=web_results)
     authority_score = authority["score"]
+    authority_kg = authority.get("kg")  # T8: None ise KG olculemedi (anahtar yok)
     freshness = compute_freshness_score(pages, crawl_result.get("sitemap_lastmods"))
     freshness_score = freshness["score"]
     schema = compute_schema_score(pages, domain=domain)
@@ -564,5 +651,14 @@ async def compute_ai_visibility_score(crawl_result: dict, indexing_status: dict,
             "freshness_recent_ratio": freshness["recent_ratio"],
             "freshness_p90_ratio": freshness.get("p90_ratio", 0.0),  # T7: 90-gun ana sinyal
             "ai_access": ai_access,
+            # T8: Google Knowledge Graph varligi (Gemini/AIO dogrulama sinyali).
+            # KG olculemediyse (GOOGLE_API_KEY yok) None kalir.
+            "kg_presence": (authority_kg.get("present") if authority_kg else None),
+            "kg_score": (round(authority_kg.get("score", 0.0), 1) if authority_kg else None),
+            # T5: Brave indeks sinyali (Claude retrieval); BRAVE_API_KEY yoksa None.
+            "brave_indexed": index.get("brave_indexed"),
+            # M6: safe_get 403/Cloudflare-challenge dondurdu -> bot korumasi AI
+            # crawler'larini (Brave/Perplexity) sessizce engelliyor OLABILIR.
+            "bot_protection_suspected": bool(indexing_status.get("bot_protection_suspected")),
         },
     }

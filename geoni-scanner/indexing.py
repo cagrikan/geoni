@@ -18,6 +18,7 @@ tasindi (bkz. scoring.py estimate_authority_score).
 
 import asyncio
 import logging
+import os
 from urllib.parse import urljoin
 from urllib.robotparser import RobotFileParser
 
@@ -26,6 +27,20 @@ import httpx
 from ssrf_guard import assert_public_host, BlockedHostError, safe_get
 
 logger = logging.getLogger(__name__)
+
+# T5: Brave Search API anahtari. Claude'un retrieval indeksi Brave'dir; bu
+# anahtar MUHTEMELEN YOK — o durumda check_brave_index None doner ve hicbir
+# davranis degismez (scoring.compute_index_coverage brave bacagini atlar).
+BRAVE_API_KEY = os.environ.get("BRAVE_API_KEY", "")
+
+# M6: Cloudflare / bot-koruma challenge sayfalarinin kaba imzalari. robots.txt
+# 200 donse bile govde bir "insan dogrulama" sayfasiysa AI crawler'lari fiilen
+# bloklanmis olabilir (robots temiz gorunup sitenin bloklu olmasi).
+_BOT_CHALLENGE_MARKERS = (
+    "just a moment", "cf-browser-verification", "challenge-platform",
+    "checking your browser", "attention required", "cf-chl", "_cf_chl",
+    "enable javascript and cookies to continue",
+)
 
 # Egitim (training) crawler'lar: modelin egitim verisine bu sitenin
 # icerigini eklemesini saglar. Arama/alintilanma ile DOGRUDAN ilgili degildir.
@@ -56,6 +71,53 @@ HEADERS = {
 }
 
 
+def _looks_like_bot_challenge(status_code: int, headers: dict, body: str) -> bool:
+    """
+    M6: Yanit bir bot-koruma/challenge sayfasi mi? (saf/offline test edilebilir)
+    - 403/503 (ozellikle Cloudflare Server basligiyla) veya
+    - govdede insan-dogrulama challenge imzasi.
+    "Kesin blok" degil "OLABILIR" sinyali; soft bulgu uretir.
+    """
+    server = str((headers or {}).get("server", "")).lower()
+    if status_code in (403, 503):
+        return True
+    if status_code == 429 and "cloudflare" in server:
+        return True
+    low = (body or "")[:2000].lower()
+    return any(m in low for m in _BOT_CHALLENGE_MARKERS)
+
+
+async def check_brave_index(domain: str, brand_name: str = "") -> dict | None:
+    """
+    T5 (ISKELET): Brave Search API ile "domain Brave'de indeksli mi" kontrolu.
+    Brave, Claude'un retrieval indeksidir; burada indeksli olmak = Claude
+    aramasinda var olmak. BRAVE_API_KEY MUHTEMELEN YOK -> None doner ve
+    scoring tarafinda brave bacagi hic devreye girmez (mevcut davranis korunur).
+
+    Donus: {"brave_indexed": bool, "results": int} veya None (olculemedi).
+    brand_name verilirse ileride "markayi Brave'de kim aniyor" icin ek sorgu
+    yapilabilir; iskelette yalnizca site: indeks sinyali olculur.
+    """
+    if not BRAVE_API_KEY or not domain:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://api.search.brave.com/res/v1/web/search",
+                params={"q": f"site:{domain}", "count": 5},
+                headers={"Accept": "application/json",
+                         "X-Subscription-Token": BRAVE_API_KEY},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                results = ((resp.json().get("web") or {}).get("results")) or []
+                return {"brave_indexed": len(results) > 0, "results": len(results)}
+            logger.info(f"Brave index check HTTP {resp.status_code} for {domain}")
+    except Exception as e:
+        logger.info(f"Brave index check failed for {domain}: {e}")
+    return None
+
+
 async def check_robots_ai_access(domain: str) -> dict:
     """
     robots.txt'i egitim ve arama crawler'lari icin ayri ayri kontrol eder.
@@ -66,12 +128,18 @@ async def check_robots_ai_access(domain: str) -> dict:
     egitim = {key: True for key in TRAINING_CRAWLER_AGENTS}
     arama = {key: True for key in SEARCH_CRAWLER_AGENTS}
     robots_found = False
+    bot_protection_suspected = False  # M6
 
     try:
         # SSRF-guvenli: safe_get her redirect hop'unu dogrular (apex<->www gibi
         # mesru kanonik redirect'ler korunur, ic adrese sicrama engellenir).
         async with httpx.AsyncClient() as client:
             resp = await safe_get(client, robots_url, timeout=10, headers=HEADERS)
+            # M6: robots yaniti challenge/403 ise bot korumasi AI crawler'larini
+            # (Brave/Perplexity) sessizce engelliyor OLABILIR — soft bulgu.
+            bot_protection_suspected = _looks_like_bot_challenge(
+                resp.status_code, dict(resp.headers), resp.text
+            )
             if resp.status_code == 200:
                 robots_found = True
                 rp = RobotFileParser()
@@ -95,6 +163,7 @@ async def check_robots_ai_access(domain: str) -> dict:
         "robots_found": robots_found,
         "egitim": egitim,
         "arama": arama,
+        "bot_protection_suspected": bot_protection_suspected,  # M6
         # Geriye donuk uyumluluk icin: platform bazinda "en azindan bir arama
         # botu izinli mi" ozeti. Bu, "AI'da gorunurluk" acisindan egitim
         # botlarindan cok daha anlamli bir sinyaldir.
@@ -148,7 +217,7 @@ async def check_google_indexed(domain: str, sample_size: int = 5) -> int:
     return 0
 
 
-async def check_indexing_status(pages: list[dict]) -> dict:
+async def check_indexing_status(pages: list[dict], brand_name: str = "") -> dict:
     """
     Check indexing status across Google and AI crawler access
     (egitim vs arama ayrimiyla, Madde 2.5), artı llms.txt sinyali.
@@ -156,12 +225,18 @@ async def check_indexing_status(pages: list[dict]) -> dict:
     NOT (Madde 2.4): Bing kontrolu kaldirildi — bot korumasi nedeniyle
     guvenilir sonuc uretmiyordu ve iki skor boyutunu sessizce bozuyordu.
 
+    T5: Brave indeks sinyali (BRAVE_API_KEY varsa) `brave_indexed` alanina
+    yazilir; anahtar yoksa None (scoring atlar). M6: robots challenge/403
+    tespiti `bot_protection_suspected` olarak tasinir.
+
     Returns:
         {
           "indexed_count": int,
           "google": int,
           "bot_access": {"egitim": {...}, "arama": {...}, "robots_found": bool},
           "llms_txt": bool,
+          "brave_indexed": bool | None,   # T5 (None: anahtar yok/olculemedi)
+          "bot_protection_suspected": bool,  # M6
           "openai": bool,      # geriye donuk uyumluluk (arama botlarina gore)
           "anthropic": bool,   # geriye donuk uyumluluk
           "perplexity": bool,
@@ -171,7 +246,8 @@ async def check_indexing_status(pages: list[dict]) -> dict:
         return {
             "indexed_count": 0, "google": 0,
             "bot_access": {"egitim": {}, "arama": {}, "robots_found": False},
-            "llms_txt": False, "openai": False, "anthropic": False, "perplexity": False,
+            "llms_txt": False, "brave_indexed": None, "bot_protection_suspected": False,
+            "openai": False, "anthropic": False, "perplexity": False,
         }
 
     from urllib.parse import urlparse
@@ -187,13 +263,15 @@ async def check_indexing_status(pages: list[dict]) -> dict:
         return {
             "indexed_count": 0, "google": 0,
             "bot_access": {"egitim": {}, "arama": {}, "robots_found": False},
-            "llms_txt": False, "openai": False, "anthropic": False, "perplexity": False,
+            "llms_txt": False, "brave_indexed": None, "bot_protection_suspected": False,
+            "openai": False, "anthropic": False, "perplexity": False,
         }
 
-    google_count, ai_access, llms_txt = await asyncio.gather(
+    google_count, ai_access, llms_txt, brave = await asyncio.gather(
         check_google_indexed(domain),
         check_robots_ai_access(domain),
         check_llms_txt(domain),
+        check_brave_index(domain, brand_name),
     )
 
     indexed_count = google_count  # Bing kaldirildigi icin artik yalnizca Google
@@ -207,6 +285,9 @@ async def check_indexing_status(pages: list[dict]) -> dict:
             "robots_found": ai_access["robots_found"],
         },
         "llms_txt": llms_txt,
+        # T5: Brave devrede degilse None (scoring 0.5/0.5'e duser).
+        "brave_indexed": (brave.get("brave_indexed") if brave else None),
+        "bot_protection_suspected": ai_access.get("bot_protection_suspected", False),  # M6
         "openai": ai_access.get("openai", True),
         "anthropic": ai_access.get("anthropic", True),
         "perplexity": ai_access.get("perplexity", True),

@@ -899,11 +899,17 @@ async def judge_batch_accuracy(model_texts: dict, web_results: list, person_info
         "şüphesi olup olmadığını ve yanıtın markaya/kişiye dair genel tonunu (duygu) değerlendir.\n"
         "duygu tanımı: yanıt kişiyi/markayı övüyorsa 'pozitif'; eleştiriyor, skandal/olumsuzlukla "
         "anıyorsa 'negatif'; bilgilendirici, kararsız ya da UYDURMA/yanlış-kişi ise 'notr' "
-        "(yanlış bilgi olumsuz ton DEĞİLDİR).\n\n"
+        "(yanlış bilgi olumsuz ton DEĞİLDİR).\n"
+        # T10: model markayı NEREDEN tanıyor? (ek çağrı YOK — aynı yanıttan çıkar)
+        "bilgi_izi tanımı: yanıttaki olguların türüne bakarak modelin markayı hangi kaynak türünden "
+        "tanıdığını tahmin et: güncel olay/basın dili -> 'haber'; ansiklopedik/tarihçe/tanım dili -> "
+        "'ansiklopedi'; takipçi/paylaşım/influencer bağlamı -> 'sosyal'; hizmet/ürün/kurumsal tanıtım "
+        "dili -> 'kurumsal-site'; ayırt edilemiyorsa (tanımıyorsa da) 'belirsiz'.\n\n"
         "Yalnızca şu JSON formatında döndür, başka hiçbir şey yazma:\n"
         '{"<model_adi>": {"dogrulanmis_olgu_sayisi": 0-10, "celiski_var": true/false, '
         '"uydurma_suphesi": true/false, "dogruluk_skoru": 0-100, '
-        '"duygu": "pozitif" veya "notr" veya "negatif"}}\n'
+        '"duygu": "pozitif" veya "notr" veya "negatif", '
+        '"bilgi_izi": "haber" veya "ansiklopedi" veya "sosyal" veya "kurumsal-site" veya "belirsiz"}}\n'
         f"Değerlendirilecek model adları tam olarak şunlar: {', '.join(model_texts.keys())}"
     )
 
@@ -915,12 +921,17 @@ async def judge_batch_accuracy(model_texts: dict, web_results: list, person_info
             d = data.get(key) or {}
             try:
                 duygu = str(d.get("duygu", "")).strip().lower()
+                bilgi_izi = str(d.get("bilgi_izi", "")).strip().lower()
                 out[key] = {
                     "dogrulanmis_olgu_sayisi": int(d.get("dogrulanmis_olgu_sayisi", 0)),
                     "celiski_var": bool(d.get("celiski_var", False)),
                     "uydurma_suphesi": bool(d.get("uydurma_suphesi", False)),
                     "dogruluk_skoru": max(0.0, min(100.0, float(d.get("dogruluk_skoru", 0)))),
                     "duygu": duygu if duygu in ("pozitif", "notr", "negatif") else "notr",
+                    # T10: bilgi izi (kaynak turu). Gecersiz/eksikse 'belirsiz'.
+                    "bilgi_izi": bilgi_izi if bilgi_izi in (
+                        "haber", "ansiklopedi", "sosyal", "kurumsal-site", "belirsiz"
+                    ) else "belirsiz",
                 }
             except (TypeError, ValueError):
                 continue
@@ -1350,6 +1361,9 @@ async def check_brand_recall(
                 else:
                     # Duygu (sentiment): yanit tonu — raporda rozet olarak gosterilir
                     model_results[key]["sentiment"] = judge.get("duygu", "notr")
+                # T10: bilgi izi — model markayi NEREDEN taniyor (recall diagnostics).
+                # Karistiriyor (hallucination) olsa bile kaynak-turu bilgisi tasinir.
+                model_results[key]["bilgi_izi"] = judge.get("bilgi_izi", "belirsiz")
 
     # Step 3.5: Share of Voice — kategori sorgularinda gorunurluk (v3).
     # Topic uretimiyle paralel calisir; her ikisi de temsili yanitlara bagli.

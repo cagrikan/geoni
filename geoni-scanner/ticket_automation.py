@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import re
+import unicodedata
 from datetime import date
 from urllib.robotparser import RobotFileParser
 
@@ -264,10 +265,16 @@ def generate_llms_txt(domain: str, audit: dict | None) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def generate_schema_html(domain: str, audit: dict | None) -> str:
+def generate_schema_html(domain: str, audit: dict | None,
+                         wikidata_qid: str | None = None) -> str:
     """schema.org JSON-LD (Organization + WebSite) uretir - her sitede gecerli
     olan, guvenli bir taban yapisal veri. Marka adi/konusu GEONI taramasindan
-    gelir, yoksa domain'e duser. Uzman/admin teslim oncesi genisletebilir."""
+    gelir, yoksa domain'e duser. Uzman/admin teslim oncesi genisletebilir.
+
+    M2 (entity zinciri): wikidata_qid parametrede VEYA audit'te (result.wikidata_qid)
+    varsa Organization `sameAs`'ine https://www.wikidata.org/wiki/{QID} eklenir —
+    böylece site (`@id`) ↔ Wikidata çift-yönlü bağ kurulur (AI entity çözümü bu
+    @id/sameAs üçgeniyle yapar). QID yoksa davranış AYNEN eskisi gibi."""
     result = (audit or {}).get("result_json") or {}
     brand = result.get("brand_recall") or {}
     assets = result.get("site_assets") or {}   # P1: crawler'dan logo/sameAs (yoksa {})
@@ -292,6 +299,12 @@ def generate_schema_html(domain: str, audit: dict | None) -> str:
         org["logo"] = {"@type": "ImageObject", "url": logo}
     same_as = [s for s in (assets.get("sameAs") or [])
                if isinstance(s, str) and s.startswith(("https://", "http://"))]
+    # M2: Wikidata QID köprüsü — sameAs listesinin BAŞINA eklenir (entity çapası).
+    qid = wikidata_qid or (result.get("wikidata_qid")
+                           if isinstance(result.get("wikidata_qid"), str) else None)
+    if qid and re.fullmatch(r"Q\d+", qid):
+        wd_url = f"https://www.wikidata.org/wiki/{qid}"
+        same_as = [wd_url] + [s for s in same_as if s != wd_url]
     if same_as:
         org["sameAs"] = same_as[:8]
     if topics:
@@ -757,6 +770,375 @@ async def prepare_citation_ticket(ticket_id: int, target: str) -> bool:
         return False
 
 
+# ── wikidata_entity yarı-otonom taslak (2.5) ────────────────────────────────
+# M2 entity zinciri: markanın/kişinin AI'ların tanıdığı bir VARLIK olması.
+# Otomasyon TASLAK üretir (QuickStatements + rapor + QID'li schema); YAYINLAMA
+# İNSAN adımıdır — Wikidata bot politikası/COI/silme riski nedeniyle otomatik
+# yazma YAPILMAZ (dokümanda net). citation_placement ile aynı yarı-otonom desen:
+# 'submitted' YAPILMAZ, notify_experts'i dispatch çağırır.
+
+# Sosyal sameAs URL'i → Wikidata property + tanımlayıcı. Yalnız TEMİZ eşleşmeler;
+# belirsiz/gürültülü path'ler atlanır (çöp claim yazmaktansa insan ekler).
+_WD_SOCIAL_PROPS = [
+    ("P2013", re.compile(r"facebook\.com/([A-Za-z0-9.]+)", re.I)),                 # Facebook
+    ("P2003", re.compile(r"instagram\.com/([A-Za-z0-9_.]+)", re.I)),               # Instagram
+    ("P2002", re.compile(r"(?:twitter|x)\.com/@?([A-Za-z0-9_]+)", re.I)),          # X / Twitter
+    ("P7085", re.compile(r"tiktok\.com/@?([A-Za-z0-9_.]+)", re.I)),                # TikTok
+    ("P6634", re.compile(r"linkedin\.com/in/([A-Za-z0-9_%-]+)", re.I)),            # LinkedIn (kişi)
+    ("P4264", re.compile(r"linkedin\.com/company/([A-Za-z0-9_%-]+)", re.I)),       # LinkedIn (kuruluş)
+    ("P2397", re.compile(r"youtube\.com/(?:channel/|c/|user/|@)?([A-Za-z0-9_-]+)", re.I)),  # YouTube
+]
+# Sosyal path'lerde tanımlayıcı sanılabilecek gürültü segmentleri.
+_WD_SOCIAL_NOISE = {"home", "pages", "page", "profile", "sharer", "watch",
+                    "share", "login", "help", "about", "channel", "user", "c"}
+# Hedef tipi → P31 (instance of). web/brand → business; person/social → human.
+# (Uzman panelde P31 doğrulanır; rapor bunu açıkça not eder.)
+_WD_P31 = {"web": "Q4830453", "brand": "Q4830453", "person": "Q5", "social": "Q5"}
+
+
+def _norm_label(s: str) -> str:
+    """Ad eşleştirme normalizasyonu (scoring._norm_label ile aynı davranış —
+    o modülü değiştirmemek için yerel kopya). Diakritik + noktalama sıyrılır."""
+    s = (s or "").lower().strip()
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]", "", s)
+
+
+async def find_wikidata_entity(name: str) -> str | None:
+    """Markanın/kişinin mevcut Wikidata QID'sini bulur (wbsearchentities tr+en).
+    scoring._wikidata_presence deseni ama bool yerine QID döner. Ad normalize
+    edilerek eşleşir ('GEONI' ~ 'Geoni.ai'). Bulunamaz/ağ düşerse None →
+    taslakta CREATE (yeni kayıt); QID dönerse 'mevcut kaydı zenginleştir'."""
+    if not name or not name.strip():
+        return None
+    norm_name = _norm_label(name)
+    if len(norm_name) < 3:
+        return None
+    for lang in ("tr", "en"):
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    "https://www.wikidata.org/w/api.php",
+                    params={"action": "wbsearchentities", "search": name.strip(),
+                            "language": lang, "format": "json", "limit": 5},
+                    timeout=8, headers=_UA)
+            if resp.status_code != 200:
+                continue
+            for item in resp.json().get("search", []):
+                norm_label = _norm_label(item.get("label", ""))
+                if norm_label and (norm_name in norm_label or norm_label in norm_name):
+                    qid = (item.get("id") or "").strip()
+                    if re.fullmatch(r"Q\d+", qid):
+                        return qid
+        except Exception as e:
+            logger.info(f"find_wikidata_entity failed ({lang}) for '{name}': {e}")
+    return None
+
+
+def _wikidata_name(target: str, audit: dict | None) -> str | None:
+    """Deterministik label seçimi: brand_recall.inferred_name (cümle-görünümlü/boş
+    değilse), yoksa domain. audit YOKSA None (insana düş — çöp kayıt üretme)."""
+    if not audit:
+        return None
+    result = audit.get("result_json") or {}
+    brand = result.get("brand_recall") or {}
+    name = _sanitize_text(brand.get("inferred_name") or "", 60)
+    if name and 0 < len(name.split()) <= 6:
+        return name
+    domain = normalize_domain(target)
+    if domain:
+        return domain
+    return None
+
+
+def _wikidata_p31(atype: str) -> str:
+    """Hedef tipi → P31 Q-id (varsayılan business). Uzman panelde doğrulanır."""
+    return _WD_P31.get((atype or "web"), "Q4830453")
+
+
+def _wikidata_social_claims(same_as: list) -> list[tuple[str, str]]:
+    """sameAs sosyal URL'lerinden (property, tanımlayıcı) çiftleri — her property
+    tek kez, gürültü segmentleri elenir. QuickStatements'te LAST|P...|"id" olur."""
+    claims, seen = [], set()
+    for u in same_as or []:
+        if not isinstance(u, str):
+            continue
+        for prop, rx in _WD_SOCIAL_PROPS:
+            if prop in seen:
+                continue
+            m = rx.search(u)
+            if not m:
+                continue
+            ident = (m.group(1) or "").strip().strip(".")
+            if not ident or ident.lower() in _WD_SOCIAL_NOISE:
+                continue
+            seen.add(prop)
+            claims.append((prop, ident))
+            break
+    return claims
+
+
+def _wikidata_notability_sources(audit: dict | None) -> list[str]:
+    """Notability kaynak adayları: markayı GERÇEKTEN anan siteler (sov.sources
+    own=False + citation_gap). Wikidata kayda-değerlik eşiğini uzman bunlarla
+    doğrular; own domain (markanın kendi sitesi) TEK BAŞINA kaynak sayılmaz."""
+    result = (audit or {}).get("result_json") or {}
+    sov = result.get("sov") or {}
+    out, seen = [], set()
+    for s in (sov.get("sources") or []):
+        if s.get("own"):
+            continue
+        d = (s.get("domain") or "").strip().lower()
+        if d and d not in seen:
+            seen.add(d)
+            out.append(d)
+    for g in (sov.get("citation_gap") or []):
+        d = (g.get("domain") if isinstance(g, dict) else g) or ""
+        d = d.strip().lower()
+        if d and d not in seen:
+            seen.add(d)
+            out.append(d)
+    return out[:8]
+
+
+def _qs(s: str) -> str:
+    """QuickStatements string değeri güvenliği: çift tırnak/satır sonu kaldır."""
+    return re.sub(r"\s{2,}", " ", (s or "").replace('"', "").replace("|", " ")
+                  .replace("\n", " ").replace("\t", " ")).strip()
+
+
+def build_quickstatements(name: str, p31: str, domain: str | None,
+                          desc_tr: str | None, desc_en: str | None,
+                          social_claims: list, source_url: str, today: str,
+                          qid: str | None = None) -> str:
+    """Wikidata QuickStatements V1 taslağı (uzman panele yapıştırıp yayınlar).
+    qid YOK → CREATE + label(tr/en) + description + P31 + P856(referanslı) + sosyal.
+    qid VAR (zenginleştirme) → CREATE/label/description YAZILMAZ (mevcut kaydı
+    ezmemek için); yalnız property'ler eklenir. Deterministik — ağ/LLM yok."""
+    item = qid if qid else "LAST"
+    lines: list[str] = []
+    if not qid:
+        lines.append("CREATE")
+        nm = _qs(name)
+        lines.append(f'{item}|Ltr|"{nm}"')
+        lines.append(f'{item}|Len|"{nm}"')
+        if desc_tr:
+            lines.append(f'{item}|Dtr|"{_qs(desc_tr)}"')
+        if desc_en:
+            lines.append(f'{item}|Den|"{_qs(desc_en)}"')
+    if p31:
+        lines.append(f"{item}|P31|{p31}")
+    if domain:
+        ref = ""
+        if source_url:
+            ref = f'|S854|"{source_url}"|S813|+{today}T00:00:00Z/11'
+        lines.append(f'{item}|P856|"https://{domain}"{ref}')
+    for prop, ident in social_claims:
+        lines.append(f'{item}|{prop}|"{_qs(ident)}"')
+    return "\n".join(lines) + "\n"
+
+
+async def _wikidata_descriptions(name: str, topic: str, atype: str) -> tuple[str | None, str | None]:
+    """2-5 kelimelik nötr, reklamsız Wikidata description (tr+en) — TEK LLM çağrısı.
+    Düşerse (None, None): QuickStatements'te description satırı yazılmaz (graceful)."""
+    type_hint = {"person": "bir kişi", "social": "bir kişi/hesap"}.get(atype, "bir kuruluş/marka")
+    prompt = (
+        "Wikidata için bir varlık açıklaması (description) yazacaksın. Kurallar: "
+        "2-5 KELİME, tekil-belirsiz, NÖTR; reklam/övgü dili YASAK ('lider', 'en iyi', "
+        "'önde gelen' KULLANMA). Ör: 'Türk yazılım şirketi' / 'Turkish software company'.\n\n"
+        f"Varlık: {name} ({type_hint})\nAlan/konu (hammadde): {topic or '(bilinmiyor)'}\n\n"
+        "Yalnız şu iki satırı ver, başka hiçbir şey ekleme:\nTR: <türkçe açıklama>\nEN: <english description>"
+    )
+    raw = await _llm_text(prompt, max_tokens=120)
+    if not raw:
+        return None, None
+    tr = en = ""
+    for line in raw.splitlines():
+        low = line.strip().lower()
+        if low.startswith("tr:"):
+            tr = _sanitize_text(line.split(":", 1)[1], 60)
+        elif low.startswith("en:"):
+            en = _sanitize_text(line.split(":", 1)[1], 60)
+    return (tr or None), (en or None)
+
+
+def _build_wikidata_report(name: str, qid: str | None, p31: str, domain: str | None,
+                           desc_tr: str | None, desc_en: str | None,
+                           social_claims: list, sources: list, atype: str,
+                           today: str) -> str:
+    """Uzmana + müşteriye giden markdown rapor. DÜRÜST 'taslak' etiketi (C-1):
+    yayınlamayı İNSAN yapar; notability muhakemesi uzmanda. Sahte 'yapıldı' yok."""
+    p31_label = {"Q5": "human (kişi)", "Q4830453": "business (kuruluş)"}.get(p31, p31)
+    if qid:
+        head = (f"**Mevcut kayıt bulundu:** https://www.wikidata.org/wiki/{qid} — "
+                f"iş 'yeni kayıt' değil **zenginleştirme**. Aşağıdaki QuickStatements "
+                f"eksik property'leri ekler (label/description'ı EZMEZ).")
+    else:
+        head = ("**Wikidata kaydı bulunamadı** — taslak yeni kayıt (CREATE) olarak "
+                "hazırlandı. Yayından önce notability (kayda-değerlik) doğrulanmalı.")
+
+    rows = [f"| instance of (P31) | {p31_label} | hedef tipi (doğrula) |"]
+    if not qid:
+        rows.insert(0, f"| label (tr/en) | {name} | tarama |")
+        if desc_tr or desc_en:
+            rows.append(f"| description | tr: {desc_tr or '—'} · en: {desc_en or '—'} | (nötr, 2-5 kelime) |")
+    if domain:
+        rows.append(f"| official website (P856) | https://{domain} | site" +
+                    (f" + kaynak: {sources[0]}" if sources else "") + " |")
+    _prop_name = {"P2002": "X (P2002)", "P2003": "Instagram (P2003)",
+                  "P2013": "Facebook (P2013)", "P2397": "YouTube (P2397)",
+                  "P4264": "LinkedIn şirket (P4264)", "P6634": "LinkedIn kişi (P6634)",
+                  "P7085": "TikTok (P7085)"}
+    for prop, ident in social_claims:
+        rows.append(f"| {_prop_name.get(prop, prop)} | {ident} | site_assets.sameAs |")
+
+    out = [
+        f"# Wikidata Varlık Taslağı — {name}",
+        "",
+        head,
+        "",
+        "> ⚠️ Bu bir **taslaktır**. Wikidata'ya yazma bot politikası / çıkar-çatışması "
+        "(COI) beyanı gerektirir ve hatalı/erken kayıt SİLİNİR (silme geçmişi müşteriye "
+        "zarar verir). Bu yüzden yayınlamayı **uzmanımız** yapar: önce notability'yi "
+        "(en az 2 bağımsız kaynak) doğrular, sonra ekteki QuickStatements'ı panele "
+        "yapıştırıp yayınlar.",
+        "",
+        "## Önerilen property'ler",
+        "",
+        "| Property | Değer | Kaynak |",
+        "|----------|-------|--------|",
+        *rows,
+        "",
+    ]
+    if sources:
+        out += ["## Notability kaynak adayları",
+                "AI motorlarının bu markayı/ kişiyi **gerçekten andığı** (kendi siteniz "
+                "DIŞI) kaynaklar — uzman bunları kayda-değerlik kanıtı olarak değerlendirir "
+                "(her iddiaya S854 referans + S813 tarih):", ""]
+        out += [f"- {d}" for d in sources]
+        out.append("")
+    else:
+        out += ["## Notability kaynak adayları",
+                "> Taramanızda markayı **bağımsız** anan kaynak bulunamadı. Wikidata eşiği "
+                "için pratikte 2+ ciddi bağımsız kaynak gerekir; uzmanımız bunları araştıracak. "
+                "Kaynak yetersizse önce **Güvenilir Kaynaklarda Görünürlük** (citation) "
+                "hizmetiyle atıf zemini kurulur — doğal zincir: citation → wikidata.", ""]
+    out += [
+        "## sameAs köprüsü (çift-yönlü doğrulama)",
+        "Ekteki **schema-v2.html**, kayıt yayınlanınca Organization `sameAs`'ine Wikidata "
+        "bağını ekleyen güncellenmiş şema bloğudur — sitenizdeki mevcut şema bloğuyla "
+        "değiştirin. Böylece site ↔ Wikidata ↔ sosyal profiller üçgeni tutarlı olur "
+        "(AI entity çözümünün aradığı @id/sameAs zinciri)." if domain else
+        "## sameAs köprüsü",
+        "> Web siteniz olmadığından şema (schema.org) köprüsü üretilmedi; kişi/marka "
+        "hedefinde sosyal profillerin tutarlılığı (aynı isim + aynı açıklama) köprüyü kurar.",
+        "",
+        "## Nasıl yayınlanır (uzman adımı)",
+        "1. QuickStatements aracını aç (quickstatements.toolforge.org).",
+        "2. Ekteki `wikidata-quickstatements.txt` içeriğini yapıştır → çalıştır.",
+        "3. Notability yetersizse yayınlama; müşteriye kaynak ihtiyacını bildir.",
+        "",
+        f"> Skor etkisi: kayıt yayınlanınca bir sonraki taramanızda otorite skoruna "
+        f"Wikidata bonusu (+8) yansır. (Taslak {today} tarihinde üretildi.)",
+    ]
+    return "\n".join(out)
+
+
+_QID_UNSET = object()  # "ağdan bul" sentinel'i (None = 'kayıt yok' anlamından ayrı)
+
+
+async def generate_wikidata_draft(target: str, audit: dict | None,
+                                  qid: object = _QID_UNSET) -> tuple[str | None, str | None]:
+    """Yarı-otonom Wikidata taslağı → (rapor_md, quickstatements_txt).
+    Deterministik girdiler taramadan (label, P31, P856, sameAs sosyal property'ler,
+    notability kaynakları); description için 1 LLM çağrısı (nötr, opsiyonel).
+    Yeterli veri yoksa (audit/label yok) (None, None) → insana düş.
+
+    qid: _QID_UNSET (varsayılan) ise find_wikidata_entity ile ağdan bulunur. Çağıran
+    (prepare_wikidata_ticket) tek ağ çağrısını paylaşmak için önceden geçer — o zaman
+    None de geçerli bir değerdir ('kayıt yok' → CREATE), tekrar ağa çıkılmaz."""
+    name = _wikidata_name(target, audit)
+    if not name:
+        return None, None
+    result = (audit or {}).get("result_json") or {}
+    brand = result.get("brand_recall") or {}
+    atype = (audit or {}).get("type") or "web"
+    domain = normalize_domain(target)
+    topic = _sanitize_text(brand.get("inferred_topic") or "", 200)
+    assets = result.get("site_assets") or {}
+    social_claims = _wikidata_social_claims(assets.get("sameAs") or [])
+    p31 = _wikidata_p31(atype)
+    sources = _wikidata_notability_sources(audit)
+    source_url = f"https://{sources[0]}" if sources else ""
+    today = date.today().isoformat()
+
+    if qid is _QID_UNSET:  # çağıran geçmedi → kendi ağ çağrımı yap
+        qid = await find_wikidata_entity(name)
+    qid = qid if (isinstance(qid, str) and re.fullmatch(r"Q\d+", qid)) else None
+
+    desc_tr = desc_en = None
+    if not qid:  # description yalnız yeni kayıtta gerekli (zenginleştirmede ezmeyiz)
+        desc_tr, desc_en = await _wikidata_descriptions(name, topic, atype)
+
+    quickstatements = build_quickstatements(
+        name, p31, domain, desc_tr, desc_en, social_claims, source_url, today, qid=qid)
+    report = _build_wikidata_report(
+        name, qid, p31, domain, desc_tr, desc_en, social_claims, sources, atype, today)
+    return report, quickstatements
+
+
+async def prepare_wikidata_ticket(ticket_id: int, target: str) -> bool:
+    """Yarı-otonom hazırlık (citation_placement deseni): rapor + QuickStatements +
+    QID'li schema-v2 bilete düşer, müşteri ANINDA taslağı görür. 'submitted'
+    YAPILMAZ — yayınlamayı uzman yapar (Wikidata bot politikası/COI/silme riski).
+    Yeterli veri yoksa False → insana devir (dispatch notify_experts'i çağırır)."""
+    try:
+        audit = await get_latest_audit_by_target(target)
+        name = _wikidata_name(target, audit)
+        qid = await find_wikidata_entity(name) if name else None
+        report, quickstatements = await generate_wikidata_draft(target, audit, qid=qid)
+        report = _lint_delivery_message(report or "")
+        if not report or not quickstatements:
+            await add_ticket_message(ticket_id, None, "system", body=(
+                "Wikidata varlık hizmetiniz için önce bir GEONI taraması gerekiyor: "
+                "kayıt taslağını (marka adı, konu, sosyal profiller, notability "
+                "kaynakları) taramanızın **ölçülmüş verisinden** üretiyoruz — tahminle "
+                "çöp kayıt açmak müşteriye zarar verir (silinen kayıt geri gelmez).\n\n"
+                "Uzmanımız sizinle iletişime geçip kaydı elle hazırlayacak; dilerseniz "
+                "bir tarama yaptırıp bu bilete yazın, taslağı hemen çıkaralım."
+            ))
+            logger.info(f"prepare_wikidata_ticket: yetersiz veri (t={ticket_id}), uzmana devir")
+            return False
+
+        await add_ticket_message(ticket_id, None, "system", body=report)
+
+        qs_url = await upload_ticket_file(
+            ticket_id, "wikidata-quickstatements.txt", quickstatements,
+            content_type="text/plain; charset=utf-8")
+        if qs_url:
+            await add_ticket_message(ticket_id, None, "system",
+                                     attachment_url=qs_url,
+                                     attachment_name="wikidata-quickstatements.txt")
+
+        # M2 sameAs köprüsü: QID'li güncellenmiş schema bloğu (yalnız domain hedefinde).
+        domain = normalize_domain(target)
+        if domain:
+            schema_html = generate_schema_html(domain, audit, wikidata_qid=qid)
+            schema_url = await upload_ticket_file(
+                ticket_id, "schema-v2.html", schema_html,
+                content_type="text/html; charset=utf-8")
+            if schema_url:
+                await add_ticket_message(ticket_id, None, "system",
+                                         attachment_url=schema_url,
+                                         attachment_name="schema-v2.html")
+        # NOT: mark_ticket_submitted YOK — yayınlama insan işi (yarı-otonom).
+        return True
+    except Exception as e:
+        logger.warning(f"prepare_wikidata_ticket error: {e}")
+        return False
+
+
 def build_expert_audit_context(audit: dict | None) -> dict:
     """A-1: uzman bileti KÖR çalışmasın — taramanın bulgularını (otomasyonun da
     kullandığı deterministik malzeme) kompakt bir özet olarak verir. Uzman panelde
@@ -807,8 +1189,9 @@ def _lint_delivery_message(text: str) -> str | None:
 # hedef tipinde çalışır (hammaddesini get_latest_audit_by_target'tan alır).
 AUTO_FULFILL_KEYS = {"llms_robots", "schema_setup", "content_package"}
 # Yarı-otonom: otomasyon istihbarat/taslak HAZIRLAR ama teslimi (submitted) İNSAN
-# yapar. Satın almada hazırlık koşar + notify_experts ATLANMAZ. wikidata_entity 2.5'te.
-SEMI_AUTO_KEYS: set[str] = {"citation_placement"}
+# yapar. Satın almada hazırlık koşar + notify_experts ATLANMAZ. wikidata_entity de
+# burada: taslak (QuickStatements + rapor + QID'li schema) üretilir, yayınlama İNSAN.
+SEMI_AUTO_KEYS: set[str] = {"citation_placement", "wikidata_entity"}
 
 
 async def fulfill_auto_ticket(key: str, ticket_id: int, target: str) -> bool:
@@ -847,6 +1230,8 @@ async def prepare_semi_ticket(key: str, ticket_id: int, target: str) -> bool:
     olarak notify_experts_new_task'ı HER ZAMAN çağırır."""
     if key == "citation_placement":
         return await prepare_citation_ticket(ticket_id, target)
+    if key == "wikidata_entity":
+        return await prepare_wikidata_ticket(ticket_id, target)
     return False
 
 

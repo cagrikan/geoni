@@ -85,6 +85,72 @@ def _brand_mentioned(answer: str, name: str) -> bool:
     return False
 
 
+_LIST_ITEM_RE = re.compile(r"^\s*(?:(\d{1,2})[\.\)]|[-*•])\s+(.*)$")
+
+
+def _has_brand_segment(seg: str, name: str) -> bool:
+    """Bir metin parcasi markayi iceriyor mu (kelime-siniri korumali)."""
+    norm_name = _normalize(name)
+    if not norm_name:
+        return False
+    norm_seg = _normalize(seg)
+    if _bounded_match(norm_name, norm_seg):
+        return True
+    words = norm_name.split()
+    return len(words) >= 2 and _bounded_match(" ".join(words[:2]), norm_seg)
+
+
+def _extract_position(answer: str, name: str) -> int | None:
+    """
+    T4: Markanin yanittaki ONERI SIRASINI cikarir (anilmak != ilk onerilmek).
+    Motorlar oneriyi cogunlukla numarali/madde-imli liste verir; 1. sirada
+    olmakla 8. sirada olmak donusumde bambaskadir.
+      1) Numarali/madde liste maddelerinde markayi iceren maddenin sirasi
+         (varsa maddenin acik numarasi, yoksa ordinal).
+      2) Liste imi yoksa: markanin ilk gectigi cumle virgul/"ve" ile ayrilmis
+         gercek bir oneri dizisi (>=3 parca) ise o dizideki ordinal.
+    Bulunamazsa None -> pozisyon agirligi notr (1.0) kalir; olcum uydurulmaz.
+    """
+    if not answer or not name or not _brand_mentioned(answer, name):
+        return None
+
+    numbered = []  # (acik_numara|None, metin)
+    for line in answer.splitlines():
+        m = _LIST_ITEM_RE.match(line)
+        if m:
+            explicit = int(m.group(1)) if m.group(1) else None
+            numbered.append((explicit, m.group(2)))
+    if numbered:
+        for i, (explicit, text) in enumerate(numbered, start=1):
+            if _has_brand_segment(text, name):
+                return explicit if explicit else i
+        # Liste var ama marka madde ICINDE degil (giris/kapanis cumlesinde) ->
+        # bir "top-N" onerisi degil; pozisyon belirsiz birak.
+        return None
+
+    # Liste imi yok: markanin ilk gectigi cumle sirali bir oneri dizisi mi?
+    first = next((s for s in re.split(r"(?<=[.!?\n])\s+", answer)
+                  if _has_brand_segment(s, name)), "")
+    if first:
+        parts = [p for p in re.split(r",|\bve\b|\band\b", first) if p.strip()]
+        if len(parts) >= 3:  # gercek bir sirali liste gorunumu
+            for i, part in enumerate(parts, start=1):
+                if _has_brand_segment(part, name):
+                    return i
+    return None
+
+
+def _position_weight(pos: int | None) -> float:
+    """T4: sira agirligi — 1-2. ×1.0, 3-5. ×0.85, 6+ ×0.7. Pozisyon yoksa notr."""
+    if pos is None:
+        return 1.0
+    if pos <= 2:
+        return 1.0
+    if pos <= 5:
+        return 0.85
+    return 0.7
+
+
 def _extract_json(raw: str) -> dict | list | None:
     text = (raw or "").strip()
     text = re.sub(r"^```(json)?", "", text).strip()
@@ -167,6 +233,10 @@ _RECOMMEND_CUES = (
     "hangi danışman", "hangi kurum", "hangi marka", "hangi ajans", "hangisini",
     "öner", "tavsiye", "en iyi", "en iyileri", "öne çıkan", "lider",
     "markalar", "firmalar", "şirketler", "sağlayıcılar", "kuruluşlar",
+    # T9: niyet cesitliligi — alternatif/karsilastirma sorulari da oneri-niyeti
+    # tasir; bu cue'lar olmadan "X alternatifleri" / "A vs B" filtreden gecemezdi.
+    "alternatif", "alternatifleri", "yerine", "vs", "karşılaştır", "kıyasla",
+    "alternative", "alternatives", "compare", "comparison", "versus",
     # Y7: EN ipuclari — yoksa EN sorular oneri-filtresinden gecemez, SOV hep sablona duser.
     "who are", "which company", "which companies", "which brand", "which agency",
     "which firm", "which provider", "recommend", "best", "top ", "leading",
@@ -248,6 +318,9 @@ async def generate_category_queries(name: str, topic: str, ask_llm, social: bool
             f"RULE: Every question MUST ask for a SOCIAL MEDIA ACCOUNT/PERSON to follow "
             f"('who should I follow', 'best Instagram/TikTok/YouTube accounts', 'which accounts "
             f"do you recommend'). Do NOT write 'how to' method questions. No account name in the questions.\n"
+            f"DIVERSITY: at least 1 of the questions must be alternative/comparison intent "
+            f"('alternatives to X accounts', 'X vs Y — who to follow'); if a location is present, "
+            f"add 1 local question ('best X accounts in [city]').\n"
             f'Return ONLY in this JSON format: '
             f'{{"komsu_alan": "...", "queries": [{{"soru": "...", "alan": "birincil"}}, '
             f'{{"soru": "...", "alan": "komsu"}}]}}'
@@ -262,6 +335,9 @@ async def generate_category_queries(name: str, topic: str, ask_llm, social: bool
             f"RULE: Every question MUST ask for names/recommendations ('who are the...', 'which "
             f"companies/people would you recommend', 'which are the best'). Do NOT write 'how to' / "
             f"method questions (those never get brand names). No brand name in the questions.\n"
+            f"DIVERSITY: at least 1 of the questions must be alternative/comparison intent "
+            f"('alternatives to X', 'A vs B — which is better'); if a location is present, add 1 "
+            f"local question ('best X in [city]'). Small brands often surface first on these.\n"
             f'Return ONLY in this JSON format: '
             f'{{"komsu_alan": "...", "queries": [{{"soru": "...", "alan": "birincil"}}, '
             f'{{"soru": "...", "alan": "komsu"}}]}}'
@@ -276,6 +352,9 @@ async def generate_category_queries(name: str, topic: str, ask_llm, social: bool
             f"'kimi takip etmeliyim', 'en iyi Instagram/TikTok/YouTube hesaplari kimler', "
             f"'hangi hesaplari onerirsin' gibi. 'Nasil yapilir' gibi yontem sorulari YAZMA. "
             f"Sorularin icinde HICBIR hesap adi gecmesin.\n"
+            f"CESITLILIK: sorularin en az 1'i alternatif/karsilastirma niyetli olsun "
+            f"('X yerine kimi takip etmeli', 'A ile B'den hangisi'); soruda lokasyon/sehir "
+            f"geciyorsa en az 1 soru yerel olsun.\n"
             f'Yalnizca su JSON formatinda dondur: '
             f'{{"komsu_alan": "...", "queries": [{{"soru": "...", "alan": "birincil"}}, '
             f'{{"soru": "...", "alan": "komsu"}}]}}'
@@ -291,6 +370,10 @@ async def generate_category_queries(name: str, topic: str, ask_llm, social: bool
             f"onerirsin', 'en iyileri hangileri' gibi. 'Nasil yapilir', 'nelere dikkat etmeliyim', "
             f"'zorluklar neler' gibi YONTEM sorulari YAZMA (bunlara marka adi verilmez). "
             f"Sorularin icinde HICBIR marka adi gecmesin.\n"
+            f"CESITLILIK: sorularin en az 1'i 'alternatif/karsilastirma' niyetli olsun "
+            f"(ör. 'X alternatifleri neler', 'A ile B'den hangisi daha iyi'); soruda "
+            f"lokasyon/sehir geciyorsa en az 1 soru yerel olsun ('[sehir]'de en iyi X'). "
+            f"Kucuk markalar cogunlukla ONCE bu sorularda yakalanir.\n"
             f'Yalnizca su JSON formatinda dondur: '
             f'{{"komsu_alan": "...", "queries": [{{"soru": "...", "alan": "birincil"}}, '
             f'{{"soru": "...", "alan": "komsu"}}]}}'
@@ -430,7 +513,8 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
              "queries": [], "competitors": [], "engines_used": [], "custom_queries_used": False,
              "sources": [], "own_cited_count": 0, "citation_gap": [],
              "diagnostics": {"citation_gap_domains": 0, "citation_gap_examples": [],
-                             "citation_weighting": False}}
+                             "citation_weighting": False, "avg_position": None,
+                             "position_measured": False}}
     if not name:
         return empty
 
@@ -480,6 +564,8 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
     # T3: sorgu-bazli atif izleme (citation_gap + atifli-bahis agirligi icin)
     per_query_domains: list[set] = [set() for _ in queries]
     per_query_own_cited = [False] * len(queries)
+    # T4: sorgu-bazli pozisyon izleme (motorlar arasi en iyi/en kucuk sira)
+    per_query_positions: list[list[int]] = [[] for _ in queries]
     for (qi, eng), ans in zip(pairs, raw):
         if isinstance(ans, dict):
             answer = str(ans.get("text") or "")
@@ -489,12 +575,16 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
             raw_citations = []
         domains = sorted({d for d in (_source_domain(c) for c in raw_citations) if d})
         mentioned = _brand_mentioned(answer, name)
+        position = _extract_position(answer, name) if mentioned else None
         per_query[qi]["engines"][eng] = {
             "answered": bool(answer), "mentioned": mentioned,
             **({"sources": domains} if domains else {}),
+            **({"position": position} if position is not None else {}),
         }
         source_counter.update(domains)
         per_query_domains[qi].update(domains)
+        if position is not None:
+            per_query_positions[qi].append(position)
         if answer and own and any(_is_own_domain(d, own) for d in domains):
             own_cited_answers += 1
             per_query_own_cited[qi] = True
@@ -504,6 +594,14 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
                 per_query[qi]["answer_snippet"] = answer[:280]
         if mentioned:
             per_query[qi]["mentioned"] = True
+
+    # T4: sorgu basina en iyi (en kucuk) pozisyon; motorlar arasi temsili sira.
+    query_positions: list[int | None] = [
+        (min(p) if p else None) for p in per_query_positions
+    ]
+    for qi, pq in enumerate(per_query):
+        if query_positions[qi] is not None:
+            pq["position"] = query_positions[qi]
 
     # Y6: komsu-alan (adjacent) sorgulari SOV PAYDASINA girmez. Marka komsu
     # alanda tanim geregi zayif oldugundan, oradaki iskalar skoru mekanik olarak
@@ -524,11 +622,15 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
     # bahistir (0.7) — atifsiz bahis modelin sonraki retrieval'inda kaybolabilir.
     # Asiri-iddia yaratmamak icin: motorlarin HICBIRI atif dondurmediyse (atif
     # altyapisi devrede degil) agirlik notr (1.0) kalir; herkesi 0.7'ye cekmeyiz.
+    # T4: pozisyon agirligi atifli-bahis agirligiyla CARPIM olarak birlesir
+    # (carpismaz): atifsiz + geride onerilen bahis en dusuk agirligi alir.
     any_citations = bool(source_counter)
     weighted_mentions = 0.0
     for qi, pq in enumerate(per_query):
         if pq["mentioned"]:
-            weighted_mentions += 1.0 if (not any_citations or per_query_own_cited[qi]) else 0.7
+            cite_w = 1.0 if (not any_citations or per_query_own_cited[qi]) else 0.7
+            pos_w = _position_weight(query_positions[qi])
+            weighted_mentions += cite_w * pos_w
     score = round(min(100.0, (weighted_mentions / answered) * 100), 1)
     competitors = await _extract_competitors(answers, name, ask_llm, social=social)
 
@@ -553,10 +655,19 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
         for d, n in gap_counter.most_common(10)
         if not _is_own_domain(d, own) and d not in brand_domains
     ]
+    # T4: anilan sorgularda ortalama oneri sirasi (dusuk = daha ust siralarda).
+    mentioned_positions = [
+        query_positions[qi] for qi, pq in enumerate(per_query)
+        if pq["mentioned"] and query_positions[qi] is not None
+    ]
+    avg_position = (round(sum(mentioned_positions) / len(mentioned_positions), 1)
+                    if mentioned_positions else None)
     diagnostics = {
         "citation_gap_domains": len(citation_gap),
         "citation_gap_examples": [g["domain"] for g in citation_gap[:5]],
         "citation_weighting": any_citations,  # atifli-bahis carpani uygulandi mi
+        "avg_position": avg_position,          # T4: ortalama oneri sirasi
+        "position_measured": bool(mentioned_positions),  # T4: sira olculebildi mi
     }
 
     logger.info(
