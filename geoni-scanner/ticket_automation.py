@@ -410,7 +410,7 @@ async def _llm_text(prompt: str, max_tokens: int = 1800) -> str | None:
         if gk:
             async with httpx.AsyncClient() as c:
                 r = await c.post(
-                    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+                    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
                     headers={"x-goog-api-key": gk},
                     json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=_LLM_TIMEOUT)
             if r.status_code == 200:

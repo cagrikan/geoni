@@ -198,19 +198,39 @@ async def check_llms_txt(domain: str) -> bool:
 
 async def check_google_indexed(domain: str, sample_size: int = 5) -> int:
     """
-    Best-effort check of how many pages from `domain` appear indexed in Google,
-    using the public search results page for a `site:` query.
-    Returns an estimated count (capped to sample_size for MVP speed).
+    Best-effort: `domain`'in Google'da indeksli sayfa sayisi tahmini (site: SERP).
+
+    Y8 (durustluk): Veri merkezinden yapilan bu istek cogunlukla consent/CAPTCHA/
+    challenge sayfasi ya da 429 doner. Eski surum consent sayfasinda ham HTML'de
+    `domain` string'ini sayarak (`resp.text.count(domain)`) gercek indeks olmayan
+    bir sayi uretebiliyordu. Artik:
+      - non-200 / bot-challenge / consent sayfasi tespit edilirse 0 (olculemedi),
+        challenge sayfasindan SAHTE sayi turetilmez;
+      - gecerli SERP'te de ham string tekrari yerine yalnizca `domain`'e giden
+        GERCEK sonuc baglantilari (href) sayilir (asiri-sayimi onler).
+    NOT: Bu sinyal hala guvenilmezdir (Bing ile ayni gerekce). Kalici cozum
+    Google Search Console API ya da Tavily `site:` sorgusudur — bkz. denetim Y8.
     """
+    import re
     query = f"site:{domain}"
     url = f"https://www.google.com/search?q={query}&num=10"
 
     try:
         async with httpx.AsyncClient(follow_redirects=True) as client:
             resp = await client.get(url, timeout=10, headers=HEADERS)
-            if resp.status_code == 200:
-                count = resp.text.count(domain)
-                return min(count, sample_size * 20)  # rough cap
+            # Y8: challenge/consent/429 -> olculemedi (0), sahte sayi uretme.
+            if resp.status_code != 200 or _looks_like_bot_challenge(
+                resp.status_code, dict(resp.headers), resp.text
+            ):
+                logger.info(f"Google index check: challenge/non-200 for {domain}, 0 dondu")
+                return 0
+            # Ham string tekrari degil, domain'e giden gercek sonuc baglantilari.
+            links = re.findall(
+                rf"https?://(?:[a-z0-9.-]+\.)?{re.escape(domain)}[/\"'?& ]",
+                resp.text, re.IGNORECASE,
+            )
+            count = len(set(links))
+            return min(count, sample_size * 20)  # rough cap
     except Exception as e:
         logger.warning(f"Google index check failed for {domain}: {e}")
 

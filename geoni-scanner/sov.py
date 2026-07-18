@@ -53,6 +53,40 @@ COMPETITOR_DENYLIST = {
     "meta ai", "llama", "yapay zeka", "ai",
 }
 
+# O4: denylist'in TAM eslesmesi "Google Gemini", "ChatGPT (OpenAI)",
+# "Microsoft Bing" gibi varyantlari kaciriyordu. Bu "guclu" platform
+# tokenleri, rakip adi ICINDE kelime-siniri korumali gecerse de elenir.
+# Generik tokenler (ai/google/yapay zeka) yanlis pozitif riski tasidigindan
+# (ör. "AI Solutions") burada YOK — onlar yalniz tam eslesmede elenir.
+_DENYLIST_STRONG_TOKENS = {
+    "chatgpt", "gpt-4", "gpt-5", "openai", "claude", "anthropic", "gemini",
+    "perplexity", "copilot", "bing", "deepseek", "grok", "llama",
+}
+
+
+def _is_denied_competitor(cname: str) -> bool:
+    """O4: rakip adi bir AI platformu/motoru mu? (varyant-toleransli)."""
+    norm = _normalize(cname)
+    if not norm:
+        return True
+    if norm in COMPETITOR_DENYLIST:
+        return True
+    # Cok kelimeli denylist girdileri (ör. "google ai") ad icinde bounded gecerse
+    for phrase in COMPETITOR_DENYLIST:
+        if " " in phrase and _bounded_match(phrase, norm):
+            return True
+    # Guclu platform tokenleri ad icinde bounded gecerse ("Microsoft Bing" -> bing)
+    return any(_bounded_match(tok, norm) for tok in _DENYLIST_STRONG_TOKENS)
+
+
+def _is_own_brand(cname: str, own_name: str) -> bool:
+    """O3: rakip adi markanin kendisi mi? Eskiden yalniz TAM normalize eslesme
+    vardi ('Acme Yazilim A.S.' vs 'Acme Yazilim' kaciyordu). Iki yonlu, kelime-
+    siniri korumali segment eslesmesi kullanilir (_brand_mentioned mantigi)."""
+    if not own_name:
+        return False
+    return _has_brand_segment(cname, own_name) or _has_brand_segment(own_name, cname)
+
 
 def _normalize(text: str) -> str:
     text = (text or "").strip().lower()
@@ -207,19 +241,26 @@ def sanitize_custom_queries(raw) -> list[str]:
     return out[:MAX_CUSTOM_QUERIES]
 
 
-def _fallback_queries(topic: str, lang: str = "tr") -> list[str]:
+def _fallback_queries(topic: str, lang: str = "tr", location: str = "") -> list[str]:
     """Sablon sorgular — YALNIZCA gecerli bir alan (topic) varken kullanilir.
     Alan yokken 'bu alan' gibi anlamsiz sorgular uretilmez; SOV atlanir.
-    Y7: EN'de global sablonlar (TR'de 'Türkiye'de' yerel kalir)."""
+    Y7: EN'de global sablonlar (TR'de 'Türkiye'de' yerel kalir).
+    O6: lokasyon verildiyse ilk sorgu yerel olur ('<sehir>'de en iyi X') —
+    yalnizca ulke-capi sorulunca yerel firma yapisal olarak gorunmuyordu."""
     t = topic.strip()
+    loc = (location or "").strip()
     if lang == "en":
+        first = (f"Who are the best providers of {t} in {loc}?" if loc
+                 else f"Who are the best providers of {t}?")
         return [
-            f"Who are the best providers of {t}?",
+            first,
             f"Which companies or people would you recommend for {t}?",
             f"Which brands stand out in {t}?",
         ]
+    first = (f"{loc}'da en iyi {t} hizmeti verenler kimler?" if loc
+             else f"Türkiye'de en iyi {t} hizmeti verenler kimler?")
     return [
-        f"Türkiye'de en iyi {t} hizmeti verenler kimler?",
+        first,
         f"{t} için hangi firma veya kişileri önerirsin?",
         f"{t} alanında öne çıkan markalar hangileri?",
     ]
@@ -291,7 +332,8 @@ async def infer_topic(name: str, web_results: list, ask_llm) -> str:
     return ""
 
 
-async def generate_category_queries(name: str, topic: str, ask_llm, social: bool = False, lang: str = "tr") -> list[dict]:
+async def generate_category_queries(name: str, topic: str, ask_llm, social: bool = False,
+                                    lang: str = "tr", location: str = "") -> list[dict]:
     """
     Markayi bilmeyen bir kullanicinin soracagi kategori/niyet sorgulari uretir:
     3 soru birincil alandan + 2 soru EN YAKIN KOMSU alandan (komsu alani
@@ -378,6 +420,17 @@ async def generate_category_queries(name: str, topic: str, ask_llm, social: bool
             f'{{"komsu_alan": "...", "queries": [{{"soru": "...", "alan": "birincil"}}, '
             f'{{"soru": "...", "alan": "komsu"}}]}}'
         )
+    # O6: lokasyon sinyali. Sablonlar zaten "soruda lokasyon geciyorsa yerel
+    # soru ekle" diyordu ama lokasyon prompt'a hic verilmiyordu; artik acikca
+    # gecirilir ve en az bir yerel soru istenir.
+    loc = (location or "").strip()
+    if loc:
+        if lang == "en":
+            prompt += (f"\nUser location: {loc}. At least 1 question MUST be local "
+                       f"and include this location (e.g. 'best {topic} in {loc}').")
+        else:
+            prompt += (f"\nKullanicinin konumu: {loc}. Sorularin en az 1'i yerel olsun "
+                       f"ve bu konumu icersin (ör. '{loc}'da en iyi {topic}').")
     try:
         raw = await ask_llm(prompt)
         data = _extract_json(raw) if raw else None
@@ -402,7 +455,7 @@ async def generate_category_queries(name: str, topic: str, ask_llm, social: bool
             # Birincil taraf eksik kaldiysa sablonlarla tamamla
             if len(primary) < SOV_QUERY_COUNT:
                 existing = {q["query"] for q in out}
-                for tq in _fallback_queries(topic, lang):
+                for tq in _fallback_queries(topic, lang, location):
                     if len([q for q in out if not q.get("adjacent")]) >= SOV_QUERY_COUNT:
                         break
                     if tq not in existing:
@@ -411,7 +464,8 @@ async def generate_category_queries(name: str, topic: str, ask_llm, social: bool
                 return out
     except Exception as e:
         logger.info(f"SOV query generation failed, falling back to templates: {e}")
-    return [{"query": q, "adjacent": False, "topic": topic} for q in _fallback_queries(topic, lang)]
+    return [{"query": q, "adjacent": False, "topic": topic}
+            for q in _fallback_queries(topic, lang, location)]
 
 
 async def _extract_competitors(answers: list[str], own_name: str, ask_llm, social: bool = False) -> list[dict]:
@@ -422,7 +476,12 @@ async def _extract_competitors(answers: list[str], own_name: str, ask_llm, socia
     social=True: sirket/domain yerine SOSYAL HESAP/HANDLE cikarir (varsa
     @kullaniciadi bicimini korur).
     """
-    joined = "\n\n---\n\n".join(a[:1200] for a in answers if a)
+    # O5: LLM'e YALNIZCA ad cikarimi yaptirilir; kac yanitta gectigi (mentions)
+    # asagida deterministik olarak yeniden sayilir. Prompt icin kirpma 1200->2000
+    # (sonar yanitlarinin kuyrugundaki rakipler daha az kaybolsun); deterministik
+    # sayim ise TAM yanitlar (`answers`) uzerinden yapilir.
+    full_answers = [a for a in answers if a]
+    joined = "\n\n---\n\n".join(a[:2000] for a in full_answers)
     if not joined.strip():
         return []
     if social:
@@ -454,21 +513,29 @@ async def _extract_competitors(answers: list[str], own_name: str, ask_llm, socia
         comps = (data or {}).get("competitors") if isinstance(data, dict) else None
         if not comps or not isinstance(comps, list):
             return []
-        own_norm = _normalize(own_name)
         out = []
+        seen: set = set()
         for c in comps:
             if not isinstance(c, dict):
                 continue
             cname = str(c.get("name", "")).strip()
-            if not cname or _normalize(cname) == own_norm:
+            if not cname:
                 continue
-            if _normalize(cname) in COMPETITOR_DENYLIST:
+            # O3: kendi markasi (varyant-toleransli) — listeye alma.
+            if _is_own_brand(cname, own_name):
                 continue
-            try:
-                mentions = max(1, int(c.get("mentions", 1)))
-            except (TypeError, ValueError):
-                mentions = 1
-            out.append({"name": cname, "mentions": mentions})
+            # O4: AI platformu/motoru (varyant-toleransli) — rakip degil.
+            if _is_denied_competitor(cname):
+                continue
+            key = _normalize(cname)
+            if key in seen:
+                continue
+            seen.add(key)
+            # O5: mention sayimi LLM'e degil, yanitlara deterministik sorulur.
+            # Sosyal handle'lar (@x) ya da noktalamali adlar bounded eslesmeyi
+            # kacirabilir; det==0 ise adi dusurmeyip 1 (en muhafazakar) atariz.
+            det = sum(1 for a in full_answers if _brand_mentioned(a, cname))
+            out.append({"name": cname, "mentions": det if det > 0 else 1})
         out.sort(key=lambda x: -x["mentions"])
         return out[:5]
     except Exception as e:
@@ -479,7 +546,8 @@ async def _extract_competitors(answers: list[str], own_name: str, ask_llm, socia
 async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
                                ask_google=None, ask_openai_web=None, ask_claude_web=None,
                                custom_queries: list | None = None,
-                               own_domain: str = "", social: bool = False, lang: str = "tr") -> dict:
+                               own_domain: str = "", social: bool = False, lang: str = "tr",
+                               location: str = "") -> dict:
     """
     Tam SOV olcumu (cok motorlu + atif istihbarati):
       - Sorgular: kullanici tanimli (varsa) yoksa 3 uretilmis kategori sorgusu
@@ -530,7 +598,8 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
         logger.info(f"SOV skipped for '{name}': alan bilgisi yok")
         return {**empty, "skipped_reason": "no_topic"}
     else:
-        queries = await generate_category_queries(name, topic, ask_llm, social=social, lang=lang)
+        queries = await generate_category_queries(name, topic, ask_llm, social=social,
+                                                  lang=lang, location=location)
     if not queries:
         return empty
 

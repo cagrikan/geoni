@@ -7,14 +7,18 @@ respects robots.txt and sitemap.xml, with depth/page/time limits.
 import asyncio
 import json
 import logging
+import re
 import time
 from urllib.parse import urljoin, urlparse
 from urllib.robotparser import RobotFileParser
 
 import httpx
-from playwright.async_api import async_playwright
 
 from ssrf_guard import assert_public_host, BlockedHostError, safe_get
+
+# NOT: playwright import'u crawl_domain icine alindi (lazy) — sitemap/robots
+# yardimcilarini (fetch_sitemap, _parse_sitemap_xml) playwright kurulu olmayan
+# ortamlarda (offline birim testleri) import edebilmek icin.
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +51,52 @@ async def fetch_robots_txt(client: httpx.AsyncClient, base_url: str) -> RobotFil
     return rp
 
 
-async def fetch_sitemap(client: httpx.AsyncClient, base_url: str, limit: int = 200) -> dict:
+def _parse_sitemap_xml(text: str) -> dict:
+    """
+    O9: Bir sitemap XML'ini ayristirir — iki tur destekli:
+      - <urlset>:       gercek sayfa URL'leri (+ opsiyonel lastmod)
+      - <sitemapindex>: alt-sitemap URL'leri (Yoast/WordPress her zaman index uretir)
+    Onceki surum yalnizca duz <loc> findall yapiyordu; index dosyasinda alt-sitemap
+    URL'lerini sayfa saniyordu (XML sayfasi crawl ediliyor, gercek URL'ler hic
+    kesfedilmiyordu). Ayrica <url> blogu bazinda ayristirma ile lastmod DOGRU loc'a
+    hizalanir (eski ayri-findall lastmod'u olmayan girdilerde kayiyordu).
+
+    Saf/offline test edilebilir (ag yok). Donus:
+      {"is_index": bool, "entries": [{"loc": str, "lastmod": str|None}, ...]}
+    """
+    is_index = "<sitemapindex" in text.lower()
+    block_tag = "sitemap" if is_index else "url"
+    entries: list[dict] = []
+    for m in re.finditer(rf"<{block_tag}\b[^>]*>(.*?)</{block_tag}>", text,
+                         re.DOTALL | re.IGNORECASE):
+        block = m.group(1)
+        loc_m = re.search(r"<loc>\s*(.*?)\s*</loc>", block, re.DOTALL | re.IGNORECASE)
+        if not loc_m:
+            continue
+        loc = loc_m.group(1).strip()
+        if not loc:
+            continue
+        lm_m = re.search(r"<lastmod>\s*(.*?)\s*</lastmod>", block, re.DOTALL | re.IGNORECASE)
+        entries.append({"loc": loc, "lastmod": lm_m.group(1).strip() if lm_m else None})
+    # Bloklu ayristirma bos dondurduyse (bicimsiz/tek satir XML) kaba <loc>'a duş
+    if not entries:
+        for loc in re.findall(r"<loc>\s*(.*?)\s*</loc>", text, re.DOTALL | re.IGNORECASE):
+            loc = loc.strip()
+            if loc:
+                entries.append({"loc": loc, "lastmod": None})
+    return {"is_index": is_index, "entries": entries}
+
+
+async def fetch_sitemap(client: httpx.AsyncClient, base_url: str, limit: int = 200,
+                        _max_child_sitemaps: int = 10) -> dict:
     """
     Sitemap'ten URL listesi + lastmod tarihlerini ceker. lastmod tarihleri
     tazelik skorunun (scoring.py v3) gercek-tarih sinyalidir; eskiden hic
     okunmuyordu ve tazelik title icindeki yil metnine bakiyordu.
+
+    O9: sitemap_index.xml (sitemapindex) destegi — index ise alt-sitemap'ler
+    (bounded, en cok _max_child_sitemaps) tek tek cozulur. lastmods artik urls
+    ile 1:1 hizali doner (eksikse "" placeholder; scoring bunu tolere eder).
     """
     sitemap_url = urljoin(base_url, "/sitemap.xml")
     urls: list[str] = []
@@ -60,11 +105,29 @@ async def fetch_sitemap(client: httpx.AsyncClient, base_url: str, limit: int = 2
     try:
         resp = await safe_get(client, sitemap_url, timeout=10)
         if resp.status_code == 200:
-            # Very simple XML parse without extra deps
-            import re
             found = True
-            urls = re.findall(r"<loc>(.*?)</loc>", resp.text)[:limit]
-            lastmods = re.findall(r"<lastmod>(.*?)</lastmod>", resp.text)[:limit]
+            parsed = _parse_sitemap_xml(resp.text)
+            if parsed["is_index"]:
+                # O9: alt-sitemap URL'lerini (bounded) coz; her hop safe_get'ten
+                # gecer (SSRF). Bir alt-sitemap hatasi digerlerini bozmaz.
+                child_locs = [e["loc"] for e in parsed["entries"]][:_max_child_sitemaps]
+                for cu in child_locs:
+                    if len(urls) >= limit:
+                        break
+                    try:
+                        cr = await safe_get(client, cu, timeout=10)
+                        if cr.status_code == 200:
+                            for e in _parse_sitemap_xml(cr.text)["entries"]:
+                                if len(urls) >= limit:
+                                    break
+                                urls.append(e["loc"])
+                                lastmods.append(e["lastmod"] or "")
+                    except Exception as e:
+                        logger.info(f"Alt-sitemap cekilemedi ({cu}): {e}")
+            else:
+                for e in parsed["entries"][:limit]:
+                    urls.append(e["loc"])
+                    lastmods.append(e["lastmod"] or "")
     except Exception as e:
         logger.info(f"No sitemap.xml found or error fetching it: {e}")
     return {"found": found, "urls": urls, "lastmods": lastmods}
@@ -211,6 +274,8 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
           "pages": [ { url, title, meta_description, h1, canonical_url }, ... ]
         }
     """
+    from playwright.async_api import async_playwright  # lazy (bkz. import notu)
+
     start_time = time.monotonic()
     domain = normalize_domain(domain)
     # SSRF korumasi: robots/sitemap dahil HERHANGI bir istek atilmadan once
@@ -305,10 +370,14 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
             batch_results = await asyncio.gather(
                 *[visit(url, depth) for url, depth in batch]
             )
-            for links in batch_results:
+            # O8: her sayfanin linklerine KENDI derinligi+1 verilir. Eskiden
+            # batch[0][1]+1 kullaniliyordu -> batch'teki tum sayfalarin linkleri
+            # ilk elemanin derinligini aliyordu (sitemap seed'i depth 1 ile derin
+            # sayfa ayni batch'e dusunce limit yanlis uygulaniyordu).
+            for (src_url, src_depth), links in zip(batch, batch_results):
                 for link in links:
                     if link not in visited:
-                        queue.append((link, batch[0][1] + 1))
+                        queue.append((link, src_depth + 1))
 
         await browser.close()
 

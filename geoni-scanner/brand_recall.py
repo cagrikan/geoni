@@ -58,6 +58,13 @@ GOOGLE_API_KEY     = os.environ.get("GOOGLE_API_KEY", "")
 OPENAI_WEB_MODEL = "gpt-5"          # OpenAI Responses API + web_search araci
 CLAUDE_WEB_MODEL = "claude-sonnet-5"  # Anthropic Messages API + web_search_20250305
 
+# A-3 (judge bagimsizligi): judge, DORT recall motorundan (claude-haiku-4-5,
+# gpt-4o-mini, gemini-2.5-flash, sonar) HICBIRI olmamali — yoksa judge kendi
+# recall yanitini puanlar (oz-tercih/self-preference yanliligi). Bu yuzden
+# judge FARKLI surumlere alinir: birincil claude-sonnet-4-6, yedek gpt-4o.
+JUDGE_MODEL_ANTHROPIC = "claude-sonnet-4-6"
+JUDGE_MODEL_OPENAI = "gpt-4o"
+
 # Iki Tavily hesabi arasinda donusumlu (round-robin) kullanim - her hesabin
 # kendi aylik sorgu kotasi (1000) var, esit yaslandirma icin sirayla donuyor.
 TAVILY_API_KEYS = [k for k in [os.environ.get("TAVILY_API_KEY", ""), os.environ.get("TAVILY_API_KEY_2", "")] if k]
@@ -362,7 +369,9 @@ async def _post_retry(client, url, *, _tries: int = 3, _base: float = 0.6, **kwa
     return resp  # son yanit hala 429/5xx — cagiran None'a duser
 
 
-async def _ask_claude(prompt: str, temperature: float = RECALL_TEMPERATURE, max_tokens: int = 500) -> str | None:
+async def _ask_claude(prompt: str, temperature: float = RECALL_TEMPERATURE, max_tokens: int = 500,
+                      model: str = "claude-haiku-4-5") -> str | None:
+    # model default'u recall motoru (haiku); judge bagimsiz bir modelle cagirir (A-3).
     if not ANTHROPIC_API_KEY:
         return None
     try:
@@ -371,7 +380,7 @@ async def _ask_claude(prompt: str, temperature: float = RECALL_TEMPERATURE, max_
                 "https://api.anthropic.com/v1/messages",
                 headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"},
                 json={
-                    "model": "claude-haiku-4-5",
+                    "model": model,
                     "max_tokens": max_tokens,
                     "temperature": temperature,
                     "messages": [{"role": "user", "content": prompt}],
@@ -713,6 +722,15 @@ def _parse_recognition(raw: str | None, name: str) -> dict:
     """
     Structured output parse eder; basarisiz olursa NOT_RECOGNIZED_PHRASES
     kalip eslestirmesine (yedek mekanizma) duser ve bunu loglar.
+
+    A-2 (motorlar arasi adalet notu): YALNIZ _ask_openai json_object modunda
+    cagriliyor; Claude/Gemini/Perplexity prompt-only JSON uretiyor. Parse
+    basarisiz olunca politika konservatif (taniyor=False) oldugundan, bu ceza
+    orantisiz olarak OpenAI-DISI motorlara duser (OpenAI'da bozuk JSON neredeyse
+    imkansiz). Asimetri model_results[key]["structured_output_used"] alaninda
+    gorunur kilindi; motorlar arasi tam esitlik ileride Claude tool-use /
+    Gemini responseMimeType ile saglanmali (davranis degistirmedigi icin bu
+    denetimde YALNIZ not olarak birakildi).
     """
     if not raw:
         return {"taniyor": False, "guven": 0.0, "yanit": "", "structured": False}
@@ -864,10 +882,12 @@ async def judge_batch_accuracy(model_texts: dict, web_results: list, person_info
     Model yanitlarini TEK toplu judge cagrisinda Tavily web verisiyle
     karsilastirarak dogruluk puanlar.
 
-    v3: Birincil judge Claude Haiku — eski gpt-4o-mini judge, GPT'nin kendi
-    yanitini da puanladigi icin oz-tercih (self-preference) riski tasiyordu.
-    Anthropic cagrisi basarisiz olursa gpt-4o-mini yedek olarak kalir.
-    Ikisi de basarisiz olursa bos sozluk doner (cagiran taraf legacy skora duser).
+    A-3 (judge bagimsizligi): judge, recall motorlarindan (claude-haiku-4-5 /
+    gpt-4o-mini / gemini-2.5-flash / sonar) HICBIRIYLE ayni model olmamali —
+    aksi halde kendi recall yanitini puanlar (oz-tercih yanliligi). Bu yuzden
+    birincil judge claude-sonnet-4-6, yedek gpt-4o (ikisi de recall'da kullanilan
+    surumlerden farkli). Ikisi de basarisiz olursa bos sozluk doner (cagiran
+    taraf legacy skora duser).
     """
     model_texts = {k: v for k, v in model_texts.items() if v}
     if not (ANTHROPIC_API_KEY or OPENAI_API_KEY) or not model_texts:
@@ -937,10 +957,12 @@ async def judge_batch_accuracy(model_texts: dict, web_results: list, person_info
                 continue
         return out
 
-    # Birincil: Claude Haiku (farkli model ailesi -> oz-tercih riski yok)
+    # Birincil: Claude Sonnet — recall'daki claude-haiku'dan FARKLI surum (A-3);
+    # judge kendi recall yanitini puanlamaz.
     if ANTHROPIC_API_KEY:
         try:
-            raw = await _ask_claude(prompt, temperature=0, max_tokens=600)
+            raw = await _ask_claude(prompt, temperature=0, max_tokens=600,
+                                    model=JUDGE_MODEL_ANTHROPIC)
             out = _parse_judge_output(_extract_structured_json(raw or ""))
             if out:
                 return out
@@ -948,7 +970,7 @@ async def judge_batch_accuracy(model_texts: dict, web_results: list, person_info
         except Exception as e:
             logger.info(f"judge: anthropic hatasi ({e}), openai yedegine geciliyor")
 
-    # Yedek: gpt-4o-mini
+    # Yedek: gpt-4o — recall'daki gpt-4o-mini'den FARKLI surum (A-3).
     if OPENAI_API_KEY:
         try:
             async with httpx.AsyncClient() as c:
@@ -956,7 +978,7 @@ async def judge_batch_accuracy(model_texts: dict, web_results: list, person_info
                     "https://api.openai.com/v1/chat/completions",
                     headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
                     json={
-                        "model": "gpt-4o-mini",
+                        "model": JUDGE_MODEL_OPENAI,
                         "messages": [{"role": "user", "content": prompt}],
                         "max_tokens": 600,
                         "temperature": 0,
@@ -1091,8 +1113,13 @@ async def _generate_brand_topics(name: str, topic: str, google_results: list, re
 def _build_tavily_query(name: str, topic: str = "", role: str = "", company: str = "",
                          sector: str = "", location: str = "", linkedin_url: str = "",
                          website: str = "", entity_type: str = "person") -> str:
-    """Adas (namesake) karismasini azaltmak icin zenginlestirilmis Tavily sorgusu."""
-    base = f'"{name}"'
+    """Adas (namesake) karismasini azaltmak icin zenginlestirilmis Tavily sorgusu.
+
+    O1: Tavily dogal-dil arama motorudur; boolean AND/OR dokumante DEGILDIR ve
+    literal token muamelesi gorur ("AND"/"OR" kelimeleri sorgu gurultusu olur).
+    Eski '"isim" AND ("rol" OR sirket)' yerine dogal-dil bicimi kullanilir
+    ("Ahmet Yilmaz avukat Ankara") — hem daha isabetli hem semantik eslesmeye uygun.
+    """
     signals = []
     if role:     signals.append(role)
     if company:  signals.append(company)
@@ -1101,10 +1128,8 @@ def _build_tavily_query(name: str, topic: str = "", role: str = "", company: str
     if topic:    signals.append(topic)
     if website:  signals.append(website)
 
-    if signals:
-        or_part = " OR ".join(f'"{s}"' if " " in s else s for s in signals[:4])
-        return f'{base} AND ({or_part})'
-    return base
+    parts = [name] + signals[:4]
+    return " ".join(p.strip() for p in parts if p and p.strip())
 
 
 async def check_brand_recall(
@@ -1384,6 +1409,7 @@ async def check_brand_recall(
         own_domain=website or "",
         social=social,
         lang=lang,
+        location=location,  # O6: yerel SOV sorgusu ("<sehir>'de en iyi X")
     )
     topics_task = _generate_brand_topics(name, topic, web_results, representative_texts)
     sov_result, topics = await asyncio.gather(sov_task, topics_task)
