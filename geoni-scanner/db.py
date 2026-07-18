@@ -2425,7 +2425,9 @@ async def _build_delivery_report(ticket_id: int) -> str:
             f"**Açılış:** {opened[:16].replace('T', ' ')}",
             f"**Tamamlanma:** {closed[:16].replace('T', ' ')}",
             f"**Toplam süre:** {duration}",
-            f"**Uzman:** {expert_email}",
+            # C-4: bu rapor müşteriye GÖRÜNÜR threade eklenir; uzman kimliği
+            # (e-posta) ASLA müşteriye gösterilmez (anonimlik tasarımı).
+            "**Uzman:** GEONI Uzmanı",
         ]
         if tasks:
             lines.append("\n**Tamamlanan iş kırılımı:**")
@@ -3088,8 +3090,11 @@ async def notify_ticket_event(ticket_id: int, event: str, actor_role: str = "") 
                 sends.append((adm, f"Onay bekliyor — {ref}", "Teslim onayınızı bekliyor",
                               [f"{ref} bileti teslim edildi ve onayınızı bekliyor."]))
             if customer:
+                # C-1: cikti(lar) zaten bilet mesajlarinda GORUNUR; "sonra
+                # iletilecek" yanilsamasi verme (otomatik hizmetlerde aninda
+                # dusuyor). Dururstce: gorunur + kisa son kontrol.
                 sends.append((customer, f"İşiniz teslim edildi — {ref}", "İşiniz tamamlandı, son kontrolde",
-                              ["Uzmanımız işi teslim etti; kalite kontrolünden sonra size iletilecek."]))
+                              ["İşiniz teslim edildi — çıktılar bilet mesajlarınızda görünür. Kısa bir son kalite kontrolünden geçiyor."]))
         elif event == "verified":
             if customer:
                 sends.append((customer, f"İşiniz hazır — {ref}", "İşiniz onaylandı ve teslim edildi",

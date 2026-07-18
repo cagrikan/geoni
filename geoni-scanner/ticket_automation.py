@@ -5,10 +5,12 @@ domain bilgisinden (ve varsa GEONI'nin kendi taramasindan) deterministik
 olarak uretilebilir. Diger 4 hizmet (sema/wikidata/icerik/atif) gercek
 arastirma/muhakeme gerektirdigi icin insan uzmanda kalir.
 
-Otomasyon, uretilen dosyalari SYSTEM yazari olarak konusma akisina
-ekleyip bileti 'submitted' durumuna cekiyor - musteriye ulasmadan once
-hala bir INSAN admin onayi (admin_verify_ticket) gerekiyor, tamamen
-gozetimsiz degil.
+Otomasyon, uretilen dosyalari SYSTEM yazari olarak konusma akisina ekleyip
+bileti 'submitted' durumuna ceker. C-1 NOT: dosyalar musteriye ANINDA gorunur
+(thread'e dusen system mesajlari gizlenmiyor); 'admin onayi' bir ON-KAPI DEGIL,
+teslim sonrasi bir kalite denetimidir. Bu yuzden musteriye giden mesajlar
+"otomatik olusturuldu / gorunur" diye dururst ifade edilir, "kalite kontrolden
+SONRA iletilecek" gibi bir gecikme yanilsamasi verilmez.
 """
 import json
 import logging
@@ -21,6 +23,24 @@ from db import (
 )
 
 logger = logging.getLogger(__name__)
+
+# B-5: otomasyon YALNIZCA dosya uretimini yapar; "siteye ekle/doğrula/yayınla"
+# gibi adimlar MUSTERININ sitesinde olur, otomasyon bunlari YAPMAZ. Bu ipuclarini
+# iceren gorevleri "yapildi" diye isaretlemek yanlis beyandir (checklist + Is
+# Teslim Raporu). Bu gorevler isaretsiz kalir; musteri "ekledim" deyince canli
+# check_robots_ai_access/check_llms_txt ile dogrulanabilir.
+_ONSITE_TASK_CUES = (
+    "doğrula", "dogrula", "ekle", "yükle", "yukle", "yayınla", "yayinla",
+    "sitenize", "siteye", "canlı", "canli", "kök dizin", "kok dizin",
+    "verify", "upload", "publish", "add to", "deploy", "live",
+)
+
+
+def _is_auto_completable(title: str) -> bool:
+    """Gorev otomasyonun GERCEKTEN yaptigi bir sey mi (uretim), yoksa musterinin
+    sitesinde yapmasi gereken bir adim mi? On-site adimlar isaretlenmez (B-5)."""
+    t = (title or "").lower()
+    return not any(c in t for c in _ONSITE_TASK_CUES)
 
 
 def generate_robots_txt(domain: str) -> str:
@@ -42,7 +62,11 @@ def generate_llms_txt(domain: str, audit: dict | None) -> str:
     name = brand.get("inferred_name") or domain
     topic = brand.get("inferred_topic") or ""
     pages = result.get("pages") or []
-    topics = (result.get("top_topics") or []) + (result.get("opportunities") or [])
+    # B-1 (KRİTİK): opportunities = sitenin HENÜZ KAPSAMADIĞI fırsat konuları;
+    # bunları "Öne Çıkan Konular" diye llms.txt'e yazmak YANLIŞ BEYAN (site o
+    # konuları işlemiyor). Yalnız gerçekten kapsanan top_topics yazılır;
+    # opportunities ayrı bir içerik-önerisi mesajına gider (fulfill akışında).
+    topics = result.get("top_topics") or []
 
     lines = [f"# {name}"]
     if topic:
@@ -105,8 +129,8 @@ async def fulfill_schema_ticket(ticket_id: int, domain: str) -> bool:
         schema_html = generate_schema_html(domain, audit)
 
         tasks = await list_ticket_tasks(ticket_id)
-        for task in tasks:
-            await toggle_ticket_task(task["id"], ticket_id, True)
+        for task in tasks:  # B-5: yalniz gercekten yapilan (uretim) gorevleri isaretle
+            await toggle_ticket_task(task["id"], ticket_id, _is_auto_completable(task.get("title", "")))
 
         ticket_type = await get_ticket_type_by_key("schema_setup")
         template = (ticket_type or {}).get("delivery_template") or ""
@@ -163,8 +187,8 @@ async def fulfill_llms_robots_ticket(ticket_id: int, domain: str) -> bool:
         llms_txt = generate_llms_txt(domain, audit)
 
         tasks = await list_ticket_tasks(ticket_id)
-        for task in tasks:
-            await toggle_ticket_task(task["id"], ticket_id, True)
+        for task in tasks:  # B-5: yalniz gercekten yapilan (uretim) gorevleri isaretle
+            await toggle_ticket_task(task["id"], ticket_id, _is_auto_completable(task.get("title", "")))
 
         ticket_type = await get_ticket_type_by_key("llms_robots")
         template = (ticket_type or {}).get("delivery_template") or ""
