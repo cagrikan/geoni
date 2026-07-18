@@ -52,6 +52,29 @@ async def enqueue_scan(payload: dict) -> None:
         _sqs().send_message, QueueUrl=SCAN_QUEUE_URL, MessageBody=body
     )
 
+
+_last_prewarm = {"t": 0.0}
+
+
+async def enqueue_prewarm(cooldown: float = 25.0) -> bool:
+    """Worker'i ONCEDEN isit: kuyruga bir no-op mesaji atarak SQS derinligini
+    1 yapar; autoscaling worker'i 0->1 baslatir. Boylece kullanici formu
+    doldururken worker boot olur ve gercek tarama geldiginde soguk baslangic
+    beklemez. Worker bu mesaji tanir ve aninda siler (tarama/LLM yok).
+
+    GLOBAL cooldown: kac kullanici tetiklerse tetiklesin en fazla `cooldown`
+    saniyede bir mesaj gider — tek isinma tum kullanicilar icin yeter, boylece
+    queue-depth metrigi sismez (asiri worker acilmaz)."""
+    import time
+    now = time.time()
+    if not SCAN_QUEUE_URL or (now - _last_prewarm["t"]) < cooldown:
+        return False
+    _last_prewarm["t"] = now
+    await asyncio.to_thread(
+        _sqs().send_message, QueueUrl=SCAN_QUEUE_URL, MessageBody=json.dumps({"kind": "prewarm"})
+    )
+    return True
+
 scan_semaphore = asyncio.Semaphore(SCAN_CONCURRENCY)
 _counters = {"waiting": 0}
 

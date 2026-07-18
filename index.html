@@ -1661,6 +1661,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (webBtn) webBtn.addEventListener('click', runWebCheck);
   const domainInput = document.getElementById('demo-domain');
   if (domainInput) domainInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') runWebCheck(); });
+  // Worker'i onceden isit: kullanici tarama alanina odaklandi = niyet. Tam
+  // tarama app.geoni.ai'de calisir; simdiden isitmak SPA'ya varildiginda
+  // cold-start'i gizler. Tek sefer (backend 25sn global cooldown).
+  if (domainInput) domainInput.addEventListener('focus', () => {
+    fetch('https://api.geoni.ai/api/prewarm', { method: 'POST' }).catch(() => {});
+  }, { once: true });
 });
 
 let webCheckLoading = false;

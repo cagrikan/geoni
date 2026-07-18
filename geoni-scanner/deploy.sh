@@ -52,7 +52,12 @@ EOF
   while [ "$(aws ec2 describe-instances --instance-ids "$IID" --query 'Reservations[0].Instances[0].State.Name' --output text)" != "terminated" ]; do sleep 30; done
 fi
 
-echo "3/3 servisler yeni imajla yeniden baslatiliyor..."
-aws ecs update-service --cluster geoni-cluster --service geoni-scanner-service --force-new-deployment --query 'service.serviceName' --output text
+echo "3/3 API (App Runner) + worker (ECS) yeni imajla yeniden baslatiliyor..."
+# API artik App Runner'da (ALB+Fargate degil, 2026-07-18 tasima). AutoDeployments
+# kapali; ECR :latest'i cekmesi icin deployment'i elle tetikle.
+aws apprunner start-deployment --region eu-central-1 \
+  --service-arn arn:aws:apprunner:eu-central-1:016031489497:service/geoni-scanner-api/61139b9ae7114ea88304c93458af9ff9 \
+  --query 'OperationId' --output text
+# Worker hala ECS Fargate (SQS tuketici) — yeni imajla yeniden baslat.
 aws ecs update-service --cluster geoni-cluster --service geoni-scan-worker --force-new-deployment --query 'service.serviceName' --output text
 echo "Tamam. API sagligi: curl -s https://api.geoni.ai/health"

@@ -109,7 +109,7 @@ class BrandCheckResponse(BaseModel):
 from monitor import monitor_loop
 from content_gen import content_loop
 from stability import build_stability
-from scanqueue import acquire_scan_slot, release_scan_slot, estimate_wait_seconds, sqs_enabled, enqueue_scan
+from scanqueue import acquire_scan_slot, release_scan_slot, estimate_wait_seconds, sqs_enabled, enqueue_scan, enqueue_prewarm
 
 # Interaktif API dokumani (/docs, /redoc, /openapi.json) tum uc yuzeyini
 # (admin/webhook uclari + semalar) herkese acar — uretimde kapali. Yerel/dev
@@ -592,6 +592,21 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
     background_tasks.add_task(run_audit_job, job_id, request, token)
     logger.info(f"Audit job {job_id} created for {request.domain} (ip={client_ip})")
     return AuditResponse(job_id=job_id, status="queued", estimated_time=300)
+
+@app.post("/api/prewarm")
+async def prewarm():
+    """Tarama niyeti sinyali (frontend, kullanici tarama ekranina girince/domain
+    yazmaya baslayinca cagirir). Worker'i onceden isitir ki cold-start kullanicinin
+    form-doldurma suresinin arkasinda kalsin. LLM maliyeti YOK; global 25sn cooldown
+    ile kuyruk sismesi/istismar engellenir. Her zaman 200 doner (sinyal, fire-and-forget)."""
+    warmed = False
+    if sqs_enabled():
+        try:
+            warmed = await enqueue_prewarm()
+        except Exception as e:
+            logger.warning(f"prewarm enqueue failed: {e}")
+    return {"ok": True, "warmed": warmed}
+
 
 @app.get("/api/audit/{job_id}")
 async def get_audit_status(job_id: str):

@@ -62,6 +62,11 @@ async def process_message(body: str, receipt: str):
     try:
         payload = json.loads(body)
         kind = payload.get("kind")
+        if kind == "prewarm":
+            # Isitma no-op: worker'i ayakta tutmak icin gonderilmis; tarama yok.
+            # delete_after=True kalir -> mesaj silinir, kuyruk temizlenir.
+            logger.info("prewarm mesaji alindi (no-op, worker isindi)")
+            return
         job_id = payload["job_id"]
         if kind != "web_audit":
             logger.error(f"bilinmeyen is turu: {kind} ({job_id}) — DLQ'ya birak")
