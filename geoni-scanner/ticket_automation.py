@@ -14,7 +14,13 @@ SONRA iletilecek" gibi bir gecikme yanilsamasi verilmez.
 """
 import json
 import logging
+import re
+from datetime import date
+from urllib.robotparser import RobotFileParser
 
+import httpx
+
+from ssrf_guard import safe_get
 from indexing import TRAINING_CRAWLER_AGENTS, SEARCH_CRAWLER_AGENTS
 from db import (
     get_latest_web_audit_by_domain, list_ticket_tasks, toggle_ticket_task,
@@ -23,6 +29,101 @@ from db import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Tum AI botlari (uretim + canli kontrol AYNI kaynaktan beslenir — tek dogruluk).
+_AI_AGENTS = list(dict.fromkeys(
+    list(SEARCH_CRAWLER_AGENTS.values()) + list(TRAINING_CRAWLER_AGENTS.values())
+))
+_UA = {"User-Agent": "GEONI-bot/1.0 (+https://geoni.ai)"}
+# llms.txt sayfa gurultusu: giris/sepet/hesap/yonetim/etiket/sayfalama/querystring.
+_PAGE_NOISE_RE = re.compile(
+    r"(login|signin|sign-in|/cart|/sepet|checkout|/account|/hesab|/admin|/wp-|"
+    r"/tag/|/etiket/|/page/\d|/sayfa/\d|privacy|gizlilik|cerez|/kvkk|\?)", re.I)
+
+
+def _sanitize_text(s: str, max_len: int) -> str:
+    """B-7: title/meta/inferred_* musterinin (ya da saldirganin) kontrolundeki
+    HTML'den gelir; teslim dosyasina filtresiz akmamali. Satir sonu + markdown/
+    HTML kontrol karakterleri temizlenir, uzunluk sinirlanir."""
+    s = re.sub(r"[\r\n\t]+", " ", s or "")
+    s = re.sub(r"[\[\]()<>`#>|{}]", "", s)
+    s = re.sub(r"\s{2,}", " ", s).strip()
+    return s[:max_len].rstrip()
+
+
+def _same_site_url(url: str, domain: str) -> bool:
+    """URL yalniz hedef domain (ya da subdomain) ise teslim dosyasina girer —
+    sayfa listesine sizmis harici link cikmaz."""
+    u = (url or "").strip().lower()
+    if not u.startswith(("http://", "https://")):
+        return False
+    host = re.sub(r"^https?://", "", u).split("/")[0].split(":")[0]
+    if host.startswith("www."):
+        host = host[4:]
+    return host == domain or host.endswith("." + domain)
+
+
+def _curate_pages(pages: list, domain: str) -> list[dict]:
+    """llms.txt icin sayfa kuratorlugu: gurultu at, tekrarsizlastir, sirala.
+    Envanter degil, kuratorlu icindekiler (spec + saha best-practice)."""
+    seen, out = set(), []
+    home = {f"https://{domain}", f"https://{domain}/", f"https://www.{domain}", f"https://www.{domain}/"}
+    for p in pages or []:
+        if not isinstance(p, dict):
+            continue
+        url = (p.get("url") or "").strip()
+        title = _sanitize_text(p.get("title") or "", 80)
+        if not url or not title or not _same_site_url(url, domain):
+            continue
+        if _PAGE_NOISE_RE.search(url):
+            continue
+        key = re.sub(r"[?#].*$", "", url).rstrip("/")
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"url": url, "title": title,
+                    "meta": _sanitize_text(p.get("meta_description") or "", 200),
+                    "is_home": url in home, "depth": key.count("/")})
+    out.sort(key=lambda x: (0 if x["is_home"] else 1, 0 if x["meta"] else 1, x["depth"]))
+    return out
+
+
+async def _sitemap_exists(domain: str, audit: dict | None) -> bool:
+    """B-4: Sitemap: satiri yalniz KANITLA yazilir. Once audit'in bildigini
+    kullan (crawl sitemap_found dondurur), yoksa canli kontrol (soft-404 HTML red)."""
+    if audit:
+        sf = (audit.get("result_json") or {}).get("sitemap_found")
+        if sf is not None:
+            return bool(sf)
+    for path in ("/sitemap.xml", "/sitemap_index.xml"):
+        try:
+            async with httpx.AsyncClient() as c:
+                r = await safe_get(c, f"https://{domain}{path}", timeout=8, headers=_UA)
+            body = (r.text or "")[:2000].lower()
+            if r.status_code == 200 and ("<urlset" in body or "<sitemapindex" in body or "<loc>" in body):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _extract_star_disallows(robots_text: str) -> list[str]:
+    """Mevcut robots.txt'te 'User-agent: *' grubunun Disallow satirlarini cikarir;
+    GEONI blogu bu botlari '*' grubundan cikardigi icin hassas path'ler bloga
+    kopyalanir (musterinin wp-admin/staging korumasi AI botlarda da korunur)."""
+    dis, in_star = [], False
+    for raw in (robots_text or "").splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        low = line.lower()
+        if low.startswith("user-agent:"):
+            in_star = line.split(":", 1)[1].strip() == "*"
+        elif in_star and low.startswith("disallow:"):
+            val = line.split(":", 1)[1].strip()
+            if val:
+                dis.append(val)
+    return list(dict.fromkeys(dis))
 
 # B-5: otomasyon YALNIZCA dosya uretimini yapar; "siteye ekle/doğrula/yayınla"
 # gibi adimlar MUSTERININ sitesinde olur, otomasyon bunlari YAPMAZ. Bu ipuclarini
@@ -43,56 +144,93 @@ def _is_auto_completable(title: str) -> bool:
     return not any(c in t for c in _ONSITE_TASK_CUES)
 
 
-def generate_robots_txt(domain: str) -> str:
-    lines = []
-    for agent in {**TRAINING_CRAWLER_AGENTS, **SEARCH_CRAWLER_AGENTS}.values():
-        lines.append(f"User-agent: {agent}")
-        lines.append("Allow: /")
-        lines.append("")
-    lines.append("User-agent: *")
-    lines.append("Allow: /")
-    lines.append("")
-    lines.append(f"Sitemap: https://{domain}/sitemap.xml")
-    return "\n".join(lines)
+async def generate_robots_txt(domain: str, sitemap_ok: bool = False) -> tuple[str, str]:
+    """B-2: robots.txt'i ASLA korlemesine uretme — canli dosyayi cek, mevcut
+    kurallari KORU, AI botlarina erisim blogunu EKLE. Doner: (metin, durum).
+    durum: 'merged' | 'already_open' (butun AI botlari zaten izinli) | 'created'
+    (mevcut cekilemedi -> yeni dosya, cagiran 'uzerine yazmayin' uyarisi verir)."""
+    existing = None
+    try:
+        async with httpx.AsyncClient() as c:
+            r = await safe_get(c, f"https://{domain}/robots.txt", timeout=8, headers=_UA)
+        body = r.text or ""
+        # soft-404: SPA her path'e 200 + index.html doner -> robots sayma.
+        if r.status_code == 200 and body.strip() and "<html" not in body[:600].lower():
+            existing = body
+    except Exception:
+        existing = None
+
+    block_lines = [
+        f"# --- GEONI: AI botlarina erisim izni (eklendi: {date.today().isoformat()}) ---",
+        "# Bu bloklar yapay zeka arama/alintilama botlarina site erisimi verir.",
+    ]
+    block_lines += [f"User-agent: {agent}" for agent in _AI_AGENTS]
+    # Mevcut '*' grubunun Disallow'larini AI botlara da tasi: GEONI blogu bu
+    # botlari '*'tan cikardigindan, musterinin hassas path'leri (wp-admin, staging)
+    # AI botlarda da korunmali.
+    for d in (_extract_star_disallows(existing) if existing else []):
+        block_lines.append(f"Disallow: {d}")
+    block_lines.append("Allow: /")
+    block = "\n".join(block_lines)
+
+    if existing is None:
+        header = (
+            "# robots.txt — GEONI tarafindan olusturuldu.\n"
+            "# DIKKAT: Sitenizde ZATEN robots.txt VARSA bu dosyayla DEGISTIRMEYIN;\n"
+            "# yalnizca asagidaki '--- GEONI' bolumunu mevcut dosyanizin SONUNA ekleyin.\n"
+        )
+        out = header + "\nUser-agent: *\nAllow: /\n\n" + block
+        if sitemap_ok:
+            out += f"\n\nSitemap: https://{domain}/sitemap.xml"
+        return out + "\n", "created"
+
+    rp = RobotFileParser()
+    rp.parse(existing.splitlines())
+    if all(rp.can_fetch(agent, "/") for agent in _AI_AGENTS):
+        return existing.rstrip() + "\n", "already_open"
+    merged = existing.rstrip() + "\n\n" + block
+    if sitemap_ok and "sitemap:" not in existing.lower():
+        merged += f"\n\nSitemap: https://{domain}/sitemap.xml"
+    return merged + "\n", "merged"
 
 
 def generate_llms_txt(domain: str, audit: dict | None) -> str:
+    """llms.txt (llmstxt.org spec): H1 ad + > özet + giriş paragrafı + ## link
+    listeleri + ## Optional. Küratörlü (envanter değil), sanitize'li (B-7).
+    B-1: yalnız gerçekten kapsanan top_topics; opportunities dosyaya girmez
+    (sitenin kapsamadığı konu = yanlış beyan), ayrı içerik-önerisi mesajına gider."""
     result = (audit or {}).get("result_json") or {}
-    brand = result.get("brand_recall", {})
-    name = brand.get("inferred_name") or domain
-    topic = brand.get("inferred_topic") or ""
-    pages = result.get("pages") or []
-    # B-1 (KRİTİK): opportunities = sitenin HENÜZ KAPSAMADIĞI fırsat konuları;
-    # bunları "Öne Çıkan Konular" diye llms.txt'e yazmak YANLIŞ BEYAN (site o
-    # konuları işlemiyor). Yalnız gerçekten kapsanan top_topics yazılır;
-    # opportunities ayrı bir içerik-önerisi mesajına gider (fulfill akışında).
-    topics = result.get("top_topics") or []
+    brand = result.get("brand_recall") or {}
+    name = _sanitize_text(brand.get("inferred_name") or "", 60)
+    if not name or len(name.split()) > 5:  # AI tahmini cümle-görünümlü/boş → domain
+        name = domain
+    topic = _sanitize_text(brand.get("inferred_topic") or "", 200)
+    topics = [_sanitize_text(x.get("topic") if isinstance(x, dict) else x, 60)
+              for x in (result.get("top_topics") or [])]
+    topics = [t for t in dict.fromkeys(t for t in topics if t)][:8]
+    pages = _curate_pages(result.get("pages") or [], domain)
 
-    lines = [f"# {name}"]
+    lines = [f"# {name}", ""]
     if topic:
-        lines.append(f"> {topic}")
-    lines.append("")
-    if pages:
-        lines.append("## Önemli Sayfalar")
-        for p in pages[:15]:
-            if not isinstance(p, dict):
-                continue
-            url = p.get("url")
-            if not url:
-                continue
-            desc = f": {p['meta_description']}" if p.get("meta_description") else ""
-            lines.append(f"- [{p.get('title') or url}]({url}){desc}")
-        lines.append("")
+        lines += [f"> {topic}", ""]
     if topics:
-        # top_topics/opportunities STRING DEGIL {topic,...} nesnesi olabilir -
-        # dict hashlenemedigi icin once konu adini cikar, sonra tekrarsizlastir.
-        names = [(x.get("topic") if isinstance(x, dict) else x) for x in topics]
-        names = [n for n in dict.fromkeys(n for n in names if n)]
-        if names:
-            lines.append("## Öne Çıkan Konular")
-            for n in names:
-                lines.append(f"- {n}")
-    return "\n".join(lines)
+        lines += [
+            f"{name} içerik odağı: {', '.join(topics)}. Bu dosya, yapay zekâ "
+            "asistanlarının site içeriğini doğru anlaması için hazırlanmış bir "
+            "içindekiler rehberidir.", ""]
+    important, optional = pages[:12], pages[12:20]
+    if important:
+        lines += ["## Önemli Sayfalar", ""]
+        for p in important:
+            desc = f": {p['meta']}" if p["meta"] else ""
+            lines.append(f"- [{p['title']}]({p['url']}){desc}")
+        lines.append("")
+    if optional:
+        lines += ["## Optional", ""]
+        for p in optional:
+            lines.append(f"- [{p['title']}]({p['url']})")
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def generate_schema_html(domain: str, audit: dict | None) -> str:
@@ -101,23 +239,36 @@ def generate_schema_html(domain: str, audit: dict | None) -> str:
     gelir, yoksa domain'e duser. Uzman/admin teslim oncesi genisletebilir."""
     result = (audit or {}).get("result_json") or {}
     brand = result.get("brand_recall") or {}
-    name = brand.get("inferred_name") or domain
-    desc = brand.get("inferred_topic") or ""
+    assets = result.get("site_assets") or {}   # P1: crawler'dan logo/sameAs (yoksa {})
+    name = _sanitize_text(brand.get("inferred_name") or "", 60) or domain
+    desc = _sanitize_text(brand.get("inferred_topic") or "", 250)
     url = f"https://{domain}"
+    lang = (audit or {}).get("lang") or result.get("lang") or "tr"
+    topics = [_sanitize_text(x.get("topic") if isinstance(x, dict) else x, 60)
+              for x in (result.get("top_topics") or [])]
+    topics = [t for t in dict.fromkeys(t for t in topics if t)][:8]
 
-    org = {"@context": "https://schema.org", "@type": "Organization", "name": name, "url": url}
+    # B-6: @graph + @id çapraz referans (AI entity çözümü @id bağlarıyla yapar).
+    # Asla uydurma — elde olmayan alan (logo/sameAs) atlanır.
+    org = {"@type": "Organization", "@id": f"{url}/#organization", "name": name, "url": url}
     if desc:
         org["description"] = desc
-    website = {"@context": "https://schema.org", "@type": "WebSite", "name": name, "url": url}
+    logo = assets.get("logo")
+    if logo and _same_site_url(logo, domain):
+        org["logo"] = {"@type": "ImageObject", "url": logo}
+    same_as = [s for s in (assets.get("sameAs") or []) if isinstance(s, str) and s.startswith("http")]
+    if same_as:
+        org["sameAs"] = same_as[:8]
+    if topics:
+        org["knowsAbout"] = topics  # gerçek uzmanlık alanları (opportunities ASLA)
 
-    blocks = []
-    for obj in (org, website):
-        blocks.append(
-            '<script type="application/ld+json">\n'
-            + json.dumps(obj, ensure_ascii=False, indent=2)
-            + "\n</script>"
-        )
-    return "\n".join(blocks)
+    website = {"@type": "WebSite", "@id": f"{url}/#website", "url": url, "name": name,
+               "inLanguage": lang, "publisher": {"@id": f"{url}/#organization"}}
+
+    graph = {"@context": "https://schema.org", "@graph": [org, website]}
+    return ('<script type="application/ld+json">\n'
+            + json.dumps(graph, ensure_ascii=False, indent=2)
+            + "\n</script>")
 
 
 async def fulfill_schema_ticket(ticket_id: int, domain: str) -> bool:
@@ -198,7 +349,8 @@ async def fulfill_llms_robots_ticket(ticket_id: int, domain: str) -> bool:
     olur)."""
     try:
         audit = await get_latest_web_audit_by_domain(domain)
-        robots_txt = generate_robots_txt(domain)
+        sitemap_ok = await _sitemap_exists(domain, audit)
+        robots_txt, robots_status = await generate_robots_txt(domain, sitemap_ok=sitemap_ok)
         llms_txt = generate_llms_txt(domain, audit)
 
         tasks = await list_ticket_tasks(ticket_id)
@@ -223,6 +375,24 @@ async def fulfill_llms_robots_ticket(ticket_id: int, domain: str) -> bool:
                 "ücretsiz ekleriz - taramadan sonra buradan mesaj yazmanız yeterli."
             )
 
+        # B-2: robots merge durumuna göre dürüst not.
+        if robots_status == "already_open":
+            message += ("\n\n> ✅ Robots kontrolü: robots.txt dosyanız zaten tüm AI botlarına "
+                        "açık — değişiklik gerekmedi. llms.txt ve şema ile AI görünürlük "
+                        "altyapınızı tamamlıyoruz.")
+        elif robots_status == "created":
+            message += ("\n\n> ⚠️ Canlı robots.txt'inize ulaşılamadı. Sitenizde ZATEN robots.txt "
+                        "VARSA yukarıdaki dosyayla DEĞİŞTİRMEYİN; yalnızca `--- GEONI` bölümünü "
+                        "mevcut dosyanızın SONUNA ekleyin.")
+        else:  # merged
+            message += ("\n\n> Robots: mevcut robots.txt kurallarınız korunarak AI botlarına "
+                        "erişim bloğu eklendi; dosyayı olduğu gibi kök dizininize koyabilirsiniz.")
+        # B-4: sitemap kanıtı yoksa dürüst not (satır dosyaya yazılmadı).
+        if not sitemap_ok:
+            message += ("\n\n> Not: sitemap.xml bulunamadı. Oluşturursanız hem Google hem AI "
+                        "botlar sayfalarınızı daha hızlı keşfeder — oluşturunca robots.txt'inize "
+                        "`Sitemap:` satırını ekleyin.")
+
         await add_ticket_message(ticket_id, None, "system", body=message)
 
         # Uretilen dosyalari indirilebilir/paylasilabilir ek olarak da ekle -
@@ -236,6 +406,21 @@ async def fulfill_llms_robots_ticket(ticket_id: int, domain: str) -> bool:
         if llms_url:
             await add_ticket_message(ticket_id, None, "system",
                                      attachment_url=llms_url, attachment_name="llms.txt")
+
+        # B-1 devamı: opportunities (sitenin KAPSAMADIĞI fırsat konuları) llms.txt'e
+        # YAZILMAZ (yanlış beyan) ama müşteriye içerik önerisi olarak değerlidir.
+        opps = [_sanitize_text(o.get("topic") if isinstance(o, dict) else o, 60)
+                for o in ((audit or {}).get("result_json") or {}).get("opportunities", [])]
+        opps = [o for o in dict.fromkeys(o for o in opps if o)][:6]
+        if opps:
+            await add_ticket_message(ticket_id, None, "system", body=(
+                "💡 İçerik önerisi: Taramanızda, sitenizin **henüz kapsamadığı** ama AI "
+                "asistanlarının bu alanda sık atıf yaptığı şu konular öne çıktı:\n"
+                + "\n".join(f"- {o}" for o in opps)
+                + "\n\nBu konularda içerik yayınlarsanız llms.txt'inize ücretsiz ekleriz — "
+                "yayınlayınca bu bilete yazmanız yeterli. (Bu konular llms.txt'e yazılmadı; "
+                "orada yalnızca sitenizin gerçekten kapsadığı konular yer alır.)"
+            ))
 
         await mark_ticket_submitted(ticket_id)
         return True

@@ -34,7 +34,9 @@ TRAINING_CRAWLER_AGENTS = {
     "claudebot":       "ClaudeBot",
     "google_extended": "Google-Extended",
     "ccbot":           "CCBot",          # Common Crawl - bircok modelin egitim kaynagi
-    "anthropic_ai":    "anthropic-ai",
+    "applebot_extended":  "Applebot-Extended",  # Apple Intelligence (2026 guncel)
+    "meta_externalagent": "meta-externalagent",  # Meta AI (2026 guncel)
+    # "anthropic-ai" cikarildi: Anthropic'in artik kullanmadigi eski ad (gurultu).
 }
 
 # Arama/alintilanma (search & citation) crawler'lari: kullanicinin gercek
@@ -46,6 +48,7 @@ SEARCH_CRAWLER_AGENTS = {
     "perplexitybot":     "PerplexityBot",
     "perplexity_user":   "Perplexity-User",
     "claude_searchbot":  "Claude-SearchBot",
+    "claude_user":       "Claude-User",   # Anthropic kullanici-baslatan getirme (2026 guncel)
 }
 
 HEADERS = {

@@ -37,7 +37,7 @@ from db import (
     get_credit_transaction, transaction_exists, record_refund, get_package_by_apple_product_id, delete_user_account,
     update_user_social, get_share_result, get_ai_friendly_list,
     get_ticket_type_by_apple_product_id, create_iap_intent, consume_iap_intent, create_paid_ticket,
-    missing_service_prerequisites, normalize_domain, DOMAIN_ONLY_SERVICE_KEYS,
+    missing_service_prerequisites, normalize_domain as normalize_service_domain, DOMAIN_ONLY_SERVICE_KEYS,
     get_manual_cost, set_manual_cost, list_campaigns, create_campaign, delete_campaign,
     is_expert, list_ticket_types, purchase_ticket, list_user_tickets, list_expert_tickets,
     submit_ticket_evidence, start_ticket_work, admin_list_tickets, admin_assign_ticket, admin_verify_ticket,
@@ -283,6 +283,7 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
             "weights_used": score_result.get("weights_used"),
             "diagnostics": score_result.get("diagnostics"),
             "total_pages": crawl_result["total_pages"],
+            "sitemap_found": crawl_result.get("sitemap_found"),  # B-4: llms/robots sitemap kanıtı
             "indexed_pages": indexing_status["indexed_count"],
             "platforms": {
                 # Not: bu alanlar artik ARAMA/ALINTILANMA botlarina (OAI-SearchBot,
@@ -1598,7 +1599,7 @@ async def iap_intent(body: IapIntentRequest, http_request: Request):
         skey = svc.get("key", "")
         # Domain kapısı (pre-payment): web-yüzeyi hizmeti isim/@handle hedefine
         # satılamaz (çöp dosya üretir). Para ödenmeden reddet.
-        if skey in DOMAIN_ONLY_SERVICE_KEYS and normalize_domain(target) is None:
+        if skey in DOMAIN_ONLY_SERVICE_KEYS and normalize_service_domain(target) is None:
             raise HTTPException(status_code=400, detail="Bu hizmet bir web sitesine uygulanır — lütfen geçerli bir web adresi (alan adı, ör. ornekmarka.com) girin.")
         missing = await missing_service_prerequisites(user_id, skey, target)
         if missing:
