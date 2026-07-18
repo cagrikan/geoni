@@ -6,6 +6,7 @@ Uses service role key to bypass RLS.
 
 import asyncio
 import os
+import re
 import time
 import uuid
 import html
@@ -1903,7 +1904,29 @@ async def mark_ticket_submitted(ticket_id: int) -> bool:
 # Hizmet bagimliligi: iki temel hizmet (AI bot erisimi + schema) otonom teslim
 # edilir ve TEMELDIR. Ileri hizmetler (guvenilir kaynaklarda gorunurluk, icerik,
 # entity) bu ikisi yapilmadan bos kalir — o yuzden once bunlar alinmali.
+# Web-YÜZEYİ hizmetleri: llms.txt/robots.txt/schema.org bir WEB SİTESİNE uygulanır.
+# Bunlar hem "temel/ön-koşul" hizmetleridir hem de yalnızca DOMAIN hedefinde
+# geçerlidir (kişi/marka/sosyal ismi/@handle için anlamsız — bkz. normalize_domain).
 FOUNDATION_SERVICE_KEYS = ("llms_robots", "schema_setup")
+DOMAIN_ONLY_SERVICE_KEYS = FOUNDATION_SERVICE_KEYS  # aynı küme
+
+
+def normalize_domain(target: str) -> str | None:
+    """Hedefi temiz bir web-sitesi domaini'ne indirger; GEÇERLİ domain değilse
+    None döner. Kişi/marka/sosyal hedefleri (isim, @handle, boşluk içeren) None
+    döner → domain gerektiren hizmetler (llms_robots/schema_setup) bunlara
+    satılmaz/uygulanmaz, çöp dosya üretilmez. scheme/path/www sıyrılır, lowercase
+    (B-3: "geoni.ai" ve "www.geoni.ai" aynı normalize edilir → ön-koşul eşleşmesi)."""
+    t = (target or "").strip().lower()
+    if not t or "@" in t or " " in t:
+        return None
+    t = re.sub(r"^https?://", "", t).split("/")[0].split("?")[0].split("#")[0]
+    if t.startswith("www."):
+        t = t[4:]
+    t = t.strip(".")
+    if "." in t and re.match(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", t):
+        return t
+    return None
 
 
 async def missing_service_prerequisites(user_id: str, service_key: str, target: str = "") -> list[str]:
@@ -1915,8 +1938,15 @@ async def missing_service_prerequisites(user_id: str, service_key: str, target: 
     # Ileri hizmet HEDEFSIZ alinamaz: on-kosul hedef bazlidir; hedef yoksa
     # dogrulanamaz. Ayrica bu, "temeli baska hedefte al, ileriyi bos hedefle
     # gecir" baypasini kapatir. Hedefsiz -> hepsi eksik say (engelle).
-    if not (target or "").strip():
-        return list(FOUNDATION_SERVICE_KEYS)
+    t = (target or "").strip()
+    if not t:
+        return list(FOUNDATION_SERVICE_KEYS)  # ileri hizmet hedefsiz alınamaz
+    # Koşullu ön-koşul: hedef bir DOMAIN değilse (kişi/marka/sosyal isim/@handle),
+    # web-yüzeyi temel hizmetleri bu hedefe UYGULANMAZ → ön-koşul yok, merdiven
+    # açılır (web sitesi olmayan müşteri anlamsız hizmet almak zorunda kalmaz).
+    dom = normalize_domain(t)
+    if dom is None:
+        return []
     try:
         async with httpx.AsyncClient() as client:
             fr = await client.get(
@@ -1925,9 +1955,9 @@ async def missing_service_prerequisites(user_id: str, service_key: str, target: 
             key_by_id = {row["id"]: row["key"] for row in (fr.json() if fr.status_code == 200 else [])}
             if not key_by_id:
                 return []
+            # Normalize edilmiş domain ile eşleştir ("geoni.ai" == "www.geoni.ai").
             q = f"{SUPABASE_URL}/rest/v1/tickets?user_id=eq.{user_id}&select=ticket_type_id"
-            if target:
-                q += f"&target=eq.{quote(target, safe='')}"
+            q += f"&target=eq.{quote(dom, safe='')}"
             tr = await client.get(q, headers=_headers(), timeout=10)
             have = {row["ticket_type_id"] for row in (tr.json() if tr.status_code == 200 else [])}
             # Temel hizmetin adini (name) da dondurebilmek icin key yeter; cagiran cevirir.
@@ -1947,8 +1977,23 @@ async def purchase_ticket(user_id: str, ticket_type_id: int, audit_id: str | Non
     ticket_type = await _get_ticket_type(ticket_type_id)
     if not ticket_type or not ticket_type.get("is_active"):
         return {"success": False, "error": "invalid_ticket_type"}
+    key = ticket_type.get("key", "")
+    # Domain kapısı: web-yüzeyi hizmetleri (llms_robots/schema) yalnız GEÇERLİ bir
+    # web sitesine uygulanır. İsim/@handle hedefi (kişi/marka/sosyal) çöp dosya
+    # üretir — para alındıktan SONRA reddetmemek için satın alma anında doğrula.
+    if key in DOMAIN_ONLY_SERVICE_KEYS:
+        dom = normalize_domain(target)
+        if dom is None:
+            return {"success": False, "error": "invalid_target_domain"}
+        target = dom  # normalize'lı domain'i sakla → ön-koşul/fulfillment tutarlı
+    else:
+        # Gelişmiş hizmet: hedef domain ise normalize et (temel hizmetle aynı
+        # forma gelsin, ön-koşul eşleşsin); isim/@handle ise olduğu gibi kalır.
+        dom = normalize_domain(target)
+        if dom is not None:
+            target = dom
     # Ileri hizmet: once iki temel hizmet alinmis olmali (yoksa bos kalir).
-    missing = await missing_service_prerequisites(user_id, ticket_type.get("key", ""), target)
+    missing = await missing_service_prerequisites(user_id, key, target)
     if missing:
         return {"success": False, "error": "prereq_missing", "missing": missing}
     cost = ticket_type["token_cost"]
@@ -2092,6 +2137,14 @@ async def create_paid_ticket(user_id: str, ticket_type_id: int, target: str, ext
     if not ticket_type or not ticket_type.get("is_active"):
         return {"success": False, "error": "invalid_ticket_type"}
     credits = ticket_type["token_cost"]
+
+    # IAP para ZATEN alindi (webhook post-payment) → burada sert reddetme; hedef
+    # domain ise normalize et (temel hizmetle tutarli). Sert domain kapisi INTENT
+    # endpoint'inde (pre-payment). Domain-only hizmete isim/@handle geldiyse
+    # fulfill savunmasi cop uretmeyi engeller (bilet 'open' kalir).
+    dom = normalize_domain(target)
+    if dom is not None:
+        target = dom
 
     # 1) Para -> token: cuzdana kredi (ledger'da +token, odenen tutarla).
     ok = await record_purchase(

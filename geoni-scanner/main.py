@@ -37,7 +37,7 @@ from db import (
     get_credit_transaction, transaction_exists, record_refund, get_package_by_apple_product_id, delete_user_account,
     update_user_social, get_share_result, get_ai_friendly_list,
     get_ticket_type_by_apple_product_id, create_iap_intent, consume_iap_intent, create_paid_ticket,
-    missing_service_prerequisites,
+    missing_service_prerequisites, normalize_domain, DOMAIN_ONLY_SERVICE_KEYS,
     get_manual_cost, set_manual_cost, list_campaigns, create_campaign, delete_campaign,
     is_expert, list_ticket_types, purchase_ticket, list_user_tickets, list_expert_tickets,
     submit_ticket_evidence, start_ticket_work, admin_list_tickets, admin_assign_ticket, admin_verify_ticket,
@@ -1110,6 +1110,7 @@ async def create_ticket(body: TicketPurchaseRequest, http_request: Request):
     if not result["success"]:
         messages = {
             "invalid_ticket_type": "Geçersiz bilet türü",
+            "invalid_target_domain": "Bu hizmet bir web sitesine uygulanır — lütfen geçerli bir web adresi (alan adı, ör. ornekmarka.com) girin. Kişi/marka/sosyal hedefleri için farklı hizmetler mevcut.",
             "insufficient_balance": "Yetersiz token bakiyesi",
             "user_not_found": "Kullanıcı bulunamadı",
             "prereq_missing": "Bu hizmet için önce iki temel hizmeti almalısınız: AI Botlarına Erişim İzni ve Sitenizin AI Tarafından Doğru Anlaşılması. Onlar olmadan bu adım sonuç vermez.",
@@ -1594,7 +1595,12 @@ async def iap_intent(body: IapIntentRequest, http_request: Request):
     # ileri hizmete para odemez.
     svc = await get_ticket_type_by_apple_product_id(body.product_id)
     if svc:
-        missing = await missing_service_prerequisites(user_id, svc.get("key", ""), target)
+        skey = svc.get("key", "")
+        # Domain kapısı (pre-payment): web-yüzeyi hizmeti isim/@handle hedefine
+        # satılamaz (çöp dosya üretir). Para ödenmeden reddet.
+        if skey in DOMAIN_ONLY_SERVICE_KEYS and normalize_domain(target) is None:
+            raise HTTPException(status_code=400, detail="Bu hizmet bir web sitesine uygulanır — lütfen geçerli bir web adresi (alan adı, ör. ornekmarka.com) girin.")
+        missing = await missing_service_prerequisites(user_id, skey, target)
         if missing:
             raise HTTPException(status_code=400, detail="Bu hizmet için önce iki temel hizmeti almalısınız: AI Botlarına Erişim İzni ve Sitenizin AI Tarafından Doğru Anlaşılması.")
     ok = await create_iap_intent(user_id, body.product_id, target)

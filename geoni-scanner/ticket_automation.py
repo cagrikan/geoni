@@ -19,7 +19,7 @@ from indexing import TRAINING_CRAWLER_AGENTS, SEARCH_CRAWLER_AGENTS
 from db import (
     get_latest_web_audit_by_domain, list_ticket_tasks, toggle_ticket_task,
     add_ticket_message, get_ticket_type_by_key, mark_ticket_submitted,
-    upload_ticket_file,
+    upload_ticket_file, normalize_domain,
 )
 
 logger = logging.getLogger(__name__)
@@ -166,12 +166,27 @@ async def fulfill_schema_ticket(ticket_id: int, domain: str) -> bool:
 AUTO_FULFILL_KEYS = {"llms_robots", "schema_setup"}
 
 
-async def fulfill_auto_ticket(key: str, ticket_id: int, domain: str) -> bool:
-    """ticket_type_key'e gore dogru otomatik teslim fonksiyonuna yonlendirir."""
+async def fulfill_auto_ticket(key: str, ticket_id: int, target: str) -> bool:
+    """Otomatik teslim dispatcher + SAVUNMA HATTI. Web-yüzeyi hizmetleri
+    (llms_robots/schema) yalnız GEÇERLİ bir web sitesine uygulanır; target domain
+    değilse (kişi/marka/sosyal ismi/@handle) ÇÖP dosya üretmek yerine müşteriden
+    web sitesini ister ve bileti 'open' bırakır. (Sert kapı satın alma/INTENT'te;
+    bu son savunma, oradan kaçan hiçbir hedefin çöp teslimat üretmemesini garanti eder.)"""
+    website = normalize_domain(target)
+    if website is None:
+        await add_ticket_message(ticket_id, None, "system", body=(
+            "Bu hizmet **web siteniz** için llms.txt / robots.txt / şema dosyaları "
+            "üretir. Taramanız bir web adresi içermediğinden dosyalar henüz "
+            "oluşturulamadı.\n\nWeb siteniz varsa **alan adınızı** (ör. `ornekmarka.com`) "
+            "bu bilete yazın; dosyalarınızı oluşturup ekleyelim. Web siteniz yoksa "
+            "bu hizmet uygulanamaz."
+        ))
+        logger.info(f"fulfill_auto_ticket: hedef domain degil ({target!r}), cop uretilmedi, bilet {ticket_id} open")
+        return False
     if key == "llms_robots":
-        return await fulfill_llms_robots_ticket(ticket_id, domain)
+        return await fulfill_llms_robots_ticket(ticket_id, website)
     if key == "schema_setup":
-        return await fulfill_schema_ticket(ticket_id, domain)
+        return await fulfill_schema_ticket(ticket_id, website)
     return False
 
 
