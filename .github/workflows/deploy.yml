@@ -11,7 +11,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
+      # Kalite kapısı: testler kırmızıysa AŞAĞIDAKİ hiçbir adım (build/push/deploy)
+      # çalışmaz. Para/güvenlik yüzeyini (SSRF, webhook imza, kredi idempotency)
+      # kilitler — denetim #9.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run tests (deploy gate)
+        run: |
+          cd geoni-scanner
+          python -m pip install --quiet pytest httpx
+          python -m pytest tests/ -q
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
