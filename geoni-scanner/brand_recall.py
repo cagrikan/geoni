@@ -53,6 +53,11 @@ OPENAI_API_KEY    = os.environ.get("OPENAI_API_KEY", "")
 PERPLEXITY_API_KEY = os.environ.get("PERPLEXITY_API_KEY", "")
 GOOGLE_API_KEY     = os.environ.get("GOOGLE_API_KEY", "")
 
+# T2: SOV'un ChatGPT/Claude web-arama motorlarinda kullanilan guncel modeller.
+# Ayni OPENAI_API_KEY / ANTHROPIC_API_KEY anahtarlariyla calisir.
+OPENAI_WEB_MODEL = "gpt-5"          # OpenAI Responses API + web_search araci
+CLAUDE_WEB_MODEL = "claude-sonnet-5"  # Anthropic Messages API + web_search_20250305
+
 # Iki Tavily hesabi arasinda donusumlu (round-robin) kullanim - her hesabin
 # kendi aylik sorgu kotasi (1000) var, esit yaslandirma icin sirayla donuyor.
 TAVILY_API_KEYS = [k for k in [os.environ.get("TAVILY_API_KEY", ""), os.environ.get("TAVILY_API_KEY_2", "")] if k]
@@ -554,6 +559,108 @@ async def _ask_perplexity(prompt: str, temperature: float = RECALL_TEMPERATURE, 
             logger.warning(f"Perplexity {r.status_code}: {r.text[:200]}")
     except Exception as e:
         logger.warning(f"Perplexity query failed: {e}")
+    return None
+
+
+async def _ask_openai_web(prompt: str, temperature: float = 0.3, max_tokens: int = 500) -> dict | None:
+    """
+    T2: OpenAI Responses API + web_search araci ile CANLI arama. ChatGPT'nin
+    oneri yuzeyi buyuk olcude Bing'e dayanir; bu, SOV'da "ChatGPT motoru"nun en
+    durust vekilidir (parametrik _ask_openai'dan farkli olarak web'i olcer).
+
+    MALIYET KORUMASI: web-search cagrilari pahali — bu fonksiyon YALNIZ SOV'un
+    ~5 sorgusunda cagirilir, brand recall'un tum sorgu setinde DEGIL.
+
+    Donus: {"text": str, "citations": [url, ...]} (sov.py sozlesmesi). Anahtar
+    yoksa/cagri duserse None -> SOV motoru sessizce atlar (tarama bozulmaz).
+    """
+    if not OPENAI_API_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient() as c:
+            r = await _post_retry(c,
+                "https://api.openai.com/v1/responses",
+                headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "model": OPENAI_WEB_MODEL,
+                    "input": prompt,
+                    "tools": [{"type": "web_search"}],
+                    "max_output_tokens": max(max_tokens, 1500),
+                },
+                timeout=45,
+            )
+            if r.status_code == 200:
+                asyncio.create_task(log_provider_call("openai"))
+                body = r.json()
+                texts, citations = [], []
+                for item in body.get("output") or []:
+                    if item.get("type") != "message":
+                        continue
+                    for block in item.get("content") or []:
+                        if block.get("type") == "output_text":
+                            t = block.get("text")
+                            if t:
+                                texts.append(t)
+                            for ann in block.get("annotations") or []:
+                                if ann.get("type") == "url_citation" and ann.get("url"):
+                                    citations.append(ann["url"])
+                return {"text": " ".join(texts).strip(), "citations": citations}
+            logger.warning(f"OpenAI web {r.status_code}: {r.text[:200]}")
+    except Exception as e:
+        logger.warning(f"OpenAI web query failed: {e}")
+    return None
+
+
+async def _ask_claude_web(prompt: str, temperature: float = 0.3, max_tokens: int = 500) -> dict | None:
+    """
+    T2: Anthropic Messages API + web_search_20250305 server tool ile CANLI arama.
+    Claude'un retrieval yuzeyi Brave'e dayanir; bu, SOV'da "Claude motoru"nun
+    vekilidir (parametrik _ask_claude'dan farkli olarak web'i olcer).
+
+    MALIYET KORUMASI: bkz. _ask_openai_web — YALNIZ SOV'un ~5 sorgusunda.
+
+    Donus: {"text": str, "citations": [url, ...]}. Anahtar yoksa/cagri duserse
+    None -> SOV motoru sessizce atlar.
+    """
+    if not ANTHROPIC_API_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient() as c:
+            r = await _post_retry(c,
+                "https://api.anthropic.com/v1/messages",
+                headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                json={
+                    "model": CLAUDE_WEB_MODEL,
+                    "max_tokens": max(max_tokens, 1024),
+                    "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+                timeout=50,
+            )
+            if r.status_code == 200:
+                asyncio.create_task(log_provider_call("anthropic"))
+                texts, citations = [], []
+                for block in r.json().get("content", []):
+                    btype = block.get("type")
+                    if btype == "text":
+                        t = block.get("text")
+                        if t:
+                            texts.append(t)
+                        # Atiflar text blogunun citations dizisinde (url tasir)
+                        for cit in block.get("citations") or []:
+                            if isinstance(cit, dict) and cit.get("url"):
+                                citations.append(cit["url"])
+                    elif btype == "web_search_tool_result":
+                        # Ham arama sonuclari (her biri url tasir)
+                        content = block.get("content")
+                        if isinstance(content, list):
+                            for res in content:
+                                if isinstance(res, dict) and res.get("url"):
+                                    citations.append(res["url"])
+                return {"text": " ".join(texts).strip(), "citations": citations}
+            logger.warning(f"Claude web {r.status_code}: {r.text[:200]}")
+    except Exception as e:
+        logger.warning(f"Claude web query failed: {e}")
     return None
 
 
@@ -1255,6 +1362,10 @@ async def check_brand_recall(
     sov_task = check_share_of_voice(
         name, sov_topic, _ask_perplexity_sourced, _ask_claude,
         ask_google=_ask_gemini_grounded if GOOGLE_API_KEY else None,
+        # T2: ChatGPT + Claude web-arama motorlari. Pahali olduklarindan YALNIZ
+        # SOV'un sorgularinda calisir (recall'da degil). Anahtar yoksa None gecer.
+        ask_openai_web=_ask_openai_web if OPENAI_API_KEY else None,
+        ask_claude_web=_ask_claude_web if ANTHROPIC_API_KEY else None,
         custom_queries=custom_queries,
         own_domain=website or "",
         social=social,

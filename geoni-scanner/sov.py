@@ -40,7 +40,8 @@ SOV_QUERY_COUNT = 3      # birincil alan sorgusu
 SOV_ADJACENT_COUNT = 2   # komsu alan sorgusu (ikinci yakalanma sansi)
 MAX_CUSTOM_QUERIES = 3
 
-ENGINE_LABELS = {"perplexity": "Perplexity", "google": "Google AI"}
+ENGINE_LABELS = {"perplexity": "Perplexity", "google": "Google AI",
+                 "chatgpt": "ChatGPT", "claude": "Claude"}
 
 # Rakip cikariminda elenecek adlar: AI platformlarinin kendileri mecradir,
 # rakip degildir. Yanitlar "ChatGPT'de gorunmek icin..." gibi cumlelerle
@@ -393,16 +394,23 @@ async def _extract_competitors(answers: list[str], own_name: str, ask_llm, socia
 
 
 async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
-                               ask_google=None, custom_queries: list | None = None,
+                               ask_google=None, ask_openai_web=None, ask_claude_web=None,
+                               custom_queries: list | None = None,
                                own_domain: str = "", social: bool = False, lang: str = "tr") -> dict:
     """
     Tam SOV olcumu (cok motorlu + atif istihbarati):
       - Sorgular: kullanici tanimli (varsa) yoksa 3 uretilmis kategori sorgusu
       - Motorlar: Perplexity + (varsa) Google grounding'li Gemini (AIO esdegeri)
-      - Skor: en az bir motorda gecen sorgu orani
+        + (varsa) ChatGPT (OpenAI web_search) + Claude (Anthropic web_search).
+        T2: en buyuk kullanici tabanli oneri yuzeyleri (ChatGPT/Claude) motorlar
+        arasi atif ortusmesi ~%11 oldugundan Perplexity ile temsil EDILEMEZ.
+      - Skor: en az bir motorda gecen sorgu orani; T3 ile atifli/atifsiz bahis
+        agirligi (bkz. asagida).
       - Rakipler: tum yanitlardan tek cikarim cagrisiyla
       - Kaynaklar: motorlarin atif listelerinden (citations/grounding)
         cikarilan alan adlari — AI bu kategoride kime guveniyor?
+      - citation_gap (T3): rakip-anan-ama-markayi-anmayan kaynak domainler —
+        mevcut per_query atif+bahis verisinden turetilir, YENI LLM cagrisi yok.
 
     Motor fonksiyonlari str YA DA {"text", "citations"} dondurebilir
     (geriye uyumluluk).
@@ -414,11 +422,15 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
                   answer_snippet}],
        competitors: [{name, mentions}],
        sources: [{domain, mentions, own: bool}],   # atif alan siteler
-       own_cited_count: int}                        # kendi sitesinin atif aldigi yanit sayisi
+       own_cited_count: int,                        # kendi sitesinin atif aldigi yanit sayisi
+       citation_gap: [{domain, mentions, own: false}],  # rakip anan, seni anmayan
+       diagnostics: {citation_gap_domains, citation_gap_examples, citation_weighting}}
     """
     empty = {"checked": False, "score": None, "mention_count": 0, "query_count": 0,
              "queries": [], "competitors": [], "engines_used": [], "custom_queries_used": False,
-             "sources": [], "own_cited_count": 0}
+             "sources": [], "own_cited_count": 0, "citation_gap": [],
+             "diagnostics": {"citation_gap_domains": 0, "citation_gap_examples": [],
+                             "citation_weighting": False}}
     if not name:
         return empty
 
@@ -441,6 +453,13 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
     engines = {"perplexity": ask_perplexity}
     if ask_google is not None:
         engines["google"] = ask_google
+    # T2: ChatGPT (OpenAI web_search) ve Claude (Anthropic web_search) — pahali
+    # web-arama motorlari YALNIZ burada, SOV'un ~5 sorgusunda cagirilir. Anahtar
+    # yoksa cagiran taraf None gecirir, motor eklenmez (SOV yine calisir).
+    if ask_openai_web is not None:
+        engines["chatgpt"] = ask_openai_web
+    if ask_claude_web is not None:
+        engines["claude"] = ask_claude_web
 
     async def _safe_ask(fn, q):
         try:
@@ -458,6 +477,9 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
     answers: list[str] = []
     source_counter: Counter = Counter()
     own_cited_answers = 0
+    # T3: sorgu-bazli atif izleme (citation_gap + atifli-bahis agirligi icin)
+    per_query_domains: list[set] = [set() for _ in queries]
+    per_query_own_cited = [False] * len(queries)
     for (qi, eng), ans in zip(pairs, raw):
         if isinstance(ans, dict):
             answer = str(ans.get("text") or "")
@@ -472,8 +494,10 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
             **({"sources": domains} if domains else {}),
         }
         source_counter.update(domains)
+        per_query_domains[qi].update(domains)
         if answer and own and any(_is_own_domain(d, own) for d in domains):
             own_cited_answers += 1
+            per_query_own_cited[qi] = True
         if answer:
             answers.append(answer)
             if not per_query[qi]["answer_snippet"]:
@@ -493,8 +517,19 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
 
     primary_mentions = sum(1 for pq in primary_q if pq["mentioned"])
     adjacent_mentions = sum(1 for pq in per_query if pq.get("adjacent") and pq["mentioned"])
-    mention_count = primary_mentions + adjacent_mentions  # komsu-alan = bonus
-    score = round(min(100.0, (mention_count / answered) * 100), 1)
+    mention_count = primary_mentions + adjacent_mentions  # ham sayim (rapor + geriye uyum)
+
+    # T3: atifli-bahis agirligi. Markanin anildigi bir yanitta KENDI SITESI de
+    # atif aldiysa bahis yapisaldir (agirlik 1.0); yalnizca anildiysa "atifsiz"
+    # bahistir (0.7) — atifsiz bahis modelin sonraki retrieval'inda kaybolabilir.
+    # Asiri-iddia yaratmamak icin: motorlarin HICBIRI atif dondurmediyse (atif
+    # altyapisi devrede degil) agirlik notr (1.0) kalir; herkesi 0.7'ye cekmeyiz.
+    any_citations = bool(source_counter)
+    weighted_mentions = 0.0
+    for qi, pq in enumerate(per_query):
+        if pq["mentioned"]:
+            weighted_mentions += 1.0 if (not any_citations or per_query_own_cited[qi]) else 0.7
+    score = round(min(100.0, (weighted_mentions / answered) * 100), 1)
     competitors = await _extract_competitors(answers, name, ask_llm, social=social)
 
     sources = [
@@ -502,10 +537,33 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
         for d, n in source_counter.most_common(10)
     ]
 
+    # T3: citation_gap — markanin anildigi yanitlarda hic gecmeyen ama markanin
+    # ANILMADIGI yanitlarda atif alan domainler (rakip anlatan kaynaklar).
+    # "Su siteler rakiplerini AI'ya anlatiyor, sen yoksun" aksiyon listesi.
+    brand_domains: set = set()
+    for qi, pq in enumerate(per_query):
+        if pq["mentioned"]:
+            brand_domains.update(per_query_domains[qi])
+    gap_counter: Counter = Counter()
+    for qi, pq in enumerate(per_query):
+        if not pq["mentioned"]:
+            gap_counter.update(per_query_domains[qi])
+    citation_gap = [
+        {"domain": d, "mentions": n, "own": False}
+        for d, n in gap_counter.most_common(10)
+        if not _is_own_domain(d, own) and d not in brand_domains
+    ]
+    diagnostics = {
+        "citation_gap_domains": len(citation_gap),
+        "citation_gap_examples": [g["domain"] for g in citation_gap[:5]],
+        "citation_weighting": any_citations,  # atifli-bahis carpani uygulandi mi
+    }
+
     logger.info(
         f"SOV for '{name}': {mention_count}/{answered} queries "
         f"(engines={list(engines)}, custom={bool(custom)}), score={score}, "
-        f"competitors={len(competitors)}, sources={len(sources)}, own_cited={own_cited_answers}"
+        f"competitors={len(competitors)}, sources={len(sources)}, own_cited={own_cited_answers}, "
+        f"citation_gap={len(citation_gap)}"
     )
     return {
         "checked": True,
@@ -518,4 +576,6 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
         "competitors": competitors,
         "sources": sources,
         "own_cited_count": own_cited_answers,
+        "citation_gap": citation_gap,
+        "diagnostics": diagnostics,
     }
