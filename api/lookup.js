@@ -93,13 +93,44 @@ const PROVIDERS = [
   ['gemini', askGemini],
 ];
 
+const ALLOWED_ORIGINS = new Set(['https://geoni.ai', 'https://www.geoni.ai']);
+
+// Best-effort rate limit: her istek 3 LLM'e kadar (Claude+ChatGPT+Gemini) vurur.
+// Sunucu-taraflı hiç sınır yoktu; tek koruma landing'in localStorage sayacıydı
+// (gizli sekme/curl ile bypass -> sınırsız LLM maliyeti). Vercel serverless
+// STATELESS: bu Map yalnız sıcak instance ömrü boyunca yaşar, dağıtık DEĞİL —
+// ani/sürekli istismarı bir instance'ta yavaşlatır. ASIL koruma Cloudflare edge
+// rate-limit (altyapı). WINDOW içinde IP başına en çok MAX istek.
+const WINDOW_MS = 60_000;
+const MAX_PER_WINDOW = 15;
+const hits = new Map(); // ip -> [timestamps]
+
+function rateLimited(ip) {
+  const now = Date.now();
+  const arr = (hits.get(ip) || []).filter((t) => now - t < WINDOW_MS);
+  arr.push(now);
+  hits.set(ip, arr);
+  if (hits.size > 5000) { // bellek tavanı: eski girişleri temizle
+    for (const [k, v] of hits) if (v[v.length - 1] < now - WINDOW_MS) hits.delete(k);
+  }
+  return arr.length > MAX_PER_WINDOW;
+}
+
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  if (ALLOWED_ORIGINS.has(origin)) res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { name } = req.body;
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
+  if (rateLimited(ip)) return res.status(429).json({ error: 'Çok fazla istek. Biraz sonra tekrar dene.' });
+
+  let { name } = req.body || {};
+  if (typeof name !== 'string') return res.status(400).json({ error: 'Name required' });
+  name = name.trim().slice(0, 120); // girdi tavanı (prompt şişmesi/maliyet)
   if (!name) return res.status(400).json({ error: 'Name required' });
 
   const prompt = `"${name}" hakkında ne biliyorsun? JSON formatında ver.`;
