@@ -248,35 +248,57 @@ def _topic_relevance_score(google_results: list, name: str, topic: str) -> float
 
 # ── Tavily web search ────────────────────────────────────────────────────
 
+class SearchUnavailableError(Exception):
+    """Tavily arama servisine hic ulasilamadi (TUM anahtarlar non-200/timeout).
+    'Sonuc yok' (200 + bos liste) DEGIL, 'servis costu' demektir — cagiran bunu
+    'olculemedi' olarak isaretler ki tek bir 429 manseti sessizce yarilamasin (K1)."""
+
+
 async def _google_search(name: str, topic: str, max_results: int = 8, tavily_query: str = "") -> list:
-    """Search via Tavily API. Returns list of {title, snippet, url} dicts."""
+    """Search via Tavily API. Returns list of {title, snippet, url} dicts.
+
+    Y1: bir anahtar non-200/timeout verirse SIRADAKI anahtar(lar)la dener
+    (round-robin adaleti korunur ama basarisizlikta failover eder) — boylece bir
+    hesabin kotasi bitince trafigin yarisi olu anahtara gitmeye devam etmez.
+    K1: tum anahtarlar basarisizsa SearchUnavailableError firlatir; 200 + bos
+    liste ise (gercekten sonuc yok) normal `[]` doner."""
     if not TAVILY_API_KEYS:
         logger.warning("TAVILY_API_KEY not configured, skipping search")
         return []
 
     query = tavily_query or (f"{name} {topic}".strip() if topic and topic != name else name)
-    tavily_key, tavily_label = _next_tavily_key()
+    # Round-robin baslangici: her cagri farkli anahtarla baslar (esit yaslandirma).
+    start = _tavily_rr["i"]
+    _tavily_rr["i"] += 1
+    n = len(TAVILY_API_KEYS)
+    last_error = None
 
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                "https://api.tavily.com/search",
-                json={
-                    "query": query,
-                    "max_results": max_results,
-                    "search_depth": "basic",
-                    "include_answer": False,
-                    "include_raw_content": False,
-                },
-                headers={
-                    "Authorization": f"Bearer {tavily_key}",
-                    "Content-Type": "application/json",
-                },
-                timeout=15,
-            )
+    for offset in range(n):
+        idx = (start + offset) % n
+        tavily_key = TAVILY_API_KEYS[idx]
+        tavily_label = f"tavily-{idx + 1}"
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    "https://api.tavily.com/search",
+                    json={
+                        "query": query,
+                        "max_results": max_results,
+                        "search_depth": "basic",
+                        "include_answer": False,
+                        "include_raw_content": False,
+                    },
+                    headers={
+                        "Authorization": f"Bearer {tavily_key}",
+                        "Content-Type": "application/json",
+                    },
+                    timeout=15,
+                )
             if resp.status_code != 200:
-                logger.warning(f"Tavily {resp.status_code}: {resp.text[:200]}")
-                return []
+                # Kota dolumu Tavily'de 432/433 doner; diger anahtara failover.
+                last_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                logger.warning(f"Tavily {tavily_label} {last_error}; failover")
+                continue
 
             asyncio.create_task(log_provider_call(tavily_label))
             items = resp.json().get("results", [])
@@ -287,12 +309,16 @@ async def _google_search(name: str, topic: str, max_results: int = 8, tavily_que
                     "snippet": item.get("content", "").strip()[:300],
                     "url": item.get("url", ""),
                 })
-            logger.info(f"Tavily search for '{query}' returned {len(results)} results")
-            return results
+            logger.info(f"Tavily search for '{query}' ({tavily_label}) returned {len(results)} results")
+            return results  # 200 -> bos olsa bile GECERLI (servis calisiyor, sonuc yok)
 
-    except Exception as e:
-        logger.warning(f"Tavily search failed: {e}")
-        return []
+        except Exception as e:
+            last_error = str(e)
+            logger.warning(f"Tavily {tavily_label} failed: {e}; failover")
+            continue
+
+    # Tum anahtarlar basarisiz: servis kesintisi (bos-sonuctan ayri).
+    raise SearchUnavailableError(last_error or "all Tavily keys failed")
 
 
 # ── Model query functions (temperature sabit, JSON cikti) ─────────────────
@@ -929,7 +955,17 @@ async def check_brand_recall(
     # Step 1: Tavily web search with enriched query
     emit(msgs["web_search"])
     tavily_query = _build_tavily_query(name, topic, role, company, sector, location, "", website, entity_type)
-    web_results = await _google_search(name, topic, tavily_query=tavily_query)
+    # K1: web araması servis hatasıyla düşerse (tüm Tavily anahtarları) bunu
+    # "sonuç yok" (=0 puan) ile karıştırma; web_search_failed ile işaretle ki
+    # judge'ın uydurma_suphesi cap'i (eksik doğrulama verisinden doğan yapay
+    # şüphe) manşeti sessizce yarılamasın.
+    web_search_failed = False
+    try:
+        web_results = await _google_search(name, topic, tavily_query=tavily_query)
+    except SearchUnavailableError as e:
+        logger.warning(f"Tavily servis kesintisi; web doğrulama atlanıyor, ölçüm belirsiz: {e}")
+        web_results = []
+        web_search_failed = True
 
     # Step 1b: LinkedIn public profile check
     # Guvenlik (SSRF): linkedin_url kullanici girdisidir. Istek atilmadan ONCE
@@ -1078,16 +1114,20 @@ async def check_brand_recall(
                 dogruluk_values.append(dogruluk)
             formulation_scores = []
             shadow_scores = []
+            # K1: web araması servis hatasıyla düştüyse uydurma_suphesi cap'ini
+            # (30 tavanı) uygulama — bu şüphe doğrulama verisinin YOKLUĞUNDAN
+            # doğar, uydurmanın kanıtından değil. celiski_var korunur.
+            eff_uydurma = judge["uydurma_suphesi"] and not web_search_failed
             for p in data["formulation_parses"]:
                 uzunluk = _length_band_score(p.get("yanit", "")) if p.get("taniyor") else 0.0
                 s = _model_score_from_components(
                     p.get("taniyor", False), p.get("guven", 0), dogruluk, uzunluk,
-                    judge["uydurma_suphesi"], judge["celiski_var"],
+                    eff_uydurma, judge["celiski_var"],
                 )
                 formulation_scores.append(s)
                 shadow_scores.append(_model_score_shadow(
                     p.get("taniyor", False), p.get("guven", 0), dogruluk, uzunluk,
-                    judge["uydurma_suphesi"], judge["celiski_var"],
+                    eff_uydurma, judge["celiski_var"],
                 ))
             raw_median = statistics.median(formulation_scores) if formulation_scores else 0.0
             shadow_median = statistics.median(shadow_scores) if shadow_scores else 0.0

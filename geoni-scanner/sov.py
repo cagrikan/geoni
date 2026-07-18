@@ -60,17 +60,26 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text)
 
 
+def _bounded_match(needle: str, haystack: str) -> bool:
+    """Kelime-siniri korumali eslesme: substring degil. Y5: 'in' operatoru
+    kisa/generik adlarda yanlis pozitif uretiyordu ('Aras' -> 'arasinda',
+    'Nar' -> 'sonar'). SOV'un temel olcum biti bu; \\b-sinirli olmali."""
+    if not needle:
+        return False
+    return re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", haystack) is not None
+
+
 def _brand_mentioned(answer: str, name: str) -> bool:
     """Marka adinin (aksan/buyukluk toleransli) yanit icinde gecip gecmedigi."""
     if not answer or not name:
         return False
     norm_answer = _normalize(answer)
     norm_name = _normalize(name)
-    if norm_name in norm_answer:
+    if _bounded_match(norm_name, norm_answer):
         return True
     # Cok kelimeli adlarda ilk iki kelime de sayilir ("Acme Yazilim A.S." -> "acme yazilim")
     words = norm_name.split()
-    if len(words) >= 2 and " ".join(words[:2]) in norm_answer:
+    if len(words) >= 2 and _bounded_match(" ".join(words[:2]), norm_answer):
         return True
     return False
 
