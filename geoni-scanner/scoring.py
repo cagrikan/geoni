@@ -111,11 +111,15 @@ def compute_index_coverage(crawl_result: dict, indexing_status: dict) -> dict:
 def compute_ai_access_score(indexing_status: dict, crawl_result: dict) -> dict:
     """
     GEO'nun en temel kosulu: AI botlari siteye erisebiliyor mu?
-    - Arama/alintilanma botlari (OAI-SearchBot, PerplexityBot, ...) %60 —
+    - Arama/alintilanma botlari (OAI-SearchBot, PerplexityBot, ...) %68 —
       gercek zamanli AI yanitlarinda gorunmeyi dogrudan bunlar belirler.
     - Egitim botlari (GPTBot, ClaudeBot, ...) %20 — modelin kalici bilgisine
       girme sansi.
-    - llms.txt varligi %10, sitemap varligi %10 — niyet beyanlari.
+    - sitemap varligi %10 — kesif niyeti (Google + AI botlar sayfalari bulur).
+    - llms.txt varligi %2 (T6): motorlar fiilen tuketMIYOR (500M bot ziyaretinde
+      ~408 llms.txt istegi; Google okumuyor). Iyi hijyen/gelecege hazirlik sinyali
+      olarak minik agirlik; eskiden %10 idi ve skoru sisiriyordu. Bosalan %8
+      arama_ratio'ya (gercekten olcen sinyal) devredildi.
     """
     bot_access = indexing_status.get("bot_access", {}) or {}
     arama = bot_access.get("arama", {}) or {}
@@ -127,9 +131,9 @@ def compute_ai_access_score(indexing_status: dict, crawl_result: dict) -> dict:
     sitemap_found = bool(crawl_result.get("sitemap_found"))
 
     score = (
-        arama_ratio * 60
+        arama_ratio * 68
         + egitim_ratio * 20
-        + (10 if llms_txt else 0)
+        + (2 if llms_txt else 0)
         + (10 if sitemap_found else 0)
     )
     return {
@@ -322,15 +326,17 @@ def _parse_any_date(raw: str) -> datetime | None:
 
 def compute_freshness_score(pages: list[dict], sitemap_lastmods: list[str] | None = None) -> dict:
     """
-    v3: Tazelik artik gercek tarihlerden hesaplanir:
-      1) sitemap <lastmod> degerleri (crawler.py artik okuyor)
+    v4 (T7): Tazelik gercek tarihlerden hesaplanir ve 90-GUN penceresi ANA
+    sinyaldir. Kanit: Perplexity gibi motorlar >90 gunluk icerige atifi ~%65
+    dusuruyor; "son 12 ay" penceresi atif olasiligini fazla iyimser olcuyordu.
+      1) sitemap <lastmod> degerleri (crawler.py okuyor)
       2) sayfalardaki JSON-LD datePublished/dateModified (schema_dates)
-    Son 12 ay icinde guncellenen kayit orani skoru belirler.
-    Hic gercek tarih yoksa eski yil-metni sezgiseline (fallback) dusulur —
-    o sezgisel tek basina neredeyse anlamsizdi ("2026" yazisi araniyordu).
+    Agirlik: sabit 20 taban + p90_ratio ×50 (ana) + p365_ratio ×30 (genis taban).
+    Hic gercek tarih yoksa eski yil-metni sezgiseline (fallback) dusulur.
     """
     if not pages:
-        return {"score": 50.0, "signal": "none", "dated_count": 0, "recent_ratio": 0.0}
+        return {"score": 50.0, "signal": "none", "dated_count": 0,
+                "recent_ratio": 0.0, "p90_ratio": 0.0}
 
     now = datetime.now(timezone.utc)
     dates: list[datetime] = []
@@ -347,13 +353,13 @@ def compute_freshness_score(pages: list[dict], sitemap_lastmods: list[str] | Non
     if dates:
         recent = sum(1 for d in dates if (now - d).days <= 365)
         very_recent = sum(1 for d in dates if (now - d).days <= 90)
-        ratio = recent / len(dates)
-        boost = (very_recent / len(dates)) * 10  # son 3 ay aktifligi kucuk bonus
-        score = min(100.0, 30 + ratio * 60 + boost)
+        ratio = recent / len(dates)          # 365-gun: genis taban
+        p90 = very_recent / len(dates)       # 90-gun: atif olasiliginin ANA sinyali
+        score = min(100.0, 20 + p90 * 50 + ratio * 30)
         return {"score": score, "signal": "real_dates", "dated_count": len(dates),
-                "recent_ratio": round(ratio, 2)}
+                "recent_ratio": round(ratio, 2), "p90_ratio": round(p90, 2)}
 
-    # Fallback: eski yil-metni sezgiseli
+    # Fallback: eski yil-metni sezgiseli (gercek tarih yoksa)
     current_year = now.year
     recent_signals = 0
     for page in pages:
@@ -364,7 +370,7 @@ def compute_freshness_score(pages: list[dict], sitemap_lastmods: list[str] | Non
             recent_signals += 1
     ratio = recent_signals / len(pages)
     return {"score": min(100.0, 40 + ratio * 60), "signal": "year_text_fallback",
-            "dated_count": 0, "recent_ratio": round(ratio, 2)}
+            "dated_count": 0, "recent_ratio": round(ratio, 2), "p90_ratio": 0.0}
 
 
 # ── Sema: gercek JSON-LD (Madde 2.3) ────────────────────────────────────────
@@ -556,6 +562,7 @@ async def compute_ai_visibility_score(crawl_result: dict, indexing_status: dict,
             "freshness_signal": freshness["signal"],
             "freshness_dated_count": freshness["dated_count"],
             "freshness_recent_ratio": freshness["recent_ratio"],
+            "freshness_p90_ratio": freshness.get("p90_ratio", 0.0),  # T7: 90-gun ana sinyal
             "ai_access": ai_access,
         },
     }

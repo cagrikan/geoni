@@ -410,9 +410,12 @@ async def fulfill_llms_robots_ticket(ticket_id: int, domain: str) -> bool:
 
         # B-2: robots merge durumuna göre dürüst not.
         if robots_status == "already_open":
-            message += ("\n\n> ✅ Robots kontrolü: robots.txt dosyanız zaten tüm AI botlarına "
-                        "açık — değişiklik gerekmedi. llms.txt ve şema ile AI görünürlük "
-                        "altyapınızı tamamlıyoruz.")
+            # 4.5/M7: llms.txt'e abartılı "görünürlük artırır" iddiası yüklemeyiz —
+            # motorlar dosyayı fiilen tüketmiyor. Değeri: erişim hijyeni + gelecek hazırlığı.
+            message += ("\n\n> ✅ Robots kontrolü: robots.txt dosyanız zaten AI botlarının "
+                        "erişimine açık — değişiklik gerekmedi. llms.txt bir erişim/hijyen "
+                        "dosyasıdır (asıl AI görünürlüğünü içerik ve şema belirler); ileride "
+                        "llms.txt'i destekleyen araçlar için sitenizi hazır tutar.")
         elif robots_status == "created":
             message += ("\n\n> ⚠️ Canlı robots.txt'inize ulaşılamadı. Sitenizde ZATEN robots.txt "
                         "VARSA yukarıdaki dosyayla DEĞİŞTİRMEYİN; yalnızca `--- GEONI` bölümünü "
