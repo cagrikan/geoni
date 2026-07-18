@@ -23,9 +23,10 @@ import httpx
 from ssrf_guard import safe_get
 from indexing import TRAINING_CRAWLER_AGENTS, SEARCH_CRAWLER_AGENTS
 from db import (
-    get_latest_web_audit_by_domain, list_ticket_tasks, toggle_ticket_task,
+    get_latest_web_audit_by_domain, get_latest_audit_by_target,
+    list_ticket_tasks, toggle_ticket_task,
     add_ticket_message, get_ticket_type_by_key, mark_ticket_submitted,
-    upload_ticket_file, normalize_domain,
+    upload_ticket_file, normalize_domain, DOMAIN_ONLY_SERVICE_KEYS,
 )
 
 logger = logging.getLogger(__name__)
@@ -345,32 +346,57 @@ async def fulfill_schema_ticket(ticket_id: int, domain: str) -> bool:
         return False
 
 
-# Insan-uzman gerektirmeyen, satin alinir alinmaz otomatik teslim edilen
-# hizmet key'leri. Yeni bir otomatik hizmet eklerken buraya + dispatch'e ekle.
+def _lint_delivery_message(text: str) -> str | None:
+    """2.1 ortak teslim korkuluğu: otomasyonun ürettiği müşteri mesajı teslim
+    edilmeden ÖNCE denetlenir. Doldurulmamış `{...}` placeholder ya da boş/çok kısa
+    gövde = bozuk teslim → None döner (çağıran insana düşürür, çöp göndermez).
+    Aksi halde mesajı döner."""
+    t = (text or "").strip()
+    if len(t) < 20:
+        return None
+    if re.search(r"\{[a-z_]+\}", t):  # {target}/{robots_txt} gibi dolmamış şablon
+        return None
+    return t
+
+
+# Web-yüzeyi hizmetleri (domain zorunlu) DIŞINDA, satın alınır alınmaz otomatik
+# TESLİM edilen (submitted) hizmetler burada. content_package 2.3'te eklenir.
 AUTO_FULFILL_KEYS = {"llms_robots", "schema_setup"}
+# Yarı-otonom: otomasyon istihbarat/taslak HAZIRLAR ama teslimi (submitted) İNSAN
+# yapar. Satın almada hazırlık koşar + notify_experts ATLANMAZ. 2.4/2.5'te dolar.
+SEMI_AUTO_KEYS: set[str] = set()
 
 
 async def fulfill_auto_ticket(key: str, ticket_id: int, target: str) -> bool:
-    """Otomatik teslim dispatcher + SAVUNMA HATTI. Web-yüzeyi hizmetleri
-    (llms_robots/schema) yalnız GEÇERLİ bir web sitesine uygulanır; target domain
-    değilse (kişi/marka/sosyal ismi/@handle) ÇÖP dosya üretmek yerine müşteriden
-    web sitesini ister ve bileti 'open' bırakır. (Sert kapı satın alma/INTENT'te;
-    bu son savunma, oradan kaçan hiçbir hedefin çöp teslimat üretmemesini garanti eder.)"""
-    website = normalize_domain(target)
-    if website is None:
-        await add_ticket_message(ticket_id, None, "system", body=(
-            "Bu hizmet **web siteniz** için llms.txt / robots.txt / şema dosyaları "
-            "üretir. Taramanız bir web adresi içermediğinden dosyalar henüz "
-            "oluşturulamadı.\n\nWeb siteniz varsa **alan adınızı** (ör. `ornekmarka.com`) "
-            "bu bilete yazın; dosyalarınızı oluşturup ekleyelim. Web siteniz yoksa "
-            "bu hizmet uygulanamaz."
-        ))
-        logger.info(f"fulfill_auto_ticket: hedef domain degil ({target!r}), cop uretilmedi, bilet {ticket_id} open")
-        return False
-    if key == "llms_robots":
-        return await fulfill_llms_robots_ticket(ticket_id, website)
-    if key == "schema_setup":
-        return await fulfill_schema_ticket(ticket_id, website)
+    """Otomatik teslim dispatcher + SAVUNMA HATTI. Domain-yüzeyi hizmetleri
+    (llms_robots/schema — DOMAIN_ONLY_SERVICE_KEYS) yalnız GEÇERLİ bir web sitesine
+    uygulanır; target domain değilse (kişi/marka/sosyal ismi/@handle) ÇÖP dosya
+    üretmek yerine müşteriden web sitesini ister ve bileti 'open' bırakır. Domain
+    gerektirmeyen otomatik hizmetler (content_package) bu kapıya TABİ DEĞİLDİR —
+    isim/@handle hedefinde de çalışır (hammaddesini get_latest_audit_by_target'tan alır)."""
+    if key in DOMAIN_ONLY_SERVICE_KEYS:
+        website = normalize_domain(target)
+        if website is None:
+            await add_ticket_message(ticket_id, None, "system", body=(
+                "Bu hizmet **web siteniz** için llms.txt / robots.txt / şema dosyaları "
+                "üretir. Taramanız bir web adresi içermediğinden dosyalar henüz "
+                "oluşturulamadı.\n\nWeb siteniz varsa **alan adınızı** (ör. `ornekmarka.com`) "
+                "bu bilete yazın; dosyalarınızı oluşturup ekleyelim. Web siteniz yoksa "
+                "bu hizmet uygulanamaz."
+            ))
+            logger.info(f"fulfill_auto_ticket: hedef domain degil ({target!r}), cop uretilmedi, bilet {ticket_id} open")
+            return False
+        if key == "llms_robots":
+            return await fulfill_llms_robots_ticket(ticket_id, website)
+        if key == "schema_setup":
+            return await fulfill_schema_ticket(ticket_id, website)
+    return False
+
+
+async def prepare_semi_ticket(key: str, ticket_id: int, target: str) -> bool:
+    """Yarı-otonom hazırlık dispatcher: istihbarat/taslak üretir, bilete ekler ama
+    'submitted' YAPMAZ (teslimi uzman tamamlar). Çağıran (main.py) bundan bağımsız
+    olarak notify_experts_new_task'ı HER ZAMAN çağırır. 2.4/2.5'te doldurulacak."""
     return False
 
 

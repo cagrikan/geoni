@@ -60,7 +60,9 @@ from gemini_admin import get_gemini_cost_summary
 from total_cost_admin import get_admin_total_cost_summary
 import polar
 import iap
-from ticket_automation import fulfill_auto_ticket, AUTO_FULFILL_KEYS
+from ticket_automation import (
+    fulfill_auto_ticket, prepare_semi_ticket, AUTO_FULFILL_KEYS, SEMI_AUTO_KEYS,
+)
 
 class AuditRequest(BaseModel):
     domain: str
@@ -1120,19 +1122,31 @@ async def create_ticket(body: TicketPurchaseRequest, http_request: Request):
         }
         raise HTTPException(status_code=400, detail=messages.get(result["error"], "Bilet satın alınamadı"))
     key = result.get("ticket_type_key")
-    if key in AUTO_FULFILL_KEYS and result.get("ticket_id") and body.target:
-        # Insan-uzman gerektirmeyen hizmetler (llms_robots, schema_setup) satin
-        # alinir alinmaz otomatik teslim edilir (admin hala 'submitted'i
-        # onaylamali). Arkaplanda kosar: tarama sorgusu + dosya uretimi satin
-        # alma yanitini geciktirmesin.
+    tid = result.get("ticket_id")
+    if key in AUTO_FULFILL_KEYS and tid and body.target:
+        # Otomatik teslim: satin alinir alinmaz uretilir + 'submitted' (admin hala
+        # onaylar). Arkaplanda kosar (tarama sorgusu + uretim yaniti geciktirmesin).
+        # Otomasyon DUSERSE musteri parasini kaybetmez: normal uzman akisina dusulur.
         async def _auto_fulfill(tid: int, target: str, tkey: str):
             if await fulfill_auto_ticket(tkey, tid, target):
                 await notify_ticket_event(tid, "submitted")
-        asyncio.create_task(_auto_fulfill(result["ticket_id"], body.target, key))
-    elif result.get("ticket_id"):
-        # Insan-uzman gerektiren gorev: uzmanlik alani eslesen uzmanlara
-        # "yeni gorev musait" push'u (atama beklemeden haberdar olsunlar).
-        asyncio.create_task(notify_experts_new_task(result["ticket_id"]))
+            else:
+                await notify_experts_new_task(tid)  # otomasyon dustu → uzmana dus
+        asyncio.create_task(_auto_fulfill(tid, body.target, key))
+    elif key in SEMI_AUTO_KEYS and tid:
+        # Yari-otonom: otomasyon istihbarat/taslak hazirlar (submitted YAPMAZ),
+        # sonra teslimi uzman tamamlar. notify_experts ATLANMAZ — hazirlik dusse
+        # bile uzman bilgilendirilir (aksi halde bilet sessizce oturur).
+        async def _semi_prepare(tid: int, target: str, tkey: str):
+            try:
+                await prepare_semi_ticket(tkey, tid, target)
+            except Exception as e:
+                logger.warning(f"prepare_semi_ticket error (t={tid}): {e}")
+            await notify_experts_new_task(tid)
+        asyncio.create_task(_semi_prepare(tid, body.target or "", key))
+    elif tid:
+        # Tam insan-uzman gorevi: eslesən uzmanlara "yeni gorev musait" push'u.
+        asyncio.create_task(notify_experts_new_task(tid))
     return {"success": True}
 
 @app.get("/api/tickets")

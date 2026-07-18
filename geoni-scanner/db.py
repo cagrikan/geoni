@@ -1773,6 +1773,46 @@ async def get_latest_web_audit_by_domain(domain: str) -> dict | None:
     return None
 
 
+async def get_latest_audit_by_target(target: str) -> dict | None:
+    """En son TAMAMLANMIS taramayi hedefe gore dondur — TİPTEN BAĞIMSIZ.
+    Web taramalari hedefi `domain` kolonunda, kişi/marka/sosyal taramalari `name`
+    kolonunda tutar (bkz. create_pending_audit type=web|person|brand|social). Entity
+    hizmetleri (content/citation/wikidata) domain-olmayan hedeflerde de çalıştığı için
+    bu hizmetlerin fulfill'i hammaddesini (sov/opportunities/top_topics) buradan çeker.
+
+    PostgREST filtre-enjeksiyonuna (F-ORTA-10) karşı `or=(...)` yerine domain ve name
+    için AYRI param'lı (httpx-encode'lu) sorgu atılır; en yeni created_at kazanır."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return None
+    t = (target or "").strip()
+    if not t:
+        return None
+    rows: list[dict] = []
+    try:
+        async with httpx.AsyncClient() as client:
+            for col in ("domain", "name"):
+                r = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/audits",
+                    params={
+                        col: f"eq.{t}",
+                        "status": "eq.complete",
+                        "select": "*",
+                        "order": "created_at.desc",
+                        "limit": "1",
+                    },
+                    headers=_headers(), timeout=10,
+                )
+                if r.status_code == 200 and r.json():
+                    rows.append(r.json()[0])
+    except Exception as e:
+        logger.warning(f"get_latest_audit_by_target error: {e}")
+        return None
+    if not rows:
+        return None
+    rows.sort(key=lambda a: a.get("created_at") or "", reverse=True)
+    return rows[0]
+
+
 async def admin_list_audits(
     search: str = "", sort_by: str = "created_at", sort_dir: str = "desc", limit: int = 50, offset: int = 0
 ) -> dict:
