@@ -110,8 +110,10 @@ def _extract_schema_info(raw_blocks: list[str]) -> dict:
     return {"types": sorted(types), "dates": sorted(dates)}
 
 
-async def extract_page_metadata(page) -> dict:
-    """Extract title, meta description, h1, canonical, and JSON-LD schema types from a loaded Playwright page."""
+async def extract_page_metadata(page, is_home: bool = False) -> dict:
+    """Extract title, meta description, h1, canonical, and JSON-LD schema types from a loaded Playwright page.
+    is_home=True'da ayrica site_assets (logo/sameAs/arama ucu) cikarilir — schema.org
+    zenginlestirmesi icin (yalnizca ana sayfada, ek maliyet yok)."""
     try:
         title = await page.title()
     except Exception:
@@ -162,6 +164,27 @@ async def extract_page_metadata(page) -> dict:
     except Exception:
         pass
 
+    site_assets: dict = {}
+    if is_home:
+        # P1: schema.org zenginlestirmesi — logo (og:image/icon), sosyal profiller
+        # (sameAs), arama ucu (SearchAction). Tumu try icinde; crawl'i asla bozma.
+        try:
+            site_assets = await page.evaluate(r"""() => {
+                const abs = (u) => { try { return new URL(u, location.href).href } catch { return null } };
+                let logo = (document.querySelector("meta[property='og:image']") || {}).content
+                    || (document.querySelector("link[rel='apple-touch-icon']") || {}).href
+                    || (document.querySelector("link[rel~='icon']") || {}).href || null;
+                logo = logo ? abs(logo) : null;
+                const hosts = ['instagram.com','facebook.com','twitter.com','x.com','linkedin.com','youtube.com','tiktok.com'];
+                const sameAs = [...new Set([...document.querySelectorAll('a[href]')].map(a => a.href).filter(h => {
+                    try { const hn = new URL(h).hostname.replace(/^www\./,''); return hosts.some(s => hn === s || hn.endsWith('.'+s)); } catch { return false }
+                }))].slice(0, 8);
+                const hasSearch = !!document.querySelector("form[action*='search'], form[action*='ara'], input[type='search'], [role='search']");
+                return { logo, sameAs, has_search: hasSearch };
+            }""")
+        except Exception:
+            site_assets = {}
+
     return {
         "title": title or "",
         "meta_description": meta_description or "",
@@ -170,6 +193,7 @@ async def extract_page_metadata(page) -> dict:
         "schema_types": schema_types,
         "schema_dates": schema_dates,
         "noindex": noindex,
+        "site_assets": site_assets,
     }
 
 
@@ -216,6 +240,8 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
             user_agent="GeoniBot/1.0 (+https://geoni.ai/bot)"
         )
 
+        site_assets_holder: dict = {}  # P1: ana sayfadan logo/sameAs/arama ucu
+
         async def visit(url: str, depth: int):
             if (
                 url in visited
@@ -245,7 +271,10 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
                     await page.goto(
                         url, timeout=DEFAULT_TIMEOUT_PER_PAGE * 1000, wait_until="domcontentloaded"
                     )
-                    metadata = await extract_page_metadata(page)
+                    metadata = await extract_page_metadata(page, is_home=(depth == 0))
+                    sa = metadata.pop("site_assets", None)
+                    if depth == 0 and sa:
+                        site_assets_holder.update(sa)  # P1: ana sayfa logo/sameAs
                     results.append({"url": url, **metadata})
 
                     if depth < DEFAULT_DEPTH_LIMIT:
@@ -292,4 +321,5 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
         "pages": results,
         "sitemap_found": sitemap["found"],
         "sitemap_lastmods": sitemap["lastmods"],
+        "site_assets": site_assets_holder,
     }

@@ -284,6 +284,7 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
             "diagnostics": score_result.get("diagnostics"),
             "total_pages": crawl_result["total_pages"],
             "sitemap_found": crawl_result.get("sitemap_found"),  # B-4: llms/robots sitemap kanıtı
+            "site_assets": crawl_result.get("site_assets"),  # P1: schema logo/sameAs
             "indexed_pages": indexing_status["indexed_count"],
             "platforms": {
                 # Not: bu alanlar artik ARAMA/ALINTILANMA botlarina (OAI-SearchBot,
