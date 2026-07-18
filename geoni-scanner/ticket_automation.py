@@ -14,6 +14,7 @@ SONRA iletilecek" gibi bir gecikme yanilsamasi verilmez.
 """
 import json
 import logging
+import os
 import re
 from datetime import date
 from urllib.robotparser import RobotFileParser
@@ -346,6 +347,266 @@ async def fulfill_schema_ticket(ticket_id: int, domain: str) -> bool:
         return False
 
 
+# ── content_package otomasyonu (2.3) ───────────────────────────────────────
+# Konu SEÇİMİ deterministik (taramadan: kanıtlanmış boşluklar), METİN üretimi LLM.
+# Halüsinasyon alanı dar tutulur: konu/sorgu/rakip adları hep gerçek veriden.
+
+_LLM_TIMEOUT = 45
+
+
+async def _llm_text(prompt: str, max_tokens: int = 1800) -> str | None:
+    """topics.py PROVIDER_CHAIN deseninin METİN (JSON değil) döndüren hali:
+    Anthropic → OpenAI → Gemini, ilk başarılı yanıtın düz metnini döner. Hiçbiri
+    yoksa/hepsi düşerse None (çağıran insana düşürür). Anahtarlar env'den."""
+    ak, ok, gk = (os.environ.get("ANTHROPIC_API_KEY", ""),
+                  os.environ.get("OPENAI_API_KEY", ""),
+                  os.environ.get("GOOGLE_API_KEY", ""))
+    try:
+        if ak:
+            async with httpx.AsyncClient() as c:
+                r = await c.post("https://api.anthropic.com/v1/messages",
+                    headers={"x-api-key": ak, "anthropic-version": "2023-06-01",
+                             "content-type": "application/json"},
+                    json={"model": "claude-sonnet-4-6", "max_tokens": max_tokens,
+                          "messages": [{"role": "user", "content": prompt}]},
+                    timeout=_LLM_TIMEOUT)
+            if r.status_code == 200:
+                txt = "".join(b.get("text", "") for b in r.json().get("content", [])
+                              if b.get("type") == "text").strip()
+                if txt:
+                    return txt
+            else:
+                logger.warning(f"content LLM anthropic {r.status_code}: {r.text[:160]}")
+    except Exception as e:
+        logger.warning(f"content LLM anthropic failed: {e}")
+    try:
+        if ok:
+            async with httpx.AsyncClient() as c:
+                r = await c.post("https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {ok}", "Content-Type": "application/json"},
+                    json={"model": "gpt-4o", "max_tokens": max_tokens,
+                          "messages": [{"role": "user", "content": prompt}]},
+                    timeout=_LLM_TIMEOUT)
+            if r.status_code == 200:
+                txt = (r.json()["choices"][0]["message"]["content"] or "").strip()
+                if txt:
+                    return txt
+    except Exception as e:
+        logger.warning(f"content LLM openai failed: {e}")
+    try:
+        if gk:
+            async with httpx.AsyncClient() as c:
+                r = await c.post(
+                    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+                    headers={"x-goog-api-key": gk},
+                    json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=_LLM_TIMEOUT)
+            if r.status_code == 200:
+                txt = (r.json()["candidates"][0]["content"]["parts"][0]["text"] or "").strip()
+                if txt:
+                    return txt
+    except Exception as e:
+        logger.warning(f"content LLM gemini failed: {e}")
+    return None
+
+
+def _select_content_topics(audit: dict | None) -> dict:
+    """DETERMİNİSTİK konu seçimi (LLM YOK) — hepsi gerçek tarama verisinden:
+    1) sov.queries mentioned=False & adjacent değil → KANITLANMIŞ boşluk (öncelik)
+    2) opportunities → sitenin kapsamadığı, kategoride atıf alan konular
+    3) top_topics → derinleştirme adayı
+    4) sov.competitors → karşılaştırma içeriği ("X vs Y", "X alternatifleri")
+    Döner: {gaps, opportunities, strengths, competitors, has_sov}."""
+    result = (audit or {}).get("result_json") or {}
+    sov = result.get("sov") or {}
+    gaps = []
+    for q in (sov.get("queries") or []):
+        if not q.get("mentioned") and not q.get("adjacent"):
+            qt = _sanitize_text(q.get("query") or "", 120)
+            if qt:
+                gaps.append(qt)
+    opps = [_sanitize_text(o.get("topic") if isinstance(o, dict) else o, 80)
+            for o in (result.get("opportunities") or [])]
+    opps = [o for o in dict.fromkeys(o for o in opps if o)]
+    strengths = [_sanitize_text(t.get("topic") if isinstance(t, dict) else t, 80)
+                 for t in (result.get("top_topics") or [])]
+    strengths = [s for s in dict.fromkeys(s for s in strengths if s)]
+    comps = [_sanitize_text(c.get("name") if isinstance(c, dict) else c, 60)
+             for c in (sov.get("competitors") or [])]
+    comps = [c for c in dict.fromkeys(c for c in comps if c)]
+    return {"gaps": gaps[:6], "opportunities": opps[:6], "strengths": strengths[:6],
+            "competitors": comps[:6], "has_sov": bool(sov.get("checked"))}
+
+
+def _content_has_material(sel: dict) -> bool:
+    """Otonom üretim için yeterli deterministik hammadde var mı? Yoksa insana
+    düşülür (çöp/jenerik içerik üretmektense uzman doğru veriden yazsın)."""
+    return bool(sel["gaps"] or sel["opportunities"] or sel["strengths"] or sel["competitors"])
+
+
+async def generate_content_briefs(name: str, topic: str, audit: dict | None, kind: str) -> str | None:
+    """3 içerik brief'i üretir. Konular deterministik (yukarıda seçildi), metni LLM
+    yazar (AEO/GEO kurallarıyla). kind='web' → makale brief; aksi (person/brand/
+    social) → bio/platform-metni modu. Yeterli materyal yoksa None."""
+    sel = _select_content_topics(audit)
+    if not _content_has_material(sel):
+        return None
+    data_lines = []
+    if sel["gaps"]:
+        data_lines.append("KANITLANMIŞ BOŞLUKLAR (AI'a soruldu, marka anılmadı — en öncelikli hedefler): "
+                          + "; ".join(sel["gaps"]))
+    if sel["opportunities"]:
+        data_lines.append("FIRSAT KONULARI (kategoride atıf alan, sitenin kapsamadığı): "
+                          + "; ".join(sel["opportunities"]))
+    if sel["strengths"]:
+        data_lines.append("GÜÇLÜ KONULAR (derinleştirme adayı): " + "; ".join(sel["strengths"]))
+    if sel["competitors"]:
+        data_lines.append("RAKİPLER (karşılaştırma içeriği için): " + "; ".join(sel["competitors"]))
+    data_block = "\n".join(f"- {l}" for l in data_lines)
+
+    if kind == "web":
+        fmt = (
+            "Her brief AYNEN şu markdown formatında olsun:\n"
+            "## Brief N — HEDEF: \"<hedef sorgu>\" (<neden: taramada boşluk/fırsat>)\n"
+            "**Başlık:** <SEO+AEO uyumlu, merak uyandıran başlık>\n"
+            "**Hedef sorgu(lar):** <2-3 gerçek arama sorgusu>\n"
+            "**İlk paragraf cevabı:** <ilk 2 cümlede verilecek net cevabın ne olacağı>\n"
+            "**Ana sorular (H2):** <4-5 soru-başlık, • ile ayır>\n"
+            "**Özgün değer:** <başka yerde olmayan öğe: fiyat aralığı/vaka/yerel veri/mini-anket>\n"
+            "**SSS (FAQPage schema):** <kaç soru> · **Uzunluk:** <800-1500 kelime> · **Dil:** <dil>\n"
+            "**Yayın:** <kendi blog → LinkedIn/Medium özeti> · **Yayınlanınca:** llms.txt güncellemesi için bilete URL yazın.\n"
+        )
+        role = "AEO (answer engine optimization) uzmanı bir içerik stratejistisin"
+    else:
+        fmt = (
+            "Web sitesi olmayan bir KİŞİ/MARKA için 'içerik paketi' brief'leri. Her biri:\n"
+            "## Brief N — HEDEF: \"<konu/sorgu>\"\n"
+            "**Platform:** <YouTube video / LinkedIn yazı / X başlık vb.>\n"
+            "**Başlık/konu:** <kişinin adının bu konuyla yan yana geçeceği metin>\n"
+            "**İlk cümle cevabı:** <net, alıntılanabilir açılış>\n"
+            "**Ana noktalar:** <3-4 madde, • ile>\n"
+            "**Bio tutarlılığı notu:** <tüm platform bio'larında geçmesi gereken kimlik cümlesi>\n"
+            "**Özgün değer:** <kişiye özel deneyim/veri>\n"
+        )
+        role = "kişisel marka + AI görünürlüğü uzmanısın"
+    prompt = (
+        f"Sen {role}. Amaç: yapay zekâ arama motorlarının (ChatGPT, Perplexity, "
+        f"Gemini, Claude) ALINTILAYACAĞI içerik ürettirmek.\n\n"
+        f"MARKA/KİŞİ: {name}\nKONU/ALAN: {topic or '(taramadan)'}\n\n"
+        f"AŞAĞIDAKİ GERÇEK TARAMA VERİSİNDEN 3 içerik brief'i üret (konuları BU "
+        f"veriden seç, uydurma):\n{data_block}\n\n"
+        f"AEO/GEO kuralları: soru-başlık + ilk 2 cümlede net cevap; her H2 bağımsız "
+        f"alıntılanabilir; en az bir özgün veri/istatistik; FAQPage için SSS; gerçek "
+        f"yazar+tarih (E-E-A-T). Şişirme yok.\n\n{fmt}\n"
+        f"Yalnız 3 brief'i markdown olarak ver, başka açıklama ekleme."
+    )
+    return await _llm_text(prompt, max_tokens=1800)
+
+
+async def generate_content_draft(brief_block: str, name: str, lang: str) -> str | None:
+    """İlk brief'in TAM yazı taslağını üretir. 'TASLAK' etiketli, müşterinin kendi
+    verisini (fiyat/vaka) ekleyeceği [KÖŞELİ PARANTEZ] boşluklu — sahte 'insan
+    yazdı' izlenimi vermeden (C-1 dersi)."""
+    lang_name = "İngilizce" if (lang or "tr").startswith("en") else "Türkçe"
+    prompt = (
+        f"Aşağıdaki içerik brief'lerinin İLK brief'i için TAM bir makale taslağı yaz "
+        f"({lang_name}). AEO kuralları: H1 başlık; ilk paragrafta 40-60 kelimede net "
+        f"cevap; soru formunda H2'ler; her bölüm bağımsız alıntılanabilir; sonda 5 "
+        f"soruluk SSS. Marka: {name}.\n\n"
+        f"ÖNEMLİ: Müşterinin kendi verisini eklemesi gereken yerlere [KÖŞELİ PARANTEZ] "
+        f"içinde açık talimat bırak (ör. [BURAYA kliniğinizin 2026 fiyat aralığını "
+        f"yazın — AI fiyat veren kaynağı alıntılar]). Uydurma sayı/iddia YAZMA; "
+        f"doğrulanması gereken yerleri parantezle işaretle.\n\n"
+        f"BRIEF'LER:\n{brief_block[:3000]}\n\n"
+        f"Yalnız makale taslağını markdown ver."
+    )
+    return await _llm_text(prompt, max_tokens=2200)
+
+
+async def fulfill_content_ticket(ticket_id: int, target: str) -> bool:
+    """content_package otonom teslimi: 3 brief + 1 taslak + yayın planı → bilete
+    dosya+mesaj olarak eklenir, 'submitted'a çekilir. Yeterli tarama verisi yoksa
+    (sov/opportunities boş) insana düşer (return False → dispatch notify_experts)."""
+    try:
+        audit = await get_latest_audit_by_target(target)
+        sel = _select_content_topics(audit)
+        if not _content_has_material(sel):
+            await add_ticket_message(ticket_id, None, "system", body=(
+                "İçerik paketiniz için önce bir GEONI taraması gerekiyor: içerik "
+                "konularını **tahmin değil**, taramanızın bulduğu gerçek boşluklardan "
+                "(AI'ın sizi anmadığı sorgular, kategori fırsatları) seçiyoruz. Bu "
+                "hedef için tamamlanmış tarama bulunamadı.\n\nBir tarama yaptırıp bu "
+                "bilete yazarsanız içerik paketinizi hemen oluşturup ekleriz."
+            ))
+            logger.info(f"fulfill_content_ticket: yetersiz materyal (t={ticket_id}), insana dusuldu")
+            return False
+
+        result = (audit or {}).get("result_json") or {}
+        atype = (audit or {}).get("type") or "web"
+        kind = "web" if atype == "web" else "social"
+        brand = result.get("brand_recall") or {}
+        name = _sanitize_text(brand.get("inferred_name") or "", 60) or (
+            normalize_domain(target) or target)
+        topic = _sanitize_text(brand.get("inferred_topic") or "", 200)
+        lang = (audit or {}).get("lang") or result.get("lang") or "tr"
+
+        briefs = await generate_content_briefs(name, topic, audit, kind)
+        briefs = _lint_delivery_message(briefs or "")
+        if not briefs:
+            logger.info(f"fulfill_content_ticket: brief uretimi dustu (t={ticket_id}), insana dusuldu")
+            return False
+        draft = await generate_content_draft(briefs, name, lang)
+        draft = (draft or "").strip() or None
+
+        tasks = await list_ticket_tasks(ticket_id)
+        for task in tasks:  # B-5: yalnız üretim görevleri; "yayınla/onayla" işaretlenmez
+            await toggle_ticket_task(task["id"], ticket_id, _is_auto_completable(task.get("title", "")))
+
+        gap_note = ""
+        if sel["gaps"]:
+            gap_note = ("\n\nBu brief'ler **taramanızda AI'ın sizi anmadığı** şu sorgulardan "
+                        "seçildi (kanıtlanmış boşluklar): " + ", ".join(f"“{g}”" for g in sel["gaps"][:4]) + ".")
+        message = (
+            f"# İçerik Paketiniz hazır\n\n{name} için yapay zekâ motorlarının "
+            f"**alıntılayacağı** içerik planını oluşturduk: 3 içerik brief'i + 1 tam "
+            f"yazı taslağı + yayın planı.{gap_note}\n\n"
+            f"---\n\n{briefs}\n"
+        )
+        if draft:
+            message += (
+                "\n---\n\n## İlk içeriğin tam taslağı (TASLAK)\n\n"
+                "> Bu taslak yayına hazır bir iskelettir. **[köşeli parantez]** içindeki "
+                "yerlere kendi verilerinizi (fiyat, vaka, yerel bilgi) ekleyin — AI "
+                "motorları özgün veri veren kaynağı alıntılar. Yayınlamadan önce "
+                "uzmanlık doğrulaması yapın.\n\n" + draft + "\n"
+            )
+        message += (
+            "\n---\n\n**Yayınlayınca:** içerik URL'sini bu bilete yazın; sayfayı "
+            "llms.txt'inize ücretsiz ekler, güncelliğini izlemenize yardımcı oluruz. "
+            "İçeriği bir sektör sitesine **misafir yazı** olarak da verebilirsiniz — "
+            "üçüncü-taraf atıf için “Güvenilir Kaynaklarda Görünürlük” hizmetimiz tam bunu yapar."
+        )
+        message = _lint_delivery_message(message)
+        if not message:
+            return False
+        await add_ticket_message(ticket_id, None, "system", body=message)
+
+        briefs_url = await upload_ticket_file(ticket_id, "icerik-briefleri.md", briefs)
+        if briefs_url:
+            await add_ticket_message(ticket_id, None, "system",
+                                     attachment_url=briefs_url, attachment_name="icerik-briefleri.md")
+        if draft:
+            draft_url = await upload_ticket_file(ticket_id, "taslak-1.md", draft)
+            if draft_url:
+                await add_ticket_message(ticket_id, None, "system",
+                                         attachment_url=draft_url, attachment_name="taslak-1.md")
+
+        await mark_ticket_submitted(ticket_id)
+        return True
+    except Exception as e:
+        logger.warning(f"fulfill_content_ticket error: {e}")
+        return False
+
+
 def _lint_delivery_message(text: str) -> str | None:
     """2.1 ortak teslim korkuluğu: otomasyonun ürettiği müşteri mesajı teslim
     edilmeden ÖNCE denetlenir. Doldurulmamış `{...}` placeholder ya da boş/çok kısa
@@ -359,9 +620,10 @@ def _lint_delivery_message(text: str) -> str | None:
     return t
 
 
-# Web-yüzeyi hizmetleri (domain zorunlu) DIŞINDA, satın alınır alınmaz otomatik
-# TESLİM edilen (submitted) hizmetler burada. content_package 2.3'te eklenir.
-AUTO_FULFILL_KEYS = {"llms_robots", "schema_setup"}
+# Satın alınır alınmaz otomatik TESLİM edilen (submitted) hizmetler.
+# llms_robots/schema_setup domain gerektirir (DOMAIN_ONLY); content_package her
+# hedef tipinde çalışır (hammaddesini get_latest_audit_by_target'tan alır).
+AUTO_FULFILL_KEYS = {"llms_robots", "schema_setup", "content_package"}
 # Yarı-otonom: otomasyon istihbarat/taslak HAZIRLAR ama teslimi (submitted) İNSAN
 # yapar. Satın almada hazırlık koşar + notify_experts ATLANMAZ. 2.4/2.5'te dolar.
 SEMI_AUTO_KEYS: set[str] = set()
@@ -390,6 +652,10 @@ async def fulfill_auto_ticket(key: str, ticket_id: int, target: str) -> bool:
             return await fulfill_llms_robots_ticket(ticket_id, website)
         if key == "schema_setup":
             return await fulfill_schema_ticket(ticket_id, website)
+        return False
+    # Domain gerektirmeyen otomatik hizmetler (isim/@handle/domain — hepsi geçerli):
+    if key == "content_package":
+        return await fulfill_content_ticket(ticket_id, target)
     return False
 
 
