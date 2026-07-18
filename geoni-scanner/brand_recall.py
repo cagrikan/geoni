@@ -135,6 +135,19 @@ WEIGHTS_SOV = {
     "share_of_voice":   0.30,
 }
 
+# Sosyal (influencer/@handle) modu: ticari asil metrik "AI beni ONERIYOR mu"
+# (who-to-follow = SOV), tanima degil. Report 18: SOV birincil. SOV %55, recall
+# (modeller) %25, dogruluk %15, web/relevance %5. Yalniz social + SOV olculduyse.
+WEIGHTS_SOCIAL = {
+    "claude":           0.083,
+    "openai":           0.084,
+    "gemini":           0.0,
+    "perplexity":       0.083,
+    "response_quality": 0.15,
+    "topic_relevance":  0.05,
+    "share_of_voice":   0.55,
+}
+
 # Q1: score_legacy referansi — DONDURULMUS v3 (SOV'suz) agirliklar. v4 degisikligini
 # (gemini 0'lama + via_web tavani kaldirma) net karsilastirmak icin sabit kalir;
 # WEIGHTS gibi degistirilmez.
@@ -803,6 +816,54 @@ def _build_formulations(name: str, topic: str, lang: str = "tr") -> list[str]:
     return [f1, f2, f3]
 
 
+def _extract_json_obj(text: str) -> dict | None:
+    """Metinden ilk JSON nesnesini cikar (kod-bloklu/gurultulu yanit toleransli)."""
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except Exception:
+        m = re.search(r"\{.*\}", text, re.DOTALL)
+        if m:
+            try:
+                return json.loads(m.group(0))
+            except Exception:
+                return None
+    return None
+
+
+async def _resolve_social_identity(handle: str, web_results: list, ask_llm) -> dict | None:
+    """Report 18 [KRITIK]: LLM'ler '@garyvee'yi degil 'Gary Vaynerchuk'u bilir —
+    handle ile recall yapisal olarak dusuk skor uretir. Handle'i, taramada ZATEN
+    cekilen web sonuclarindan gorunen ad + platforma cozer; recall/SOV artik
+    'Ad (@handle)' ile sorulur. Cozulemezse None -> @handle ile devam (mevcut
+    davranis; hicbir seyi bozmaz)."""
+    ctx = _format_web_context(web_results, limit=6)
+    h = (handle or "").lstrip("@").strip()
+    if not ctx.strip() or not h:
+        return None
+    prompt = (
+        f"Asagidaki web arama sonuclari buyuk olasilikla '@{h}' sosyal medya hesabina "
+        f"ait. Bu hesabin GERCEK/GORUNEN adini ve ana platformunu cikar. Sonuclar baska "
+        f"birine aitse ya da emin degilsen name=null ver.\n\n{ctx}\n\n"
+        f'Yalnizca su JSON: {{"name": "Gorunen Ad veya null", '
+        f'"platform": "instagram|youtube|tiktok|x|linkedin|null"}}'
+    )
+    try:
+        data = _extract_json_obj((await ask_llm(prompt)) or "")
+        if not data:
+            return None
+        nm = str(data.get("name") or "").strip()
+        if len(nm) < 2 or nm.lower() in ("null", "none"):
+            return None
+        plat = str(data.get("platform") or "").strip().lower()
+        if plat not in ("instagram", "youtube", "tiktok", "x", "twitter", "linkedin"):
+            plat = ""
+        return {"name": nm[:80], "platform": plat}
+    except Exception:
+        return None
+
+
 def _build_failover_prompt(name: str, topic: str, web_results: list, lang: str = "tr") -> str:
     has_topic = bool(topic) and topic.strip().lower() != name.strip().lower()
     context = _format_web_context(web_results, limit=5)
@@ -1185,6 +1246,15 @@ async def check_brand_recall(
         web_results = []
         web_search_failed = True
 
+    # Report 18 [KRITIK]: sosyal handle -> gorunen ad cozumu. Recall/SOV bundan
+    # sonra "Ad (@handle)" ile sorulur (LLM'ler @garyvee'yi degil Gary Vaynerchuk'u
+    # bilir). Cozulemezse @handle ile devam (mevcut davranis).
+    resolved_identity = None
+    if social and name.startswith("@"):
+        resolved_identity = await _resolve_social_identity(name, web_results, _ask_claude)
+        if resolved_identity and resolved_identity.get("name"):
+            name = f"{resolved_identity['name']} ({name})"
+
     # Step 1b: LinkedIn public profile check
     # Guvenlik (SSRF): linkedin_url kullanici girdisidir. Istek atilmadan ONCE
     # host'un yalniz linkedin.com (veya alt alan adi) oldugunu ve public bir
@@ -1425,7 +1495,17 @@ async def check_brand_recall(
     relevance_score = _topic_relevance_score(web_results, name, topic)
 
     sov_checked = bool(sov_result.get("checked")) and sov_result.get("score") is not None
-    base_weights = WEIGHTS_SOV if sov_checked else WEIGHTS
+    # Sosyal modda SOV birincil (report 18): social + SOV olculduyse WEIGHTS_SOCIAL.
+    if social and sov_checked:
+        base_weights = WEIGHTS_SOCIAL
+    elif sov_checked:
+        base_weights = WEIGHTS_SOV
+    else:
+        base_weights = WEIGHTS
+    # Report 18: sosyalde nis (SOV) asil deger. Nis cozulemedigi icin SOV
+    # olculemediyse skoru sessizce kirik recall'a dusurme -> UI'a "nis gir" isareti.
+    needs_niche = bool(social and not sov_checked and not custom_queries
+                       and not has_usable_topic(name, sov_topic))
     # A5+Q2: olculemeyen (API hatasi) motorun payini SADECE olculen motorlar
     # arasinda dagit; model grubu toplam payi (M) sabit kalir. quality/topic/sov
     # agirliklari DOKUNULMAZ — dusen bir motor SOV'u/kaliteyi daha onemli yapmaz.
@@ -1513,6 +1593,10 @@ async def check_brand_recall(
         "web_results": web_results,
         "performing_topics": topics["performing_topics"],
         "opportunity_topics": topics["opportunity_topics"],
+        # Report 18 (sosyal): cozulen kimlik ("AI seni soyle taniyor" + viral) ve
+        # nis-eksik bayragi (UI "nis gir, olcelim" akisi). Web/marka modunda None/False.
+        "resolved_identity": resolved_identity,
+        "needs_niche": needs_niche,
         # F-YUKSEK-4: hicbir motor olculemedi (tumu API hatasi) VE SOV de yoksa
         # bu tarama guvenilir degil. Eskiden kosulsuz True doner, ~0 skor
         # kaliciya (izleme/paylasim karti dahil) yazilirdi. checked=False ile
