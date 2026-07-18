@@ -98,6 +98,7 @@ nav{position:fixed;inset:0 0 auto;z-index:100;padding:18px 48px;display:flex;jus
 .nav-toggle-btn{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:6px;border:1px solid var(--border-mid);background:transparent;color:var(--text-sub);cursor:pointer;transition:all .2s;font-family:var(--mono);font-size:.75rem;font-weight:600}
 .nav-toggle-btn:hover{color:var(--text);border-color:rgba(124,134,245,.4)}
 .nav-toggle-btn svg{width:16px;height:16px}
+.nav-hamburger{display:none}
 
 /* HERO */
 .hero{min-height:100vh;display:flex;align-items:center;padding:120px 48px 80px;position:relative;overflow:hidden}
@@ -107,7 +108,7 @@ nav{position:fixed;inset:0 0 auto;z-index:100;padding:18px 48px;display:flex;jus
 h1{font-family:var(--display);font-size:clamp(2.4rem,3.8vw,3.4rem);font-weight:700;line-height:1.14;margin-bottom:22px}
 h1 .grad{background:linear-gradient(135deg,var(--accent) 20%,var(--accent-2) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .hero-sub{color:var(--text-sub);font-size:1.25rem;line-height:1.75;margin-bottom:38px;max-width:460px}
-.hero-btns{display:flex;gap:14px;align-items:center}
+.hero-btns{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
 .btn-p{background:var(--accent);color:#FFFFFF;padding:13px 26px;border-radius:6px;font-size:1rem;font-weight:600;text-decoration:none;transition:opacity .2s,transform .2s;display:inline-block}
 .btn-p:hover{opacity:.85;transform:translateY(-1px)}
 .btn-g{color:var(--text-sub);padding:13px 22px;border-radius:6px;font-size:1rem;text-decoration:none;border:1px solid var(--border-mid);transition:all .2s}
@@ -125,7 +126,7 @@ h1 .grad{background:linear-gradient(135deg,var(--accent) 20%,var(--accent-2) 100
 .avatar{width:30px;height:30px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;font-family:var(--mono)}
 .av-u{background:rgba(124,134,245,.12);color:var(--accent);border:1px solid rgba(124,134,245,.2)}
 .av-ai{background:rgba(34,211,238,.1);color:var(--accent-2);border:1px solid rgba(34,211,238,.2)}
-.bubble{border-radius:14px;padding:11px 15px;font-size:.875rem;color:var(--text-sub);line-height:1.6;flex:1;font-family:var(--mono);color:#CBD5E1}
+.bubble{border-radius:14px;padding:11px 15px;font-size:.875rem;color:var(--text-sub);line-height:1.6;flex:1;font-family:var(--mono)}
 .bubble-u{background:rgba(124,134,245,.07);color:var(--text)}
 .bubble-ai{background:var(--bubble-ai-bg);color:var(--bubble-ai-text)}
 .cur{display:inline-block;width:2px;height:13px;background:var(--accent-2);animation:blink 1s step-end infinite;vertical-align:text-bottom;margin-left:1px}
@@ -228,6 +229,11 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
   .steps{grid-template-columns:1fr}
   nav{padding:14px 20px}
   .nav-links{display:none}
+  .nav-links.open{display:flex;flex-direction:column;gap:0;position:absolute;top:100%;left:0;right:0;background:var(--nav-bg);backdrop-filter:blur(24px);border-bottom:1px solid var(--border);padding:8px 20px 14px}
+  .nav-links.open li{padding:0}
+  .nav-links.open a{display:block;padding:12px 0;font-size:1rem;border-bottom:1px solid var(--border)}
+  .nav-hamburger{display:flex}
+  .nav-cta{padding:8px 16px}
   .stat-inner{grid-template-columns:1fr}
 }
 @media(max-width:600px){
@@ -245,13 +251,13 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 .demo-btn{background:var(--accent);color:#FFFFFF;border:none;border-radius:6px;padding:11px 20px;font-size:.875rem;font-weight:700;cursor:pointer;transition:opacity .2s, transform .15s;font-family:var(--mono);white-space:nowrap;letter-spacing:.03em}
 .demo-btn:hover{opacity:.9;transform:translateY(-1px)}
 .demo-btn:disabled{opacity:.35;cursor:not-allowed}
-.demo-empty{color:#94A3B8;font-size:.8125rem;font-family:var(--mono);text-align:center;margin:auto;line-height:1.7}
+.demo-empty{color:var(--text-muted);font-size:.8125rem;font-family:var(--mono);text-align:center;margin:auto;line-height:1.7}
 .typing-dots{display:flex;gap:5px;align-items:center;padding:2px 0}
 .typing-dots span{width:6px;height:6px;border-radius:50%;background:var(--accent-2);animation:tdot .9s infinite}
 .typing-dots span:nth-child(2){animation-delay:.2s}
 .typing-dots span:nth-child(3){animation-delay:.4s}
 @keyframes tdot{0%,60%,100%{transform:translateY(0);opacity:.35}30%{transform:translateY(-5px);opacity:1}}
-.warn-box{margin-top:10px;padding:10px 12px;border-radius:6px;background:rgba(248,81,73,.07);border:1px solid rgba(248,81,73,.18);font-size:.8125rem;color:#FCA5A5;font-family:var(--mono);line-height:1.5}
+.warn-box{margin-top:10px;padding:10px 12px;border-radius:6px;background:rgba(248,81,73,.07);border:1px solid rgba(248,81,73,.18);font-size:.8125rem;color:var(--bad);font-family:var(--mono);line-height:1.5}
 .warn-box a{color:var(--accent);text-decoration:none;font-weight:600}
 .warn-box a:hover{text-decoration:underline}
 
@@ -287,10 +293,10 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 .web-result__model--no{color:var(--bad);border-color:rgba(248,81,73,.3);background:rgba(248,81,73,.06)}
 
 /* DEMO PHASES */
-.ai-line{padding:3px 0;font-size:.875rem;font-family:var(--mono);color:#C4CDD6;line-height:1.6}
+.ai-line{padding:3px 0;font-size:.875rem;font-family:var(--mono);color:var(--text-sub);line-height:1.6}
 .ai-line-hero{padding:8px 12px;margin:6px -12px;border-radius:6px;background:rgba(124,134,245,.09);border:1px solid rgba(124,134,245,.25);color:var(--text)}
 .line-hero-name{color:var(--accent);font-weight:700}
-.line-sub{color:#94A3B8}
+.line-sub{color:var(--text-muted)}
 .geoni-pop{animation:gpop .5s ease}
 @keyframes gpop{0%{transform:scale(1)}40%{transform:scale(1.015)}100%{transform:scale(1)}}
 .phase-sep{display:flex;align-items:center;gap:10px;padding:10px 18px 4px}
@@ -618,7 +624,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
   </svg>
   <span class="logo-text">geoni</span>
 </a>
-  <ul class="nav-links">
+  <ul class="nav-links" id="nav-links-menu">
     <li><a href="#neden" data-i18n="nav_why">Neden GEO</a></li>
     <li><a href="#geo" data-i18n="nav_geo">GEO Nedir</a></li>
     <li><a href="#nasil" data-i18n="nav_how">Nasıl Çalışır</a></li>
@@ -626,10 +632,14 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
     <li><a href="#paketler" data-i18n="nav_packages">Paketler</a></li>
   </ul>
   <div class="nav-toggles">
+    <a href="https://app.geoni.ai" class="nav-cta" data-i18n="nav_cta">Ücretsiz Tara</a>
     <button type="button" class="nav-toggle-btn" id="theme-toggle" title="Tema" aria-label="Tema degistir">
       <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></svg>
     </button>
     <button type="button" class="nav-toggle-btn" id="lang-toggle" title="Language" aria-label="Dil degistir">EN</button>
+    <button type="button" class="nav-toggle-btn nav-hamburger" id="nav-hamburger" aria-label="Menü" aria-expanded="false" aria-controls="nav-links-menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
   </div>
 </nav>
 
@@ -642,6 +652,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
       <h1 data-i18n="hero_h1">Rakibiniz her <span class="grad">AI yanıtında</span> var. Siz yoksunuz.</h1>
       <p class="hero-sub" data-i18n="hero_sub">Arama motorları değişti. Artık kullanıcılar sonuç listesine değil, tek bir AI yanıtına bakıyor. O yanıtta yer almayan marka, müşteri için yok hükmünde. GEONI, bu yanıtların içinde markanızı arar, size raporlar ve bu yanıtlarda görünür olmanızı sağlar.</p>
       <div class="hero-btns">
+        <a href="https://app.geoni.ai" class="btn-p" data-i18n="hero_cta1">Ücretsiz Tara →</a>
         <a href="#nasil" class="btn-g" data-i18n="hero_cta2">Nasıl Çalışır? →</a>
         <button type="button" class="btn-g" id="sample-report-btn" data-i18n="hero_cta3">Örnek Rapor →</button>
       </div>
@@ -664,7 +675,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
           <div class="bubble bubble-ai" id="p1-ai"></div>
         </div>
       </div>
-      <div id="phase2" style="display:none">
+      <div id="phase2">
         <div class="phase-sep"><span data-i18n="phase_sep">↓ Şimdi siz deneyin</span></div>
         <div class="chat-input-area">
           <div class="mode-tabs">
@@ -967,9 +978,11 @@ const I18N = {
     "nav_how": "Nasıl Çalışır",
     "nav_aifriendly": "AI Friendly Ligi ✓",
     "nav_packages": "Paketler",
+    "nav_cta": "Ücretsiz Tara",
     "hero_eyebrow": "// Yeni Nesil Görünürlük",
     "hero_h1": "Rakibiniz her <span class=\"grad\">AI yanıtında</span> var. Siz yoksunuz.",
     "hero_sub": "Arama motorları değişti. Artık kullanıcılar sonuç listesine değil, tek bir AI yanıtına bakıyor. O yanıtta yer almayan marka, müşteri için yok hükmünde. GEONI, bu yanıtların içinde markanızı arar, size raporlar ve bu yanıtlarda görünür olmanızı sağlar.",
+    "hero_cta1": "Ücretsiz Tara →",
     "hero_cta2": "Nasıl Çalışır? →",
     "hero_cta3": "Örnek Rapor →",
     "chat_label": "AI Cevap Motoru",
@@ -1121,9 +1134,11 @@ const I18N = {
     "nav_how": "How it works",
     "nav_aifriendly": "AI Friendly Board ✓",
     "nav_packages": "Packages",
+    "nav_cta": "Free Scan",
     "hero_eyebrow": "// Next-Gen Visibility",
     "hero_h1": "Your competitor is in every <span class=\"grad\">AI answer</span>. You are not.",
     "hero_sub": "Search has changed. Users no longer scan a results page — they look at a single AI answer. A brand missing from that answer doesn't exist for the customer. GEONI searches for your brand inside those answers, reports back to you, and helps you become visible in them.",
+    "hero_cta1": "Free Scan →",
     "hero_cta2": "How it works? →",
     "hero_cta3": "Sample Report →",
     "chat_label": "AI Answer Engine",
@@ -1331,6 +1346,20 @@ function toggleTheme() {
   applyTheme(theme);
   document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
   document.getElementById('lang-toggle').addEventListener('click', toggleLang);
+  // Mobil menu (hamburger): <=900px'te nav linkleri gizli, buradan acilir
+  const hamburger = document.getElementById('nav-hamburger');
+  const navMenu = document.getElementById('nav-links-menu');
+  if (hamburger && navMenu) {
+    hamburger.addEventListener('click', () => {
+      const open = navMenu.classList.toggle('open');
+      hamburger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    // Bir linke tiklaninca menuyu kapat
+    navMenu.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => {
+      navMenu.classList.remove('open');
+      hamburger.setAttribute('aria-expanded', 'false');
+    }));
+  }
   // applyLang burada degil DOMContentLoaded'da cagrilir - ornek rapor
   // modali gibi sayfanin daha altinda tanimli data-i18n elementleri bu
   // script calistiginda henuz DOM'da yok, bu yuzden ceviri atlaniyordu
@@ -1537,23 +1566,28 @@ document.addEventListener('DOMContentLoaded', () => {
 // tasınmazsa app.geoni.ai'deki captureAcquisition() hicbir sey yakalayamaz
 // ve trafik kaynagi (Instagram vb.) admin panelde hep "direct" gorunur.
 // Sayfadaki tum app.geoni.ai linklerine, sayfa yuklenirken UTM'i ekleriz.
-document.addEventListener('DOMContentLoaded', () => {
+// Ayrica ziyaretcinin mevcut dil tercihini (?lang=) tasiriz; boylece
+// geoni.ai -> app.geoni.ai gecisinde dil surekliligi korunur (UTM tasiniyordu
+// ama dil tasinmiyordu). Dil degistiginde de yeniden calisir (applyLang icinden).
+function syncAppLinks() {
   const params = new URLSearchParams(window.location.search);
   const utmParams = new URLSearchParams();
   ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'].forEach((k) => {
     if (params.get(k)) utmParams.set(k, params.get(k));
   });
-  if ([...utmParams].length === 0) return;
   document.querySelectorAll('a[href^="https://app.geoni.ai"]').forEach((a) => {
     const url = new URL(a.href);
     utmParams.forEach((v, k) => url.searchParams.set(k, v));
+    url.searchParams.set('lang', CURRENT_LANG);
     a.href = url.toString();
   });
-});
+}
+document.addEventListener('DOMContentLoaded', syncAppLinks);
 
 const _origApplyLangForSample = applyLang;
 applyLang = function(lang) {
   _origApplyLangForSample(lang);
+  if (typeof syncAppLinks === 'function') syncAppLinks();
   if (currentSampleReport && !document.getElementById('sample-modal-overlay').classList.contains('hidden')) {
     document.getElementById('sample-modal-body').innerHTML = renderSampleReport(currentSampleReport, lang);
   }
@@ -1619,14 +1653,10 @@ function showLine(idx) {
 }
 
 function revealPhase2() {
-  const p2 = document.getElementById('phase2');
-  p2.style.display = 'block';
-  // Kullanici hala hero'nun basindaysa (asagi kaymamissa) gorunume getir -
-  // ama zaten asagi inmisse zorla yukari cekme (bkz. "scroll ile asagi
-  // iniyorum, sonra birden sayfa tekrar yukari cikiyor" bug raporu).
-  if (window.scrollY < window.innerHeight * 0.6) {
-    p2.scrollIntoView({ behavior:'smooth', block:'nearest' });
-  }
+  // phase2 (deneme inputu) artik sayfa acilir acilmaz gorunur - sabirsiz
+  // ziyaretci ilk saniyeden tiklanabilir bir eylem gorsun diye animasyonun
+  // bitmesini beklemiyoruz. Bu yuzden burada display/scroll islemi yok;
+  // fonksiyon geriye donuk uyumluluk icin duruyor (showLine sonunda cagriliyor).
 }
 
 function startDemo() {
@@ -1684,7 +1714,7 @@ async function runWebCheck() {
     resultEl.innerHTML = `
       <div class="web-result">
         <div class="web-result__desc">⏳ ${dict.demo_web_limit}</div>
-        <a href="https://app.geoni.ai/login?scan_domain=${encodeURIComponent(domain)}" class="premium-teaser-btn">${dict.demo_web_limit_cta}</a>
+        <a href="https://app.geoni.ai/login?scan_domain=${encodeURIComponent(domain)}&lang=${CURRENT_LANG}" class="premium-teaser-btn">${dict.demo_web_limit_cta}</a>
       </div>`;
     return;
   }
@@ -1741,7 +1771,7 @@ async function runWebCheck() {
         ${modelsHtml ? `<div class="web-result__models">${modelsHtml}</div>` : ''}
         ${desc}
         ${meta ? `<div class="web-result__meta">${meta}</div>` : ''}
-        <a href="https://app.geoni.ai/login?scan_domain=${encodeURIComponent(domain)}" class="premium-teaser-btn web-result__cta">${dict.demo_web_score_cta}</a>
+        <a href="https://app.geoni.ai/login?scan_domain=${encodeURIComponent(domain)}&lang=${CURRENT_LANG}" class="premium-teaser-btn web-result__cta">${dict.demo_web_score_cta}</a>
       </div>`;
   } catch (e) {
     resultEl.innerHTML = `<div class="web-result"><div class="web-result__desc">${dict.demo_web_error}</div></div>`;
