@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "ai.geoni.app",
+      "sha256_cert_fingerprints": [
+        "85:A0:82:28:A9:4E:79:90:7F:49:7F:58:9C:17:41:82:E8:C5:FF:84:38:63:66:DC:90:8A:5C:2B:7D:DC:4C:71"
+      ]
+    }
+  }
+]

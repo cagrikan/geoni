@@ -1,0 +1,14 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "2Y6PBTM588.ai.geoni.app",
+        "paths": ["/s/*"],
+        "components": [
+          { "/": "/s/*", "comment": "Viral paylasim kartlari — uygulamada /s/[jobId] koprusu acar" }
+        ]
+      }
+    ]
+  }
+}
