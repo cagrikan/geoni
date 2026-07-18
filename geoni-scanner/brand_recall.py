@@ -323,12 +323,31 @@ async def _google_search(name: str, topic: str, max_results: int = 8, tavily_que
 
 # ── Model query functions (temperature sabit, JSON cikti) ─────────────────
 
+async def _post_retry(client, url, *, _tries: int = 3, _base: float = 0.6, **kwargs):
+    """LLM/HTTP POST — 429 ve 5xx'te ustel backoff + jitter ile en cok `_tries`
+    kez dener (Y3). Onceden hicbir cagride retry yoktu: tek gecici 429 bir
+    formulasyonu 'taniyor=False' yapip medyani kaydiriyordu; yuksek concurrency'de
+    (64 eszamanli tarama) bu skorlari sistematik bozardi. 429/5xx disindaki
+    yaniti (2xx veya 4xx) hemen dondurur. `Retry-After` header'i varsa ona uyar."""
+    import random
+    resp = None
+    for attempt in range(_tries):
+        resp = await client.post(url, **kwargs)
+        if resp.status_code != 429 and resp.status_code < 500:
+            return resp
+        if attempt < _tries - 1:
+            ra = resp.headers.get("retry-after", "")
+            delay = float(ra) if ra.isdigit() else _base * (2 ** attempt)
+            await asyncio.sleep(min(delay, 8.0) + random.uniform(0, 0.3))
+    return resp  # son yanit hala 429/5xx — cagiran None'a duser
+
+
 async def _ask_claude(prompt: str, temperature: float = RECALL_TEMPERATURE, max_tokens: int = 500) -> str | None:
     if not ANTHROPIC_API_KEY:
         return None
     try:
         async with httpx.AsyncClient() as c:
-            r = await c.post(
+            r = await _post_retry(c,
                 "https://api.anthropic.com/v1/messages",
                 headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"},
                 json={
@@ -362,7 +381,7 @@ async def _ask_openai(prompt: str, temperature: float = RECALL_TEMPERATURE, max_
         if json_mode:
             body["response_format"] = {"type": "json_object"}
         async with httpx.AsyncClient() as c:
-            r = await c.post(
+            r = await _post_retry(c,
                 "https://api.openai.com/v1/chat/completions",
                 headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
                 json=body,
@@ -382,7 +401,7 @@ async def _ask_gemini(prompt: str, temperature: float = RECALL_TEMPERATURE, max_
         return None
     try:
         async with httpx.AsyncClient() as c:
-            r = await c.post(
+            r = await _post_retry(c,
                 "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
                 headers={"x-goog-api-key": GOOGLE_API_KEY},
                 json={"contents": [{"role": "user", "parts": [{"text": prompt}]}],
@@ -422,7 +441,7 @@ async def _ask_gemini_grounded(prompt: str, temperature: float = 0.3, max_tokens
         return None
     try:
         async with httpx.AsyncClient() as c:
-            r = await c.post(
+            r = await _post_retry(c,
                 "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
                 headers={"x-goog-api-key": GOOGLE_API_KEY},
                 json={
@@ -463,7 +482,7 @@ async def _ask_perplexity_sourced(prompt: str, temperature: float = RECALL_TEMPE
         return None
     try:
         async with httpx.AsyncClient() as c:
-            r = await c.post(
+            r = await _post_retry(c,
                 "https://api.perplexity.ai/chat/completions",
                 headers={"Authorization": f"Bearer {PERPLEXITY_API_KEY}", "Content-Type": "application/json"},
                 json={
@@ -499,7 +518,7 @@ async def _ask_perplexity(prompt: str, temperature: float = RECALL_TEMPERATURE, 
         return None
     try:
         async with httpx.AsyncClient() as c:
-            r = await c.post(
+            r = await _post_retry(c,
                 "https://api.perplexity.ai/chat/completions",
                 headers={"Authorization": f"Bearer {PERPLEXITY_API_KEY}", "Content-Type": "application/json"},
                 json={
@@ -759,7 +778,7 @@ async def judge_batch_accuracy(model_texts: dict, web_results: list, person_info
     if OPENAI_API_KEY:
         try:
             async with httpx.AsyncClient() as c:
-                r = await c.post(
+                r = await _post_retry(c,
                     "https://api.openai.com/v1/chat/completions",
                     headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
                     json={
@@ -871,7 +890,7 @@ async def _generate_brand_topics(name: str, topic: str, google_results: list, re
 
     try:
         async with httpx.AsyncClient() as c:
-            r = await c.post(
+            r = await _post_retry(c,
                 "https://api.anthropic.com/v1/messages",
                 headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"},
                 json={"model": "claude-haiku-4-5", "max_tokens": 800, "temperature": 0.3, "messages": [{"role": "user", "content": prompt}]},
@@ -1020,7 +1039,7 @@ async def check_brand_recall(
         )
         try:
             async with httpx.AsyncClient() as c:
-                vr = await c.post(
+                vr = await _post_retry(c,
                     "https://api.openai.com/v1/chat/completions",
                     headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
                     json={"model": "gpt-4o-mini", "messages": [{"role": "user", "content": verify_prompt}],
