@@ -277,6 +277,7 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
 
         result_payload = {
             "domain": request.domain,
+            "lang": request.lang or "tr",  # BUG-5: schema inLanguage doğru dil (hep "tr" değil)
             "score": score_result["overall_score"],
             "score_breakdown": score_result["breakdown"],
             "scoring_version": score_result.get("scoring_version"),

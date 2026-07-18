@@ -75,6 +75,10 @@ def _curate_pages(pages: list, domain: str) -> list[dict]:
         title = _sanitize_text(p.get("title") or "", 80)
         if not url or not title or not _same_site_url(url, domain):
             continue
+        # düşük bug: URL markdown link parantezine giriyor — boşluk/parantez/kontrol
+        # karakteri içeren URL bağlantıyı kırar/enjekte eder, ele.
+        if re.search(r"[\s()<>\[\]`]", url):
+            continue
         if _PAGE_NOISE_RE.search(url):
             continue
         key = re.sub(r"[?#].*$", "", url).rstrip("/")
@@ -88,41 +92,49 @@ def _curate_pages(pages: list, domain: str) -> list[dict]:
     return out
 
 
-async def _sitemap_exists(domain: str, audit: dict | None) -> bool:
-    """B-4: Sitemap: satiri yalniz KANITLA yazilir. Once audit'in bildigini
-    kullan (crawl sitemap_found dondurur), yoksa canli kontrol (soft-404 HTML red)."""
-    if audit:
-        sf = (audit.get("result_json") or {}).get("sitemap_found")
-        if sf is not None:
-            return bool(sf)
-    for path in ("/sitemap.xml", "/sitemap_index.xml"):
+async def _find_sitemap(domain: str, audit: dict | None) -> str | None:
+    """B-4: Sitemap: satiri yalniz KANITLA yazilir. sitemap.xml VE sitemap_index.xml
+    kontrol edilir; BULUNAN relatif path doner (yoksa None → satir yazilmaz).
+    audit sitemap_found=False diyorsa canli kontrole gerek yok (crawl'a guven)."""
+    if audit and (audit.get("result_json") or {}).get("sitemap_found") is False:
+        return None
+    for path in ("sitemap.xml", "sitemap_index.xml"):
         try:
             async with httpx.AsyncClient() as c:
-                r = await safe_get(c, f"https://{domain}{path}", timeout=8, headers=_UA)
+                r = await safe_get(c, f"https://{domain}/{path}", timeout=8, headers=_UA)
             body = (r.text or "")[:2000].lower()
             if r.status_code == 200 and ("<urlset" in body or "<sitemapindex" in body or "<loc>" in body):
-                return True
+                return path
         except Exception:
             continue
-    return False
+    return None
 
 
 def _extract_star_disallows(robots_text: str) -> list[str]:
     """Mevcut robots.txt'te 'User-agent: *' grubunun Disallow satirlarini cikarir;
     GEONI blogu bu botlari '*' grubundan cikardigi icin hassas path'ler bloga
     kopyalanir (musterinin wp-admin/staging korumasi AI botlarda da korunur)."""
-    dis, in_star = [], False
+    # BUG-3: ardışık User-agent satırları TEK grup sayılır (spec). "User-agent: *"
+    # + "User-agent: Googlebot" + "Disallow: /x" → /x hem *'a hem Googlebot'a uygulanır.
+    # Bir grup: art arda UA satırları + kurallar; kural sonrası UA yeni grup başlatır.
+    dis, group_has_star, prev_was_rule = [], False, False
     for raw in (robots_text or "").splitlines():
         line = raw.split("#", 1)[0].strip()
         if not line:
             continue
         low = line.lower()
         if low.startswith("user-agent:"):
-            in_star = line.split(":", 1)[1].strip() == "*"
-        elif in_star and low.startswith("disallow:"):
-            val = line.split(":", 1)[1].strip()
-            if val:
-                dis.append(val)
+            if prev_was_rule:  # önceki satır kuraldıysa yeni grup başlıyor
+                group_has_star = False
+            prev_was_rule = False
+            if line.split(":", 1)[1].strip() == "*":
+                group_has_star = True
+        elif low.startswith(("disallow:", "allow:", "crawl-delay:", "sitemap:")):
+            prev_was_rule = True
+            if group_has_star and low.startswith("disallow:"):
+                val = line.split(":", 1)[1].strip()
+                if val:
+                    dis.append(val)
     return list(dict.fromkeys(dis))
 
 # B-5: otomasyon YALNIZCA dosya uretimini yapar; "siteye ekle/doğrula/yayınla"
@@ -144,11 +156,13 @@ def _is_auto_completable(title: str) -> bool:
     return not any(c in t for c in _ONSITE_TASK_CUES)
 
 
-async def generate_robots_txt(domain: str, sitemap_ok: bool = False) -> tuple[str, str]:
+async def generate_robots_txt(domain: str, sitemap_path: str | None = None) -> tuple[str, str, list]:
     """B-2: robots.txt'i ASLA korlemesine uretme — canli dosyayi cek, mevcut
-    kurallari KORU, AI botlarina erisim blogunu EKLE. Doner: (metin, durum).
-    durum: 'merged' | 'already_open' (butun AI botlari zaten izinli) | 'created'
-    (mevcut cekilemedi -> yeni dosya, cagiran 'uzerine yazmayin' uyarisi verir)."""
+    kurallari KORU, AI botlarina erisim blogunu EKLE. Doner: (metin, durum, kisitli_botlar).
+    durum: 'created' (mevcut cekilemedi) | 'already_open' (tum AI botlari gercekten
+    derin-path'lere erisebiliyor) | 'merged' (bazi botlara blok eklendi) | 'needs_manual'
+    (kisitli botlarin HEPSININ kendi grubu var, ekleme gecersiz kilamaz -> musteri
+    elle duzeltmeli). kisitli_botlar: kendi grubunda kisitli olanlar."""
     existing = None
     try:
         async with httpx.AsyncClient() as c:
@@ -160,18 +174,13 @@ async def generate_robots_txt(domain: str, sitemap_ok: bool = False) -> tuple[st
     except Exception:
         existing = None
 
-    block_lines = [
-        f"# --- GEONI: AI botlarina erisim izni (eklendi: {date.today().isoformat()}) ---",
-        "# Bu bloklar yapay zeka arama/alintilama botlarina site erisimi verir.",
-    ]
-    block_lines += [f"User-agent: {agent}" for agent in _AI_AGENTS]
-    # Mevcut '*' grubunun Disallow'larini AI botlara da tasi: GEONI blogu bu
-    # botlari '*'tan cikardigindan, musterinin hassas path'leri (wp-admin, staging)
-    # AI botlarda da korunmali.
-    for d in (_extract_star_disallows(existing) if existing else []):
-        block_lines.append(f"Disallow: {d}")
-    block_lines.append("Allow: /")
-    block = "\n".join(block_lines)
+    def _build_block(agents: list[str], disallows: list[str]) -> str:
+        bl = [f"# --- GEONI: AI botlarina erisim izni (eklendi: {date.today().isoformat()}) ---",
+              "# Bu bloklar yapay zeka arama/alintilama botlarina site erisimi verir."]
+        bl += [f"User-agent: {a}" for a in agents]
+        bl += [f"Disallow: {d}" for d in disallows]  # hassas path'leri koru
+        bl.append("Allow: /")
+        return "\n".join(bl)
 
     if existing is None:
         header = (
@@ -179,19 +188,39 @@ async def generate_robots_txt(domain: str, sitemap_ok: bool = False) -> tuple[st
             "# DIKKAT: Sitenizde ZATEN robots.txt VARSA bu dosyayla DEGISTIRMEYIN;\n"
             "# yalnizca asagidaki '--- GEONI' bolumunu mevcut dosyanizin SONUNA ekleyin.\n"
         )
-        out = header + "\nUser-agent: *\nAllow: /\n\n" + block
-        if sitemap_ok:
-            out += f"\n\nSitemap: https://{domain}/sitemap.xml"
-        return out + "\n", "created"
+        out = header + "\nUser-agent: *\nAllow: /\n\n" + _build_block(_AI_AGENTS, [])
+        if sitemap_path:
+            out += f"\n\nSitemap: https://{domain}/{sitemap_path}"
+        return out + "\n", "created", []
 
+    # BUG-1/BUG-2 düzeltmesi: her bot için durumu DOĞRU sınıflandır.
+    # - 'open'       : temsili derin path'lerin HEPSİNE erişebiliyor (gerçekten açık)
+    # - 'appendable' : kendi grubu YOK (yalnız '*'a tabi) → bot-özel grup eklemek
+    #                  '*'ı geçersiz kılar (Python RobotFileParser specific>default)
+    # - 'restricted' : kendi adına grubu VAR ve kısıtlı → EKLEME bunu geçersiz
+    #                  KILAMAZ (ilk-eşleşme; prod Python 3.10) → müşteri elle düzeltmeli
     rp = RobotFileParser()
     rp.parse(existing.splitlines())
-    if all(rp.can_fetch(agent, "/") for agent in _AI_AGENTS):
-        return existing.rstrip() + "\n", "already_open"
-    merged = existing.rstrip() + "\n\n" + block
-    if sitemap_ok and "sitemap:" not in existing.lower():
-        merged += f"\n\nSitemap: https://{domain}/sitemap.xml"
-    return merged + "\n", "merged"
+    probe = ["/", "/blog/", "/blog/ornek", "/products/", "/urunler/", "/hizmetler/",
+             "/services/", "/about", "/hakkimizda"]
+    appendable, restricted = [], []
+    for agent in _AI_AGENTS:
+        fully = all(rp.can_fetch(agent, p) for p in probe)
+        if fully:
+            continue
+        has_own = re.search(rf"(?im)^\s*user-agent:\s*{re.escape(agent)}\s*(?:#.*)?$", existing)
+        (restricted if has_own else appendable).append(agent)
+
+    if not appendable and not restricted:
+        return existing.rstrip() + "\n", "already_open", []
+
+    out = existing.rstrip()
+    if appendable:
+        out += "\n\n" + _build_block(appendable, _extract_star_disallows(existing))
+        if sitemap_path and "sitemap:" not in existing.lower():
+            out += f"\n\nSitemap: https://{domain}/{sitemap_path}"
+    status = "merged" if appendable else "needs_manual"
+    return out + "\n", status, restricted
 
 
 def generate_llms_txt(domain: str, audit: dict | None) -> str:
@@ -253,10 +282,14 @@ def generate_schema_html(domain: str, audit: dict | None) -> str:
     org = {"@type": "Organization", "@id": f"{url}/#organization", "name": name, "url": url}
     if desc:
         org["description"] = desc
+    # BUG-6: logo çoğu sitede CDN'den (cdn.*, cloudfront, imgix...) servis edilir;
+    # _same_site_url şartı bunları düşürüyordu. https bir URL yeterli (crawler zaten
+    # ana sayfanın og:image/icon'undan aldı — kaynak güvenilir).
     logo = assets.get("logo")
-    if logo and _same_site_url(logo, domain):
+    if isinstance(logo, str) and logo.startswith("https://"):
         org["logo"] = {"@type": "ImageObject", "url": logo}
-    same_as = [s for s in (assets.get("sameAs") or []) if isinstance(s, str) and s.startswith("http")]
+    same_as = [s for s in (assets.get("sameAs") or [])
+               if isinstance(s, str) and s.startswith(("https://", "http://"))]
     if same_as:
         org["sameAs"] = same_as[:8]
     if topics:
@@ -349,8 +382,8 @@ async def fulfill_llms_robots_ticket(ticket_id: int, domain: str) -> bool:
     olur)."""
     try:
         audit = await get_latest_web_audit_by_domain(domain)
-        sitemap_ok = await _sitemap_exists(domain, audit)
-        robots_txt, robots_status = await generate_robots_txt(domain, sitemap_ok=sitemap_ok)
+        sitemap_path = await _find_sitemap(domain, audit)
+        robots_txt, robots_status, restricted_bots = await generate_robots_txt(domain, sitemap_path=sitemap_path)
         llms_txt = generate_llms_txt(domain, audit)
 
         tasks = await list_ticket_tasks(ticket_id)
@@ -384,11 +417,28 @@ async def fulfill_llms_robots_ticket(ticket_id: int, domain: str) -> bool:
             message += ("\n\n> ⚠️ Canlı robots.txt'inize ulaşılamadı. Sitenizde ZATEN robots.txt "
                         "VARSA yukarıdaki dosyayla DEĞİŞTİRMEYİN; yalnızca `--- GEONI` bölümünü "
                         "mevcut dosyanızın SONUNA ekleyin.")
+        elif robots_status == "needs_manual":
+            # BUG-1+2: eklenecek genel blok YOK (tüm kısıtlı botların kendi grubu var);
+            # aşağıdaki restricted_bots uyarısı tek başına durumu anlatır.
+            pass
         else:  # merged
             message += ("\n\n> Robots: mevcut robots.txt kurallarınız korunarak AI botlarına "
                         "erişim bloğu eklendi; dosyayı olduğu gibi kök dizininize koyabilirsiniz.")
+        # BUG-1+2: kendi grubunda kısıtlı botlar — sona eklenen blok bunları geçersiz
+        # KILAMAZ (robots.txt en-spesifik grup kazanır; prod Python 3.10 ilk-eşleşme).
+        # 'merged' + kısıtlı botlar bir arada olabilir; durumdan bağımsız dürüstçe uyar.
+        if restricted_bots:
+            bots = ", ".join(restricted_bots[:8])
+            message += (f"\n\n> ⚠️ Dikkat: robots.txt'inizde şu AI botları için ZATEN ayrı "
+                        f"kurallar var ve bunlar sayfalarınızın bir kısmını engelliyor: "
+                        f"**{bots}**. robots.txt'te en özel (bota özel) grup kazandığı için "
+                        f"aşağıya eklenen genel izin bloğu bunları AÇMAZ. Bu botlara erişim "
+                        f"vermek için, mevcut dosyanızdaki ilgili `User-agent:` gruplarındaki "
+                        f"`Disallow:` satırlarını elle gözden geçirmeniz gerekir. İsterseniz bu "
+                        f"bilete yazın, hangi satırların kalıp hangilerinin açılması gerektiğini "
+                        f"birlikte belirleyelim.")
         # B-4: sitemap kanıtı yoksa dürüst not (satır dosyaya yazılmadı).
-        if not sitemap_ok:
+        if not sitemap_path:
             message += ("\n\n> Not: sitemap.xml bulunamadı. Oluşturursanız hem Google hem AI "
                         "botlar sayfalarınızı daha hızlı keşfeder — oluşturunca robots.txt'inize "
                         "`Sitemap:` satırını ekleyin.")
