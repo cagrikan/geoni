@@ -6,11 +6,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="Markanızın ChatGPT, Perplexity ve Gemini'de görünür olması için GEO hizmetleri. Ücretsiz AI Audit ile başlayın.">
 <title>GEONI — AI Görünürlük Optimizasyonu</title>
+<link rel="canonical" href="https://geoni.ai/">
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="llm" href="https://geoni.ai/llm.txt" type="text/plain">
 <link rel="llms" href="https://geoni.ai/llms.txt" type="text/plain">
 <meta property="og:type" content="website">
+<meta property="og:locale" content="tr_TR">
+<meta property="og:locale:alternate" content="en_US">
 <meta property="og:title" content="GEONI — AI seni tanıyor mu?">
 <meta property="og:description" content="Markanın, adının veya sitenin ChatGPT, Gemini ve Perplexity'deki görünürlüğünü 60 saniyede ölç — ücretsiz.">
 <meta property="og:image" content="https://geoni.ai/og-share.png">
@@ -32,7 +36,7 @@
   --accent-2:#7C86F5;
   --text:#EDEFF5;
   --text-sub:#9BA3B5;
-  --text-muted:#697083;
+  --text-muted:#818799;
   --display:'Inter',sans-serif;
   --body:'Inter',sans-serif;
   --mono:'JetBrains Mono',monospace;
@@ -84,6 +88,18 @@
 }
 html{scroll-behavior:smooth}
 body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased;transition:background .2s,color .2s}
+/* Vestibuler hassasiyet: hareketi azalt (E6) */
+@media(prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+}
+/* Klavye fokusu her yerde gorunur olsun (E9) */
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* Iceriye atla baglantisi (E3) */
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#fff;padding:10px 16px;border-radius:0 0 8px 0;font-family:var(--body);font-size:.875rem;text-decoration:none}
+.skip-link:focus{left:0}
+/* Gorsel gizli ama SR icin okunur etiketler (E5) */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
 /* NAV */
 nav{position:fixed;inset:0 0 auto;z-index:100;padding:18px 48px;display:flex;justify-content:space-between;align-items:center;background:var(--nav-bg);backdrop-filter:blur(24px);border-bottom:1px solid var(--border)}
@@ -247,7 +263,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 .input-row{display:flex;gap:8px}
 .demo-input{flex:1;background:var(--chat-input-bg);border:1px solid rgba(124,134,245,.3);border-radius:6px;padding:11px 15px;color:var(--text);font-family:var(--mono);font-size:.875rem;outline:none;transition:border-color .2s, box-shadow .2s}
 .demo-input:focus{border-color:rgba(124,134,245,.7);box-shadow:0 0 0 3px rgba(124,134,245,.08)}
-.demo-input::placeholder{color:#475569}
+.demo-input::placeholder{color:var(--text-sub)}
 .demo-btn{background:var(--accent);color:#FFFFFF;border:none;border-radius:6px;padding:11px 20px;font-size:.875rem;font-weight:700;cursor:pointer;transition:opacity .2s, transform .15s;font-family:var(--mono);white-space:nowrap;letter-spacing:.03em}
 .demo-btn:hover{opacity:.9;transform:translateY(-1px)}
 .demo-btn:disabled{opacity:.35;cursor:not-allowed}
@@ -424,9 +440,6 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 @media(max-width:600px){.sample-modal{padding:8px 4px 22px}.results{padding:20px 14px 8px}}
 </style>
 
-  <!-- LLM.txt -->
-  <link rel="llm" href="https://geoni.ai/llm.txt" type="text/plain">
-
   <!-- Schema.org -->
   <script type="application/ld+json">
   {
@@ -446,7 +459,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
         "serviceType": "Generative Engine Optimization",
         "contactPoint": {
           "@type": "ContactPoint",
-          "email": "mail@cagricakir.com.tr",
+          "email": "mail@geoni.ai",
           "contactType": "customer support"
         },
         "sameAs": [
@@ -514,69 +527,6 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
           "Kurumsal Bilişim",
           "Dijital Dönüşüm"
         ]
-      },
-      {
-        "@type": "WebSite",
-        "@id": "https://geoni.ai/#website",
-        "url": "https://geoni.ai",
-        "name": "GEONI — AI Görünürlük Optimizasyonu",
-        "description": "Markanızın ChatGPT, Perplexity ve Gemini'de görünür olması için GEO hizmetleri.",
-        "publisher": {
-          "@type": "Organization",
-          "@id": "https://geoni.ai/#organization",
-          "name": "GEONI",
-          "url": "https://geoni.ai"
-        },
-        "inLanguage": "tr-TR"
-      },
-      {
-        "@type": "FAQPage",
-        "mainEntity": [
-          {
-            "@type": "Question",
-            "name": "GEO nedir?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "GEO (Generative Engine Optimization), markaların ChatGPT, Perplexity, Claude ve Gemini gibi yapay zeka yanıt motorlarında öne çıkması için uygulanan optimizasyon disiplinidir. SEO'nun Google için yaptığını, GEO yapay zeka motorları için yapar."
-            }
-          },
-          {
-            "@type": "Question",
-            "name": "AI motorlarında görünürlük neden önemlidir?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "Kullanıcılar giderek daha çok araştırmalarına AI ile başlıyor. AI motorları genellikle tek bir yanıt üretir — o yanıtta yer almayan marka, o kullanıcı için görünmez kalır."
-            }
-          },
-          {
-            "@type": "Question",
-            "name": "GEONI hangi hizmetleri sunuyor?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "GEONI; web sitesi, kişi ve marka için AI görünürlük taraması sunar. Kullanım token bazlıdır - 100'den 5000'e kadar token paketleri (100, 500, 1000, 2500, 5000) mevcuttur; yüksek hacimli kurumsal ihtiyaçlar için bizimle iletişime geçebilirsiniz."
-            }
-          },
-          {
-            "@type": "Question",
-            "name": "GEO ile SEO arasındaki fark nedir?",
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": "SEO, Google arama sonuçlarında sıralama elde etmeyi hedefler. GEO ise ChatGPT, Perplexity gibi AI motorlarının ürettiği yanıtlarda markanızın kaynak olarak gösterilmesini sağlar. Sıralama yarışı bitti — şimdi yanıt içinde yer alma yarışı var."
-            }
-          }
-        ]
-      },
-      {
-        "@type": "Service",
-        "name": "AI Görünürlük Audit",
-        "provider": { "@type": "Organization", "@id": "https://geoni.ai/#organization", "name": "GEONI", "url": "https://geoni.ai" },
-        "description": "Markanızın ChatGPT, Perplexity ve Gemini'deki mevcut görünürlüğünü analiz eden kapsamlı audit hizmeti.",
-        "offers": {
-          "@type": "Offer",
-          "price": "15000",
-          "priceCurrency": "TRY",
-          "priceSpecification": { "@type": "UnitPriceSpecification", "billingDuration": "P1Y" }
-        }
       }
     ]
   }
@@ -596,6 +546,8 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
+
+<a class="skip-link" href="#main-content" data-i18n="skip_to_content">İçeriğe atla</a>
 
 <!-- NAV -->
 <nav>
@@ -645,6 +597,8 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
   </div>
 </nav>
 
+<main id="main-content">
+
 <!-- HERO -->
 <section class="hero" id="top">
   <div class="hero-ambient"></div>
@@ -687,6 +641,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
           </div>
 
           <div class="mode-panel mode-panel--active" id="mode-panel-web">
+            <label class="sr-only" for="demo-domain" data-i18n="label_demo_domain">Taranacak alan adı</label>
             <div class="input-row" style="margin-top:10px">
               <input type="text" id="demo-domain" class="demo-input" placeholder="ornek.com" data-i18n-ph="demo_ph_domain">
               <button type="button" id="demo-web-btn" class="demo-btn" data-i18n="demo_btn">Tara →</button>
@@ -694,7 +649,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
             <!-- Anti-abuse: Managed Turnstile (cogunlukla gorunmez). Token
                  tarama istegine eklenir; yuklenmezse istek yine gider. -->
             <div class="cf-turnstile" data-sitekey="0x4AAAAAAD4ueQF4cOLzYPy4" data-size="flexible" style="margin-top:10px"></div>
-            <div id="demo-web-result"></div>
+            <div id="demo-web-result" role="status" aria-live="polite"></div>
           </div>
 
           <div class="mode-panel" id="mode-panel-person">
@@ -724,7 +679,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
     <div class="insight-card">
       <span class="eyebrow-sm" data-i18n="insight1_eyebrow">// Aramanın dönüşümü</span>
       <p class="insight-sub" data-i18n="insight1_sub">Google trafiği gerilerken AI sorgu hacmi hızla yükseliyor</p>
-      <div id="chart-wrap" style="margin-top:20px"></div>
+      <div id="chart-wrap" style="margin-top:20px;min-height:220px"></div>
       <div data-i18n="chart_illustrative" style="font-size:.72rem;font-family:var(--mono);color:var(--text-muted);margin-top:6px;letter-spacing:.04em">Temsilî eğilim</div>
       <div class="chart-legend">
         <span class="leg-item"><span class="leg-dot" style="background:#F87171"></span><span data-i18n="legend_google">Google Arama Trafiği</span></span>
@@ -737,6 +692,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
     <div class="insight-card">
       <span class="eyebrow-sm" data-i18n="insight2_eyebrow">// Kayıp hesabı</span>
       <p class="insight-sub" data-i18n="insight2_sub">Sektörünüzde kaç AI sorgusu kaçırıyorsunuz?</p>
+      <label class="sr-only" for="calc-sector" data-i18n="label_calc_sector">Sektör seçin</label>
       <select id="calc-sector" class="calc-select">
         <option value="" data-i18n="calc_select_default">Sektörünüzü seçin...</option>
         <option value="10500000" data-i18n-opt="sector_ecommerce">E-Ticaret &amp; Perakende</option>
@@ -750,7 +706,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
         <option value="2800000" data-i18n-opt="sector_manufacturing">Üretim &amp; Sanayi</option>
         <option value="4200000" data-i18n-opt="sector_tourism">Turizm &amp; Konaklama</option>
       </select>
-      <div class="calc-result" id="calc-result" style="display:none;margin-top:24px;text-align:center">
+      <div class="calc-result" id="calc-result" role="status" aria-live="polite" style="display:none;margin-top:24px;text-align:center">
         <div class="calc-big-num" id="calc-num">0</div>
         <div class="calc-unit" data-i18n="calc_unit">AI sorgusu / gün</div>
         <div class="calc-msg" data-i18n="calc_msg">sektörünüzde günlük yapılıyor (tahmini büyüklük). Görünmüyorsanız<br>bu <strong style="color:var(--text)">pazardan pay alamıyorsunuz</strong>.</div>
@@ -979,6 +935,8 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
   </div>
 </div>
 
+</main>
+
 <!-- FOOTER -->
 <footer>
   <p data-i18n="footer_copy">© 2025 geoni — Generative Engine Optimization · Ankara, Türkiye</p>
@@ -1002,6 +960,11 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 // ── I18N + TEMA ──────────────────────────────────────────────────────────
 const I18N = {
   "tr": {
+    "skip_to_content": "İçeriğe atla",
+    "label_demo_domain": "Taranacak alan adı",
+    "label_calc_sector": "Sektör seçin",
+    "aria_sample_modal": "Örnek rapor",
+    "aria_close": "Kapat",
     "nav_why": "Neden GEO",
     "nav_geo": "GEO Nedir",
     "nav_how": "Nasıl Çalışır",
@@ -1174,6 +1137,11 @@ const I18N = {
     "sample_banner_cta": "Kendi Sitenizi Ücretsiz Tarayın →"
   },
   "en": {
+    "skip_to_content": "Skip to content",
+    "label_demo_domain": "Domain to scan",
+    "label_calc_sector": "Select sector",
+    "aria_sample_modal": "Sample report",
+    "aria_close": "Close",
     "nav_why": "Why GEO",
     "nav_geo": "What is GEO",
     "nav_how": "How it works",
@@ -1364,6 +1332,10 @@ function applyLang(lang) {
     const key = el.getAttribute('data-i18n-opt');
     if (dict[key] !== undefined) el.textContent = dict[key];
   });
+  document.querySelectorAll('[data-i18n-aria]').forEach(el => {
+    const key = el.getAttribute('data-i18n-aria');
+    if (dict[key] !== undefined) el.setAttribute('aria-label', dict[key]);
+  });
   document.querySelectorAll('[data-i18n-list]').forEach(el => {
     const key = el.getAttribute('data-i18n-list');
     const arr = dict[key];
@@ -1373,6 +1345,26 @@ function applyLang(lang) {
   });
   const langBtn = document.getElementById('lang-toggle');
   if (langBtn) langBtn.textContent = lang === 'en' ? 'TR' : 'EN';
+  // SEO (S3): title/description/OG dile gore guncellensin — sekme basligi ve
+  // sosyal paylasim tutarli olur (client-side toggle crawler'a gorunmese de).
+  const meta = lang === 'en'
+    ? { title:'GEONI — AI Visibility Optimization',
+        desc:'GEO services to make your brand visible in ChatGPT, Perplexity and Gemini. Start with a free AI audit.',
+        ogTitle:'GEONI — Does AI know you?',
+        ogDesc:'Measure how ChatGPT, Gemini and Perplexity see your brand, name or site in 60 seconds — free.',
+        locale:'en_US', altLocale:'tr_TR' }
+    : { title:'GEONI — AI Görünürlük Optimizasyonu',
+        desc:'Markanızın ChatGPT, Perplexity ve Gemini’de görünür olması için GEO hizmetleri. Ücretsiz AI Audit ile başlayın.',
+        ogTitle:'GEONI — AI seni tanıyor mu?',
+        ogDesc:'Markanın, adının veya sitenin ChatGPT, Gemini ve Perplexity’deki görünürlüğünü 60 saniyede ölç — ücretsiz.',
+        locale:'tr_TR', altLocale:'en_US' };
+  document.title = meta.title;
+  const setMeta = (sel, val) => { const el = document.querySelector(sel); if (el) el.setAttribute('content', val); };
+  setMeta('meta[name="description"]', meta.desc);
+  setMeta('meta[property="og:title"]', meta.ogTitle);
+  setMeta('meta[property="og:description"]', meta.ogDesc);
+  setMeta('meta[property="og:locale"]', meta.locale);
+  setMeta('meta[property="og:locale:alternate"]', meta.altLocale);
 }
 
 function toggleLang() {
@@ -1563,7 +1555,7 @@ function renderSampleReport(r, lang) {
   return `
     <div class="results__header">
       <div>
-        <h1 class="results__title">${L.title}</h1>
+        <h2 class="results__title">${L.title}</h2>
       </div>
       <div class="results__scanned">
         <span class="results__scanned-label">${L.queried}</span>
@@ -1598,17 +1590,47 @@ function renderSampleReport(r, lang) {
 
 let currentSampleReport = null;
 
+let _sampleModalLastFocus = null;
 function openSampleModal() {
   currentSampleReport = SAMPLE_REPORTS[Math.floor(Math.random() * SAMPLE_REPORTS.length)];
   document.getElementById('sample-modal-body').innerHTML = renderSampleReport(currentSampleReport, CURRENT_LANG);
   document.getElementById('sample-modal-overlay').classList.remove('hidden');
   document.body.style.overflow = 'hidden';
+  // Fokusu modala tasi; kapaninca geri dondurmek icin acan elemani sakla (E1)
+  _sampleModalLastFocus = document.activeElement;
+  const dialog = document.querySelector('#sample-modal-overlay .sample-modal');
+  if (dialog) dialog.focus();
 }
 
 function closeSampleModal() {
   document.getElementById('sample-modal-overlay').classList.add('hidden');
   document.body.style.overflow = '';
+  if (_sampleModalLastFocus && typeof _sampleModalLastFocus.focus === 'function') {
+    _sampleModalLastFocus.focus();
+  }
+  _sampleModalLastFocus = null;
 }
+
+function _sampleModalIsOpen() {
+  const ov = document.getElementById('sample-modal-overlay');
+  return ov && !ov.classList.contains('hidden');
+}
+
+// ESC ile kapat + basit focus-trap (E1)
+document.addEventListener('keydown', (e) => {
+  if (!_sampleModalIsOpen()) return;
+  if (e.key === 'Escape') { closeSampleModal(); return; }
+  if (e.key === 'Tab') {
+    const dialog = document.querySelector('#sample-modal-overlay .sample-modal');
+    if (!dialog) return;
+    const focusables = dialog.querySelectorAll('a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+});
 
 // Modal HTML'i bu script bloğundan SONRA (dokümanın daha aşağısında)
 // tanımlı - DOMContentLoaded'a kadar bekleyip element referanslarını
@@ -1852,9 +1874,25 @@ const obs = new IntersectionObserver(es => {
 document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
 </script>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script>
 // TREND CHART
+// d3 (~90KB gz) yalnizca grafik viewport'a girince dinamik yuklenir; SRI ile
+// dogrulanir. Anonim landing ziyaretcisine pesin inmez (render'i bloklamaz).
+let _d3Loading = null;
+function loadD3() {
+  if (window.d3) return Promise.resolve();
+  if (_d3Loading) return _d3Loading;
+  _d3Loading = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js';
+    s.integrity = 'sha384-su5kReKyYlIFrI62mbQRKXHzFobMa7BHp1cK6julLPbnYcCW9NIZKJiTODjLPeDh';
+    s.crossOrigin = 'anonymous';
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+  return _d3Loading;
+}
 function drawTrendChart() {
   const wrap = document.getElementById('chart-wrap');
   if (!wrap) return;
@@ -1870,7 +1908,11 @@ function drawTrendChart() {
 
   const svg = d3.select('#chart-wrap').append('svg')
     .attr('viewBox',`0 0 ${W} ${H}`)
-    .attr('width','100%').attr('height',H);
+    .attr('width','100%').attr('height',H)
+    .attr('role','img')
+    .attr('aria-label', CURRENT_LANG === 'en'
+      ? '2020-2026: Google search traffic declines while AI query volume rises, crossing over around 2024.'
+      : '2020-2026: Google arama trafiği düşerken AI sorgu hacmi yükseliyor; eğriler 2024 civarında kesişiyor.');
 
   const g = svg.append('g').attr('transform',`translate(${m.left},${m.top})`);
 
@@ -1893,6 +1935,7 @@ function drawTrendChart() {
   });
 
   const line = d3.line().curve(d3.curveCatmullRom.alpha(0.5));
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   function animateLine(data, color, delay, onEnd) {
     const path = g.append('path')
@@ -1902,7 +1945,7 @@ function drawTrendChart() {
       .attr('d', line);
     const len = path.node().getTotalLength();
     path.attr('stroke-dasharray',len).attr('stroke-dashoffset',len)
-      .transition().delay(delay).duration(1600).ease(d3.easeQuadOut)
+      .transition().delay(reduceMotion ? 0 : delay).duration(reduceMotion ? 0 : 1600).ease(d3.easeQuadOut)
       .attr('stroke-dashoffset',0).on('end', onEnd || (()=>{}));
     return path;
   }
@@ -1913,7 +1956,7 @@ function drawTrendChart() {
     const cx = x(2024.5), cy = y(62);
     g.append('circle').attr('cx',cx).attr('cy',cy).attr('r',0)
       .attr('fill','var(--warn)').attr('stroke','#07070F').attr('stroke-width',2)
-      .transition().duration(350).attr('r',7);
+      .transition().duration(reduceMotion ? 0 : 350).attr('r',7);
     g.append('text').attr('x',cx+12).attr('y',cy-8)
       .attr('font-size','10px').attr('fill','var(--warn)')
       .attr('font-family','Inter,sans-serif')
@@ -1924,7 +1967,7 @@ function drawTrendChart() {
 // Grafik viewport'a girince çiz
 const chartObs = new IntersectionObserver(entries => {
   entries.forEach(e => {
-    if(e.isIntersecting) { drawTrendChart(); chartObs.disconnect(); }
+    if(e.isIntersecting) { loadD3().then(drawTrendChart).catch(()=>{}); chartObs.disconnect(); }
   });
 },{threshold:.3});
 const chartWrap = document.getElementById('chart-wrap');
@@ -2006,8 +2049,8 @@ document.getElementById('calc-sector').addEventListener('change', function() {
 </script>
 
 <div class="sample-modal-overlay hidden" id="sample-modal-overlay">
-  <div class="sample-modal">
-    <button type="button" class="sample-modal__close" id="sample-modal-close" aria-label="Kapat">✕</button>
+  <div class="sample-modal" role="dialog" aria-modal="true" aria-label="Örnek rapor" data-i18n-aria="aria_sample_modal" tabindex="-1">
+    <button type="button" class="sample-modal__close" id="sample-modal-close" aria-label="Kapat" data-i18n-aria="aria_close">✕</button>
     <div class="sample-modal__banner">
       <span data-i18n="sample_banner_note">Bu bir örnek rapordur — gerçek veri değildir.</span>
       <a href="https://app.geoni.ai" data-i18n="sample_banner_cta">Kendi Sitenizi Ücretsiz Tarayın →</a>
@@ -2031,9 +2074,9 @@ document.getElementById('calc-sector').addEventListener('change', function() {
         <div class="audit-head-sub" data-i18n="audit_subtitle">Ücretsiz AI Görünürlük Raporu</div>
       </div>
     </div>
-    <button class="audit-close" onclick="toggleAudit()">✕</button>
+    <button class="audit-close" onclick="toggleAudit()" aria-label="Kapat" data-i18n-aria="aria_close">✕</button>
   </div>
-  <div class="audit-msgs" id="audit-msgs"></div>
+  <div class="audit-msgs" id="audit-msgs" role="log" aria-live="polite"></div>
   <div class="audit-input-wrap" id="audit-input-wrap">
     <input class="audit-input" id="audit-input" placeholder="Yanıtınızı yazın..." onkeydown="if(event.key==='Enter')sendAudit()" data-i18n-ph="audit_input_ph">
     <button class="audit-send" id="audit-send" onclick="sendAudit()">→</button>
