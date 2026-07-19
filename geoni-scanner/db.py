@@ -204,6 +204,53 @@ async def save_brand_check(job_id: str, request_data: dict, result: dict, user_i
     return False
 
 
+async def get_recent_cached_brand(name: str, entity_type: str, lang: str,
+                                  max_age_hours: int = 24) -> dict | None:
+    """A2-1 (QA 2026-07-19): 24h idempotent tarama cache'i. Ayni (ad, tip, dil)
+    icin son `max_age_hours` icinde TAMAMLANMIS bir tarama varsa result_json'unu
+    doner — yoksa None. Determinizm (kullanici tekrar tarayinca ayni skoru gorur)
+    + LLM maliyeti tasarrufu. GUVENLIK: yanlis-dil servisi olmasin diye result_json
+    icindeki 'lang' TAM eslesmeli (audits'te lang kolonu yok, payload'a gomulu).
+    Cagiran: private/custom_queries/force durumlarinda BU FONKSIYONU CAGIRMAZ."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return None
+    nm = (name or "").strip()
+    if not nm:
+        return None
+    try:
+        from datetime import timezone
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/audits",
+                headers=_headers(),
+                params={"name": f"eq.{nm}", "type": f"eq.{entity_type}",
+                        "status": "eq.complete", "select": "result_json,completed_at",
+                        "order": "completed_at.desc", "limit": "5"},
+                timeout=8,
+            )
+            if r.status_code != 200:
+                return None
+            for row in r.json():
+                res = row.get("result_json") or {}
+                if (res.get("lang") or "tr") != (lang or "tr"):
+                    continue  # dil uymuyor -> yanlis skor servis etme
+                ca = row.get("completed_at")
+                if not ca:
+                    continue
+                try:
+                    ts = datetime.fromisoformat(ca.replace("Z", "+00:00"))
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=timezone.utc)
+                except Exception:
+                    continue
+                if ts >= cutoff:
+                    return res
+    except Exception as e:
+        logger.info(f"get_recent_cached_brand skip: {e}")
+    return None
+
+
 async def deduct_credits(user_id: str, amount: int, description: str, reference_id: str = None) -> bool:
     """Deduct credits from user balance and record transaction."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:

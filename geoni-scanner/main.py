@@ -50,7 +50,7 @@ from db import (
     admin_set_suspended, admin_set_admin_scopes,
     get_ticket_role, list_ticket_messages, add_ticket_message, create_ticket_upload_url, mark_ticket_read, notify_ticket_event,
     list_ticket_tasks, toggle_ticket_task, dispute_ticket, confirm_ticket,
-    get_ticket_by_id, get_latest_audit_by_target,
+    get_ticket_by_id, get_latest_audit_by_target, get_recent_cached_brand,
 )
 from self_improve import run_improvement_cycle, get_signals, improvement_loop
 from anthropic_admin import get_anthropic_cost_summary
@@ -111,6 +111,7 @@ class BrandCheckRequest(BaseModel):
     private: Optional[bool] = False
     custom_queries: Optional[List[str]] = None  # kullanici tanimli SOV sorgulari
     social: Optional[bool] = False  # sosyal mod: SOV rakipleri @handle/hesap olarak
+    force: Optional[bool] = False  # A2-1: 24h cache'i atla, yeniden olc
     turnstile_token: Optional[str] = None  # Cloudflare Turnstile (anti-abuse); soft-rollout
 
 class BrandCheckResponse(BaseModel):
@@ -428,6 +429,22 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
 
     slot_acquired2 = False
     try:
+        # A2-1: 24h idempotent tarama cache'i. Ayni (ad,tip,dil) son 24h'te tarandiysa
+        # AYNI sonucu don — determinizm (kullanici tekrar tarayinca skor savrulmaz) +
+        # LLM maliyeti tasarrufu. ATLA: private (audits'e yazmaz), custom_queries (farkli
+        # tarama), force (kullanici bilerek yeniden olcuyor). cached:true bayragi client'a.
+        if (not request.private and not getattr(request, "force", False)
+                and not request.custom_queries):
+            cached = await get_recent_cached_brand(request.name, request.type or "person",
+                                                   request.lang or "tr")
+            if cached:
+                brand_checks_store[job_id].update({
+                    "status": "complete",
+                    "result": {**cached, "cached": True},
+                    "completed_at": datetime.now().isoformat(),
+                })
+                emit("__done__")
+                return
         # Kredi kacagi (guvenlik #1): private kisi/marka taramasi 10 kontor,
         # gercek 4-motor maliyeti uretir. Pahali isten ONCE bakiye on-kontrolu;
         # basarida atomik dusum asagida. Anonim private reddedilir.
@@ -472,7 +489,8 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
         brand_checks_store[job_id].update({
             "status": "complete",
             "result": build_brand_payload(result, request.name, request.topic,
-                                          _stability, datetime.now().isoformat()),
+                                          _stability, datetime.now().isoformat(),
+                                          lang=request.lang or "tr"),
             "completed_at": datetime.now().isoformat(),
         })
         # Ozel/gecici tarama: Dashboard/Tarama Gecmisi'nde hic gorunmesin diye
@@ -761,6 +779,7 @@ class SocialCheckRequest(BaseModel):
     niche: Optional[str] = Field("", max_length=500)
     email: EmailStr
     lang: Optional[str] = "tr"
+    force: Optional[bool] = False  # A2-1: 24h cache'i atla, yeniden olc
     turnstile_token: Optional[str] = None  # Cloudflare Turnstile (anti-abuse); soft-rollout
 
     @field_validator("email")
@@ -806,6 +825,7 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
         lang=request.lang or "tr",
         private=False,  # kaydet (giris varsa user'a bagli), kredi social oldugu icin dusmez
         social=True,    # SOV rakiplerini @handle/hesap olarak cikar
+        force=bool(getattr(request, "force", False)),  # A2-1: 24h cache'i atla
     )
     job_id = str(uuid.uuid4())
     brand_checks_store[job_id] = {"job_id": job_id, "status": "queued", "name": brand_req.name, "topic": brand_req.topic, "created_at": datetime.now().isoformat(), "result": None, "error": None}

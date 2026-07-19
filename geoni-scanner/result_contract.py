@@ -28,14 +28,16 @@ SOV_CLIENT_KEYS = {
 }
 
 
-def build_brand_payload(result: dict, name, topic, stability, created_at: str) -> dict:
+def build_brand_payload(result: dict, name, topic, stability, created_at: str, lang: str = "tr") -> dict:
     """brand_recall.check_brand_recall sonucundan client payload'i uretir.
     `result` brand_recall'in dondurdugu ham dict; `stability` ve `created_at`
     cagiran tarafindan hesaplanip verilir (bu fonksiyon saf + senkron kalsin).
-    """
+    `lang` result_json'a gomulur ki 24h idempotent cache (A2-1) DILE gore
+    eslessin — yoksa EN sonuc TR istegine servis edilir (yanlis skor)."""
     return {
         "name": name,
         "topic": topic,
+        "lang": lang,
         # Kimlik uyusmazliginda arayuz aciklamali ekrani gosterebilsin.
         "identity_mismatch": result.get("identity_mismatch", False),
         "match_score": result.get("match_score"),
