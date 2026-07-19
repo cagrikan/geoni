@@ -100,7 +100,10 @@ async def _provider_health_alert(provider: str, status: int, body: str) -> None:
 # T2: SOV'un ChatGPT/Claude web-arama motorlarinda kullanilan guncel modeller.
 # Ayni OPENAI_API_KEY / ANTHROPIC_API_KEY anahtarlariyla calisir.
 OPENAI_WEB_MODEL = "gpt-5"          # OpenAI Responses API + web_search araci
-CLAUDE_WEB_MODEL = "claude-sonnet-5"  # Anthropic Messages API + web_search_20250305
+CLAUDE_WEB_MODEL = "claude-haiku-4-5"  # MALİYET (2026-07-19): SOV claude-web motoru
+# sonnet-5'ti ($0.13/çağrı, ~5/tarama). Mention-tespiti için haiku YETERLİ (A/B: mention
+# kararı sonnet-5 ile uyuşuyor, kapsama benzer) + ~6.4x ucuz ($0.02/çağrı). Ölçekte
+# ~$5.4k/ay tasarruf. ŞART: tool_choice=any (yoksa haiku aramayı atlar, web yüzeyini ölçmez).
 
 # A-3 (judge bagimsizligi): judge, DORT recall motorundan (claude-haiku-4-5,
 # gpt-4o-mini, gemini-2.5-flash, sonar) HICBIRI olmamali — yoksa judge kendi
@@ -715,6 +718,9 @@ async def _ask_claude_web(prompt: str, temperature: float = 0.0, max_tokens: int
                     "model": CLAUDE_WEB_MODEL,
                     "max_tokens": max(max_tokens, 1024),
                     "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
+                    # ŞART (2026-07-19): haiku araç KULLANMAYA ZORLANMALI — yoksa "aramaya
+                    # gerek yok" deyip eğitim verisinden cevaplıyor (web yüzeyini ÖLÇMEZ).
+                    "tool_choice": {"type": "any"},
                     "messages": [{"role": "user", "content": prompt}],
                 },
                 timeout=50,
