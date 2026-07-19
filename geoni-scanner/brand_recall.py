@@ -106,8 +106,13 @@ PROGRESS_MESSAGES = {
     },
 }
 
-# Recall sorgularinda skor tutarliligi icin temperature sabitlenir (Madde 2.7)
-RECALL_TEMPERATURE = 0.1
+# Recall sorgularinda skor tutarliligi icin temperature sabitlenir (Madde 2.7).
+# QA 2026-07-19: ayni @handle 2 kez tarandiginda claude alt-skoru 30<->85 (D55)
+# oynuyordu; 0.1->0.0 ile parametrik recall sorgularinin varyansi asgariye iner.
+# NOT: SOV'un canli web-arama motorlari (perplexity/openai-web/claude-web/gemini
+# grounded) DOGASI GEREGI kosudan kosuya farkli sonuc dondurur; sosyal skorda
+# (WEIGHTS_SOCIAL sov=0.55) bu kalinti oynaklik tamamen giderilemez.
+RECALL_TEMPERATURE = 0.0
 
 # SOV olculemedeginde kullanilan (eski v2) agirliklar
 # NOT (v4): gemini entegrasyon hatasi duzeltilene+stabilize olana dek GOLGE MODDA

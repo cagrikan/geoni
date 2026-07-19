@@ -9,7 +9,7 @@ without a website (e.g. political candidates, executives).
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List
 import asyncio
 import os
@@ -69,7 +69,10 @@ from ticket_automation import (
 )
 
 class AuditRequest(BaseModel):
-    domain: str
+    # max_length: 50k-karakterlik cop domain normalize/SSRF asamasinda islenmeden
+    # HTTP 500 firlatiyordu (QA 2026-07-19). URL ust siniri ~2048 -> asan girdi
+    # Pydantic'te temiz 422 doner, tarama pipeline'ina hic girmez.
+    domain: str = Field(..., max_length=2048)
     email: EmailStr
     competitors: Optional[List[str]] = None
     page_limit: int = 500
@@ -95,8 +98,8 @@ class AuditResponse(BaseModel):
 
 class BrandCheckRequest(BaseModel):
     type: Optional[str] = "person"   # "person" | "brand"
-    name: str
-    topic: Optional[str] = ""
+    name: str = Field(..., max_length=200)  # asiri-uzun girdi savunmasi (QA 2026-07-19)
+    topic: Optional[str] = Field("", max_length=500)
     role: Optional[str] = ""
     company: Optional[str] = ""
     sector: Optional[str] = ""
@@ -138,6 +141,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def _security_headers(request, call_next):
+    # QA 2026-07-19 (DUSUK): API yanitlarinda guvenlik basliklari eksikti.
+    # JSON API oldugu icin CSP dar tutulur; asil koruma nosniff + HSTS +
+    # cerceve reddine. (HTML olmadigindan X-Frame yine de zarar vermez.)
+    resp = await call_next(request)
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return resp
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -470,6 +485,12 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
                 "checked": result.get("checked", False),
                 "raw_list": result.get("raw_list"),
                 "sov": result.get("sov"),
+                # Sosyal (@handle) taramada backend @handle'i gorunen ada cozer
+                # (resolved_identity) ve nis eksikse bayrak kaldirir (needs_niche).
+                # Bu iki alan payload'a tasinmayinca web+mobil "AI seni soyle taniyor"
+                # ve "nis gir" akislari olu kaliyordu - brand_recall uretse de client gormuyordu.
+                "resolved_identity": result.get("resolved_identity"),
+                "needs_niche": result.get("needs_niche", False),
                 "stability": await build_stability(request.type or "person", request.name,
                                                    result.get("score"),
                                                    result.get("score_breakdown", {})),
@@ -758,8 +779,9 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
     return BrandCheckResponse(job_id=job_id, status="queued")
 
 class SocialCheckRequest(BaseModel):
-    handle: str
-    niche: Optional[str] = ""
+    # Asiri-uzun girdi LLM/tarama maliyetini sismelemez (QA 2026-07-19 savunmasi).
+    handle: str = Field(..., max_length=200)
+    niche: Optional[str] = Field("", max_length=500)
     email: EmailStr
     lang: Optional[str] = "tr"
     turnstile_token: Optional[str] = None  # Cloudflare Turnstile (anti-abuse); soft-rollout
