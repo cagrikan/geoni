@@ -507,40 +507,61 @@ async def _extract_competitors(answers: list[str], own_name: str, ask_llm, socia
             "Her ad icin kac ayri yanitta gectigini say.\n"
             'Yalnizca su JSON formatinda dondur: {"competitors": [{"name": "...", "mentions": 1}]}'
         )
-    try:
-        raw = await ask_llm(prompt)
-        data = _extract_json(raw) if raw else None
+    # A4-2 (QA 2026-07-19): "sessiz-[] yasak". Eskiden LLM bos donunce / JSON parse
+    # basarisiz olunca / hepsi filtrelenince AYNI sonuc (bos liste) donuyordu, hangisi
+    # oldugu bilinmiyordu — competitors 3/3 kosuda bos ciktiginda kok neden gorunmezdi
+    # (gercekte Anthropic kredisi bitmisti). Simdi: bos/parse-fail TRANSIENT sayilir ve
+    # bir kez daha denenir; her basarisizlik NEDENIYLE loglanir (canary/telemetri gorur).
+    for attempt in (1, 2):
+        try:
+            raw = await ask_llm(prompt)
+        except Exception as e:
+            logger.warning(f"SOV competitor: ask_llm hata (deneme {attempt}): {e}")
+            continue
+        if not raw:
+            logger.warning(f"SOV competitor: LLM BOS yanit (deneme {attempt}) — saglayici "
+                           f"kredi/erisim dusuk olabilir (own={own_name}, answers={len(full_answers)})")
+            continue
+        data = _extract_json(raw)
         comps = (data or {}).get("competitors") if isinstance(data, dict) else None
-        if not comps or not isinstance(comps, list):
-            return []
-        out = []
-        seen: set = set()
-        for c in comps:
-            if not isinstance(c, dict):
-                continue
-            cname = str(c.get("name", "")).strip()
-            if not cname:
-                continue
-            # O3: kendi markasi (varyant-toleransli) — listeye alma.
-            if _is_own_brand(cname, own_name):
-                continue
-            # O4: AI platformu/motoru (varyant-toleransli) — rakip degil.
-            if _is_denied_competitor(cname):
-                continue
-            key = _normalize(cname)
-            if key in seen:
-                continue
-            seen.add(key)
-            # O5: mention sayimi LLM'e degil, yanitlara deterministik sorulur.
-            # Sosyal handle'lar (@x) ya da noktalamali adlar bounded eslesmeyi
-            # kacirabilir; det==0 ise adi dusurmeyip 1 (en muhafazakar) atariz.
-            det = sum(1 for a in full_answers if _brand_mentioned(a, cname))
-            out.append({"name": cname, "mentions": det if det > 0 else 1})
-        out.sort(key=lambda x: -x["mentions"])
-        return out[:5]
-    except Exception as e:
-        logger.info(f"SOV competitor extraction failed: {e}")
-        return []
+        if not isinstance(comps, list):
+            logger.warning(f"SOV competitor: JSON parse basarisiz (deneme {attempt})")
+            continue
+        out = _filter_competitors(comps, own_name, full_answers)
+        if out:
+            return out
+        # comps parse edildi ama filtre sonrasi bos: ayni girdiyle retry anlamsiz.
+        logger.info(f"SOV competitor: {len(comps)} aday, filtre sonrasi bos (own={own_name})")
+        break
+    return []
+
+
+def _filter_competitors(comps: list, own_name: str, full_answers: list[str]) -> list[dict]:
+    """LLM aday listesini filtreler (kendi markasi/AI platformu ele), deterministik
+    mention sayar, ilk 5'i doner."""
+    out: list[dict] = []
+    seen: set = set()
+    for c in comps:
+        if not isinstance(c, dict):
+            continue
+        cname = str(c.get("name", "")).strip()
+        if not cname:
+            continue
+        # O3: kendi markasi (varyant-toleransli) — listeye alma.
+        if _is_own_brand(cname, own_name):
+            continue
+        # O4: AI platformu/motoru (varyant-toleransli) — rakip degil.
+        if _is_denied_competitor(cname):
+            continue
+        key = _normalize(cname)
+        if key in seen:
+            continue
+        seen.add(key)
+        # O5: mention sayimi LLM'e degil, yanitlara deterministik sorulur.
+        det = sum(1 for a in full_answers if _brand_mentioned(a, cname))
+        out.append({"name": cname, "mentions": det if det > 0 else 1})
+    out.sort(key=lambda x: -x["mentions"])
+    return out[:5]
 
 
 async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,

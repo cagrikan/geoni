@@ -36,6 +36,7 @@ import os
 import re
 import logging
 import statistics
+import time
 import unicodedata
 from urllib.parse import urlparse
 
@@ -52,6 +53,49 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY    = os.environ.get("OPENAI_API_KEY", "")
 PERPLEXITY_API_KEY = os.environ.get("PERPLEXITY_API_KEY", "")
 GOOGLE_API_KEY     = os.environ.get("GOOGLE_API_KEY", "")
+
+
+# ── A4-1: Saglayici saglik/kredi alarmi ──────────────────────────────────────
+# QA 2026-07-19: Anthropic kredisi bitince TUM claude olcumu (recall/SOV/rakip/
+# kimlik/judge) sessizce None donuyordu; ancak elle fark edildi. Bu, olcumu bir
+# daha SESSIZ birakmaz: kredi/erisim hatasinda belirgin log (CloudWatch icin
+# greppable "PROVIDER HEALTH ALERT") + throttle'li admin maili (saglayici basina
+# saatte 1). 429 (gecici rate-limit) alarm DEGIL; 401/402/403 ve 400-kredi alarm.
+_provider_alert_last: dict[str, float] = {}
+_PROVIDER_ALERT_THROTTLE = 3600.0
+
+
+def _is_provider_health_failure(status: int, body: str) -> bool:
+    if status in (401, 402, 403):
+        return True
+    if status == 400 and any(k in (body or "").lower()
+                             for k in ("credit", "billing", "quota", "insufficient", "balance")):
+        return True
+    return False
+
+
+async def _provider_health_alert(provider: str, status: int, body: str) -> None:
+    if not _is_provider_health_failure(status, body):
+        return
+    now = time.time()
+    if now - _provider_alert_last.get(provider, 0.0) < _PROVIDER_ALERT_THROTTLE:
+        return
+    _provider_alert_last[provider] = now
+    logger.error(f"PROVIDER HEALTH ALERT: {provider} status={status} — olcum bozuk olabilir: {(body or '')[:160]}")
+    try:
+        import db
+        import mailer
+        emails = await db._ticket_admin_emails()
+        for em in (emails or []):
+            await mailer.send_ticket_email(
+                em, f"⚠️ GEONI: {provider} API hatası ({status})",
+                f"{provider} sağlayıcısı {status} dönüyor",
+                [f"Durum: HTTP {status}", f"Detay: {(body or '')[:200]}",
+                 f"Bu sağlayıcıyı kullanan ölçümler (recall/SOV/rakip/kimlik) şu an bozuk olabilir.",
+                 "Kredi / anahtar / faturalama kontrol et."],
+                cta_label="Admin Panel", cta_url="https://app.geoni.ai")
+    except Exception as e:
+        logger.warning(f"provider health alert email failed: {e}")
 
 # T2: SOV'un ChatGPT/Claude web-arama motorlarinda kullanilan guncel modeller.
 # Ayni OPENAI_API_KEY / ANTHROPIC_API_KEY anahtarlariyla calisir.
@@ -409,6 +453,7 @@ async def _ask_claude(prompt: str, temperature: float = RECALL_TEMPERATURE, max_
                 asyncio.create_task(log_provider_call("anthropic"))
                 blocks = r.json().get("content", [])
                 return "\n".join(b.get("text", "") for b in blocks if b.get("type") == "text").strip()
+            asyncio.create_task(_provider_health_alert("anthropic", r.status_code, r.text))
             logger.warning(f"Claude {r.status_code}: {r.text[:200]}")
     except Exception as e:
         logger.warning(f"Claude query failed: {e}")
@@ -437,6 +482,7 @@ async def _ask_openai(prompt: str, temperature: float = RECALL_TEMPERATURE, max_
             if r.status_code == 200:
                 asyncio.create_task(log_provider_call("openai"))
                 return r.json()["choices"][0]["message"]["content"].strip()
+            asyncio.create_task(_provider_health_alert("openai", r.status_code, r.text))
             logger.warning(f"OpenAI {r.status_code}: {r.text[:200]}")
     except Exception as e:
         logger.warning(f"OpenAI query failed: {e}")
@@ -467,6 +513,7 @@ async def _ask_gemini(prompt: str, temperature: float = RECALL_TEMPERATURE, max_
                 parts = cand.get("content", {}).get("parts", [])
                 text = " ".join(p.get("text", "") for p in parts).strip()
                 return text or None
+            asyncio.create_task(_provider_health_alert("google", r.status_code, r.text))
             logger.warning(f"Gemini {r.status_code}: {r.text[:200]}")
     except Exception as e:
         logger.warning(f"Gemini query failed: {e}")
@@ -554,6 +601,7 @@ async def _ask_perplexity_sourced(prompt: str, temperature: float = RECALL_TEMPE
                     "text": body["choices"][0]["message"]["content"].strip(),
                     "citations": citations,
                 }
+            asyncio.create_task(_provider_health_alert("perplexity", r.status_code, r.text))
             logger.warning(f"Perplexity {r.status_code}: {r.text[:200]}")
     except Exception as e:
         logger.warning(f"Perplexity query failed: {e}")
@@ -583,6 +631,7 @@ async def _ask_perplexity(prompt: str, temperature: float = RECALL_TEMPERATURE, 
                 if usage:
                     asyncio.create_task(record_perplexity_call(usage))
                 return body["choices"][0]["message"]["content"].strip()
+            asyncio.create_task(_provider_health_alert("perplexity", r.status_code, r.text))
             logger.warning(f"Perplexity {r.status_code}: {r.text[:200]}")
     except Exception as e:
         logger.warning(f"Perplexity query failed: {e}")

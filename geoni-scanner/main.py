@@ -120,6 +120,7 @@ class BrandCheckResponse(BaseModel):
 from monitor import monitor_loop
 from content_gen import content_loop
 from stability import build_stability
+from result_contract import build_brand_payload
 from scanqueue import acquire_scan_slot, release_scan_slot, estimate_wait_seconds, sqs_enabled, enqueue_scan, enqueue_prewarm
 
 # Interaktif API dokumani (/docs, /redoc, /openapi.json) tum uc yuzeyini
@@ -462,40 +463,16 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
             custom_queries=request.custom_queries,
             social=bool(getattr(request, "social", False)),
         )
+        # Payload TEK KAYNAKTAN kurulur (result_contract.build_brand_payload) —
+        # client'in okudugu anahtarlar orada belgeli + golden-payload testiyle
+        # korunuyor (A4-3). stability async oldugu icin burada hesaplanip verilir.
+        _stability = await build_stability(request.type or "person", request.name,
+                                           result.get("score"),
+                                           result.get("score_breakdown", {}))
         brand_checks_store[job_id].update({
             "status": "complete",
-            "result": {
-                "name": request.name,
-                "topic": request.topic,
-                # Kimlik uyusmazliginda arayuz aciklamali ekrani gosterebilsin -
-                # eskiden bu bayrak kayda yazilmiyor, kullanici ici bos bir
-                # "0 raporu" goruyordu.
-                "identity_mismatch": result.get("identity_mismatch", False),
-                "match_score": result.get("match_score"),
-                "recognized": result.get("recognized", False),
-                "recognition_count": result.get("recognition_count", 0),
-                "score": result.get("score", 0),
-                "score_legacy": result.get("score_legacy"),
-                "scoring_version": result.get("scoring_version"),
-                "score_breakdown": result.get("score_breakdown", {}),
-                "model_results": result.get("model_results", {}),
-                "google_result_count": result.get("google_result_count", 0),
-                "performing_topics": result.get("performing_topics", []),
-                "opportunity_topics": result.get("opportunity_topics", []),
-                "checked": result.get("checked", False),
-                "raw_list": result.get("raw_list"),
-                "sov": result.get("sov"),
-                # Sosyal (@handle) taramada backend @handle'i gorunen ada cozer
-                # (resolved_identity) ve nis eksikse bayrak kaldirir (needs_niche).
-                # Bu iki alan payload'a tasinmayinca web+mobil "AI seni soyle taniyor"
-                # ve "nis gir" akislari olu kaliyordu - brand_recall uretse de client gormuyordu.
-                "resolved_identity": result.get("resolved_identity"),
-                "needs_niche": result.get("needs_niche", False),
-                "stability": await build_stability(request.type or "person", request.name,
-                                                   result.get("score"),
-                                                   result.get("score_breakdown", {})),
-                "created_at": datetime.now().isoformat(),
-            },
+            "result": build_brand_payload(result, request.name, request.topic,
+                                          _stability, datetime.now().isoformat()),
             "completed_at": datetime.now().isoformat(),
         })
         # Ozel/gecici tarama: Dashboard/Tarama Gecmisi'nde hic gorunmesin diye
