@@ -57,8 +57,7 @@ async def _scan_web_item(item: dict) -> int | None:
 
     crawl_result = await crawl_domain(domain, MONITOR_PAGE_LIMIT)
     indexing_status = await check_indexing_status(crawl_result["pages"])
-    page_titles = [p.get("title", "") for p in crawl_result.get("pages", []) if p.get("title")]
-    identity = await infer_brand_identity(domain, page_titles)
+    identity = await infer_brand_identity(domain, crawl_result.get("pages", []))
     brand_recall_result = await check_brand_recall(
         identity["name"], identity["topic"],
         custom_queries=item.get("custom_queries"),

@@ -431,6 +431,55 @@ async def check_is_premium(user_id: str) -> bool:
     return False
 
 
+# ── Ucretsiz-tarama sayaci (HESAP katmani) ──────────────────────────────────
+# Cihaz katmani devicecheck.py'de (Apple, wipe-proof). Hesap katmani burada:
+# profiles.free_scans_used. Ikisi de <FREE_SCAN_LIMIT olmali (max guvenlik).
+# Migration (bir kez, Supabase SQL):
+#   alter table profiles add column if not exists free_scans_used int not null default 0;
+#   create or replace function increment_free_scans(uid uuid) returns int as $$
+#     update profiles set free_scans_used = coalesce(free_scans_used,0)+1
+#     where id = uid returning free_scans_used;
+#   $$ language sql;
+
+async def get_free_scans_used(user_id: str) -> int:
+    """Hesabin simdiye kadar yaptigi ucretsiz tarama sayisi (yoksa 0)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
+        return 0
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=free_scans_used",
+                headers=_headers(),
+                timeout=8,
+            )
+            if r.status_code == 200 and r.json():
+                return int(r.json()[0].get("free_scans_used") or 0)
+    except Exception as e:
+        logger.warning(f"get_free_scans_used failed: {e}")
+    return 0
+
+
+async def increment_free_scans(user_id: str) -> int | None:
+    """Hesabin ucretsiz-tarama sayacini ATOMIK +1 (RPC). Yeni degeri döner.
+    RPC yoksa/hata → None (cagiran soft-basarisiz sayar; cihaz katmani korur)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/increment_free_scans",
+                headers=_headers(),
+                json={"uid": user_id},
+                timeout=8,
+            )
+            if r.status_code in (200, 201):
+                body = r.json()
+                return int(body) if isinstance(body, int) else int(body[0]) if body else None
+    except Exception as e:
+        logger.warning(f"increment_free_scans failed: {e}")
+    return None
+
+
 _is_admin_cache: dict[str, tuple[bool, float]] = {}
 
 

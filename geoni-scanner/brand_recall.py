@@ -1802,18 +1802,48 @@ async def check_brand_recall(
     }
 
 
-async def infer_brand_identity(domain: str, page_titles: list[str]) -> dict:
-    """Infer brand name + topic from crawled page titles."""
+async def infer_brand_identity(domain: str, pages: list) -> dict:
+    """Infer brand name + topic from crawled pages.
+
+    F (daktilo vakasi): Yalnizca sayfa BASLIKLARINA bakmak, siirsel/metaforik
+    marka adlarinda kategoriyi yanlis cikariyordu — "daktilo" (daktilo makinesi)
+    aslinda zaman-kilitli mektup app'i ama basliklar siirsel oldugundan model
+    adi "dijital yazi arsivi" sanip tum SOV'u savuruyordu. Artik baslik + H1 +
+    meta description birlikte beslenir (sitenin kendi kategori beyani) ve modele
+    "kategoriyi marka ADINDAN tahmin etme" talimati verilir.
+
+    `pages`: crawl_result['pages'] (dict listesi). Geriye-uyum: str listesi de
+    kabul edilir (eski cagiranlar/testler kirilmasin).
+    """
     fallback_name = domain.split(".")[0].replace("-", " ").title()
 
-    if not page_titles or not ANTHROPIC_API_KEY:
+    if not pages or not ANTHROPIC_API_KEY:
         return {"name": fallback_name, "topic": fallback_name}
 
-    titles_text = "\n".join(page_titles[:10])
+    lines: list[str] = []
+    for p in pages[:8]:
+        if isinstance(p, str):
+            merged = p.strip()
+        else:
+            parts = [
+                (p.get("title") or "").strip(),
+                (p.get("h1") or "").strip(),
+                (p.get("meta_description") or "").strip(),
+            ]
+            merged = " — ".join(dict.fromkeys(x for x in parts if x))  # tekrarsiz, sirali
+        if merged:
+            lines.append(merged)
+    if not lines:
+        return {"name": fallback_name, "topic": fallback_name}
+    signal_text = "\n".join(lines[:10])
+
     prompt = (
-        f"Aşağıda bir web sitesinden alınan sayfa başlıkları var. "
-        f"Şirketin/markanın adını ve faaliyet alanını tahmin et.\n\n"
-        f"Sayfa başlıkları:\n{titles_text}\n\n"
+        f"Aşağıda bir web sitesinin sayfalarından başlık, H1 ve açıklama metinleri var. "
+        f"Sitenin marka adını ve NE İŞ YAPTIĞINI (faaliyet alanı) belirle.\n\n"
+        f"ÖNEMLİ: Faaliyet alanını marka ADINDAN tahmin etme — adlar metaforik ya da "
+        f"yanıltıcı olabilir (ör. bir kelime, ürünün gerçekte yaptığı işi yansıtmayabilir). "
+        f"Kategoriyi yalnızca sayfaların açıkça anlattığı işe (açıklama ve H1 metinlerine) dayandır.\n\n"
+        f"Sayfa metinleri:\n{signal_text}\n\n"
         f"Sadece şu formatta yanıt ver:\n"
         f"MARKA: [marka/şirket adı]\n"
         f"ALAN: [faaliyet alanı, 2-4 kelime]"

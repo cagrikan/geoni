@@ -29,6 +29,7 @@ from topics import generate_topics_and_opportunities
 from ratelimit import enforce_audit_rate_limits, RateLimitExceeded
 from mailer import send_audit_report_email, send_purchase_email, send_refund_email
 from brand_recall import check_brand_recall, infer_brand_identity, SCORING_VERSION
+from free_scan import free_scan_gate, record_free_scan
 from db import (
     create_pending_audit, update_audit_status, get_audit_row,
     save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits, get_credit_balance,
@@ -81,6 +82,7 @@ class AuditRequest(BaseModel):
     private: Optional[bool] = False
     custom_queries: Optional[List[str]] = None  # kullanici tanimli SOV sorgulari
     turnstile_token: Optional[str] = None  # Cloudflare Turnstile (anti-abuse); soft-rollout
+    device_token: Optional[str] = None  # Apple DeviceCheck (ucretsiz-tarama cihaz tavani)
 
     @field_validator("email")
     @classmethod
@@ -113,6 +115,7 @@ class BrandCheckRequest(BaseModel):
     custom_queries: Optional[List[str]] = None  # kullanici tanimli SOV sorgulari
     social: Optional[bool] = False  # sosyal mod: SOV rakipleri @handle/hesap olarak
     force: Optional[bool] = False  # A2-1: 24h cache'i atla, yeniden olc
+    device_token: Optional[str] = None  # Apple DeviceCheck (ucretsiz-tarama cihaz tavani)
     turnstile_token: Optional[str] = None  # Cloudflare Turnstile (anti-abuse); soft-rollout
 
 class BrandCheckResponse(BaseModel):
@@ -214,6 +217,12 @@ def _login_required_message(lang: str) -> str:
     return "Kişi/marka taraması için lütfen giriş yapın."
 
 
+def _free_limit_message(lang: str) -> str:
+    if lang == "en":
+        return "You've used your 2 free scans. Subscribe or buy credits to keep scanning."
+    return "2 ücretsiz taramanı kullandın. Taramaya devam için abone ol ya da kredi al."
+
+
 def _suspended_message(lang: str) -> str:
     if lang == "en":
         return "Your account has been suspended. Please contact support."
@@ -310,8 +319,9 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
         # Infer brand name + topic from crawled page titles, then check
         # whether the LLM's trained knowledge already recognizes this brand
         # within that topic. This becomes a 6th scoring dimension.
-        page_titles = [p.get("title", "") for p in crawl_result.get("pages", []) if p.get("title")]
-        identity = await infer_brand_identity(request.domain, page_titles)
+        # Zengin sinyal (baslik + H1 + meta desc) beslenir; siirsel/metaforik
+        # marka adlarinda kategori yanlis cikmasin (bkz. infer_brand_identity).
+        identity = await infer_brand_identity(request.domain, crawl_result.get("pages", []))
         brand_recall_result = await check_brand_recall(identity["name"], identity["topic"], on_progress=emit, lang=request.lang, custom_queries=request.custom_queries, website=request.domain)
         emit(msgs["scoring"])
 
@@ -634,6 +644,20 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
         if await get_credit_balance(pre_uid) < 5:
             raise HTTPException(status_code=402, detail="insufficient_credits")
 
+    # Ucretsiz-tarama tavani (MAX GUVENLIK: cihaz + hesap). "Giris olsa da olmasa
+    # da parasiz en fazla FREE_SCAN_LIMIT". private zaten kredili, premium muaf,
+    # ic taramalar muaf. Sayac SUBMIT'te dusulur (masrafa girmeden hemen once) —
+    # buraya gelen her tarama gercek API $ yakar. Kayit background'da (submit hizli).
+    if not request.private and not is_premium and not _is_internal_scan(http_request):
+        allowed, gate_info = await free_scan_gate(user_id_rl, request.device_token)
+        if not allowed:
+            raise HTTPException(status_code=402, detail={
+                "error": "free_limit_reached",
+                "limit": gate_info.get("limit", 2),
+                "message": _free_limit_message(request.lang or "tr"),
+            })
+        background_tasks.add_task(record_free_scan, user_id_rl, request.device_token, gate_info)
+
     if sqs_enabled():
         # DIKKAT: SQS modunda jobs_store/audit_events'e kayit ACILMAZ —
         # is bu process'te kosmayacagi icin bellekteki 'queued' girisi status
@@ -786,6 +810,17 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
     if not _is_internal_scan(http_request):
         await enforce_turnstile(request.turnstile_token, client_ip, request.lang or "tr", "brand-check")
 
+    # Ucretsiz-tarama tavani (cihaz + hesap). private zaten 10 kredi, premium muaf.
+    if not request.private and not is_premium2 and not _is_internal_scan(http_request):
+        allowed, gate_info = await free_scan_gate(user_id_rl2, request.device_token)
+        if not allowed:
+            raise HTTPException(status_code=402, detail={
+                "error": "free_limit_reached",
+                "limit": gate_info.get("limit", 2),
+                "message": _free_limit_message(request.lang or "tr"),
+            })
+        background_tasks.add_task(record_free_scan, user_id_rl2, request.device_token, gate_info)
+
     job_id = str(uuid.uuid4())
     brand_checks_store[job_id] = {"job_id": job_id, "status": "queued", "name": request.name, "topic": request.topic, "created_at": datetime.now().isoformat(), "result": None, "error": None}
     brand_check_events[job_id] = asyncio.Queue()
@@ -803,6 +838,7 @@ class SocialCheckRequest(BaseModel):
     lang: Optional[str] = "tr"
     force: Optional[bool] = False  # A2-1: 24h cache'i atla, yeniden olc
     turnstile_token: Optional[str] = None  # Cloudflare Turnstile (anti-abuse); soft-rollout
+    device_token: Optional[str] = None  # Apple DeviceCheck (ucretsiz-tarama cihaz tavani)
 
     @field_validator("email")
     @classmethod
@@ -839,6 +875,22 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
     # run_brand_check_job -> deduct=not social); ucretsiz + rate-limitli kalir.
     auth_header = http_request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
+
+    # Ucretsiz-tarama tavani (cihaz + hesap). Sosyal tarama anonim+ucretsiz →
+    # asil abuse vektoru; cihaz katmani (DeviceCheck) anonimi de kapsar. Premium muaf.
+    if not _is_internal_scan(http_request):
+        sc_uid = await get_user_id_from_token(token) if token else None
+        sc_premium = await check_is_premium(sc_uid) if sc_uid else False
+        if not sc_premium:
+            allowed, gate_info = await free_scan_gate(sc_uid, request.device_token)
+            if not allowed:
+                raise HTTPException(status_code=402, detail={
+                    "error": "free_limit_reached",
+                    "limit": gate_info.get("limit", 2),
+                    "message": _free_limit_message(request.lang or "tr"),
+                })
+            background_tasks.add_task(record_free_scan, sc_uid, request.device_token, gate_info)
+
     brand_req = BrandCheckRequest(
         type="social",  # T3: sosyal tarama "brand" degil "social" kaydedilsin (gecmis/istatistik/kart ayirt etsin)
         name=f"@{handle}",

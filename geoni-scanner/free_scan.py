@@ -1,0 +1,70 @@
+"""
+Ucretsiz-tarama tavani — MAX GUVENLIK: cihaz VE hesap katmani birlikte.
+
+"Giris yapsa da yapmasa da, para vermeden en fazla FREE_SCAN_LIMIT tarama."
+Her ucretsiz tarama gercek API $ yakar; bu yuzden cap sizmamali:
+  - CIHAZ katmani (devicecheck.py, Apple 2-bit): anonimi de kapsar, reinstall/
+    wipe-proof. Cok-hesap acmayi ENGELLER (ayni telefon = ayni sayac).
+  - HESAP katmani (profiles.free_scans_used): girisliyse ek kisit; cok-cihaz
+    kullanmayi ENGELLER (ayni hesap = ayni sayac).
+  - PREMIUM (kredi almis / admin): tavan yok.
+
+Karar: premium → izin. Aksi halde cihaz<LIMIT VE hesap<LIMIT → izin; degilse blok.
+Belirsizlik (DeviceCheck env yok / Apple hatasi) GUVENLI TARAFA duser: o katman
+atlanir, diger katman + IP rate-limit korur; canli akis bloklanmaz.
+
+Kullanim:
+    allowed, info = await free_scan_gate(user_id, device_token)
+    if not allowed: -> 402 {"error": "free_limit_reached", ...}
+    ... tarama BASARIYLA bitince:
+    await record_free_scan(user_id, device_token, info)
+"""
+from __future__ import annotations
+
+import logging
+
+from db import check_is_premium, get_free_scans_used, increment_free_scans
+from devicecheck import (
+    MAX_FREE_SCANS as FREE_SCAN_LIMIT,
+    query_device_count,
+    set_device_count,
+)
+
+logger = logging.getLogger(__name__)
+
+
+async def free_scan_gate(user_id: str | None, device_token: str | None) -> tuple[bool, dict]:
+    """(allowed, info) döner. info, record_free_scan icin device_count tasir."""
+    # Premium/kredi almis kullanici: tavan yok.
+    if user_id and await check_is_premium(user_id):
+        return True, {"reason": "premium", "device_count": None}
+
+    # Cihaz katmani (None → sorgulanamadi → bu katman atlanir).
+    device_count = await query_device_count(device_token) if device_token else None
+    device_over = device_count is not None and device_count >= FREE_SCAN_LIMIT
+
+    # Hesap katmani (anonimde user_id yok → 0 → atlanir).
+    account_used = await get_free_scans_used(user_id) if user_id else 0
+    account_over = account_used >= FREE_SCAN_LIMIT
+
+    if device_over or account_over:
+        return False, {
+            "reason": "free_limit_reached",
+            "limit": FREE_SCAN_LIMIT,
+            "device_over": device_over,
+            "account_over": account_over,
+            "device_count": device_count,
+            "account_used": account_used,
+        }
+    return True, {"reason": "ok", "device_count": device_count, "account_used": account_used}
+
+
+async def record_free_scan(user_id: str | None, device_token: str | None, info: dict) -> None:
+    """Basarili ucretsiz taramadan SONRA iki sayaci da +1. Premium'da no-op."""
+    if info.get("reason") == "premium":
+        return
+    if user_id:
+        await increment_free_scans(user_id)
+    device_count = info.get("device_count")
+    if device_token and device_count is not None:
+        await set_device_count(device_token, device_count + 1)
