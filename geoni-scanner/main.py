@@ -27,7 +27,7 @@ from scoring import compute_ai_visibility_score
 from topics import generate_topics_and_opportunities
 from ratelimit import enforce_audit_rate_limits, RateLimitExceeded
 from mailer import send_audit_report_email, send_purchase_email, send_refund_email
-from brand_recall import check_brand_recall, infer_brand_identity
+from brand_recall import check_brand_recall, infer_brand_identity, SCORING_VERSION
 from db import (
     create_pending_audit, update_audit_status, get_audit_row,
     save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits, get_credit_balance,
@@ -440,7 +440,9 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
         if (not request.private and not getattr(request, "force", False)
                 and not request.custom_queries):
             cached = await get_recent_cached_brand(request.name, request.type or "person",
-                                                   request.lang or "tr")
+                                                   request.lang or "tr",
+                                                   topic=request.topic or "",
+                                                   scoring_version=SCORING_VERSION)
             if cached:
                 brand_checks_store[job_id].update({
                     "status": "complete",

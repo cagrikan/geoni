@@ -204,14 +204,38 @@ async def save_brand_check(job_id: str, request_data: dict, result: dict, user_i
     return False
 
 
+def _norm_topic(t) -> str:
+    return (t or "").strip().casefold()
+
+
+def _cached_row_matches(res: dict, lang: str, topic: str, scoring_version: str | None) -> bool:
+    """Cache satiri (result_json) istekle eslesir mi — TEK KAYNAK anahtar kontrolu.
+    Saf/senkron ki golden test edilebilsin (tests/test_cache_key.py). Fable 2026-07-19:
+    - F-K2: skorlama surumu esitse (v5 eski v4 cache'i gecersiz kilar).
+    - F-K1: lang ACIK+TAM eslesmeli; lang'siz legacy satir hicbir dile eslesmez.
+    - F-K3: nis/topic eslesmeli; ayni handle farkli nisle farkli skor uretir."""
+    if scoring_version is not None and res.get("scoring_version") != scoring_version:
+        return False
+    if res.get("lang") != lang:
+        return False
+    if _norm_topic(res.get("topic")) != _norm_topic(topic):
+        return False
+    return True
+
+
 async def get_recent_cached_brand(name: str, entity_type: str, lang: str,
+                                  topic: str = "", scoring_version: str | None = None,
                                   max_age_hours: int = 24) -> dict | None:
-    """A2-1 (QA 2026-07-19): 24h idempotent tarama cache'i. Ayni (ad, tip, dil)
-    icin son `max_age_hours` icinde TAMAMLANMIS bir tarama varsa result_json'unu
-    doner — yoksa None. Determinizm (kullanici tekrar tarayinca ayni skoru gorur)
-    + LLM maliyeti tasarrufu. GUVENLIK: yanlis-dil servisi olmasin diye result_json
-    icindeki 'lang' TAM eslesmeli (audits'te lang kolonu yok, payload'a gomulu).
-    Cagiran: private/custom_queries/force durumlarinda BU FONKSIYONU CAGIRMAZ."""
+    """A2-1 (QA 2026-07-19): 24h idempotent tarama cache'i. Cache ANAHTARI:
+    (ad, tip, dil, nis/topic, skorlama_surumu) — son `max_age_hours` icinde
+    TAMAMLANMIS eslesme varsa result_json'unu doner, yoksa None. Determinizm +
+    LLM maliyeti tasarrufu. Cagiran: private/custom_queries/force'ta CAGIRMAZ.
+    Anahtarin her parcasi ZORUNLU (2026-07-19 Fable bulgulari):
+    - lang TAM+ACIK eslesmeli; lang'siz legacy satir HICBIR dile eslesmez (K1).
+    - scoring_version eslesmeli; surum degisince (or. v5) eski cache gecersiz (K2).
+    - topic/nis eslesmeli; ayni handle farkli nisle farkli skor uretir (K3).
+    Bu alanlar build_brand_payload ile result_json'a gomuludur (audits'te lang
+    kolonu yok; topic kolonu var ama tutarlilik icin payload'dan okunur)."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return None
     nm = (name or "").strip()
@@ -233,8 +257,8 @@ async def get_recent_cached_brand(name: str, entity_type: str, lang: str,
                 return None
             for row in r.json():
                 res = row.get("result_json") or {}
-                if (res.get("lang") or "tr") != (lang or "tr"):
-                    continue  # dil uymuyor -> yanlis skor servis etme
+                if not _cached_row_matches(res, lang, topic, scoring_version):
+                    continue
                 ca = row.get("completed_at")
                 if not ca:
                     continue
