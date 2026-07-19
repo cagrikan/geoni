@@ -22,10 +22,12 @@ BRAND_CLIENT_KEYS = {
 }
 
 # A3-1 (QA 2026-07-19): "golge modda" motorlar — score_breakdown'da OLCULUP gosterilir
-# ama agirligi 0 oldugu icin mansete KATILMAZ (gemini entegrasyonu stabilize olana dek).
-# Client bunu okuyup "deneysel · skora katilmiyor" etiketi basar; kullanici gemini
-# alt-skorunu (or. 83.3) katki saniyordu (QA ORTA bulgusu).
-SHADOW_ENGINES = ["gemini"]
+# ama agirligi 0 oldugu icin mansete KATILMAZ. Client bunu okuyup "deneysel · skora
+# katilmiyor" etiketi basar.
+# NOT (v5, 2026-07-19): gemini golge moddan CIKTI (backtest gecti; bkz. brand_recall
+# WEIGHTS notu). Artik agirliga katiliyor -> golge listesi BOS. Ileride yeni bir deney
+# motoru eklenirse buraya yazilir; etiketleme altyapisi (client shadow_engines okur) durur.
+SHADOW_ENGINES = []
 
 # sov alt-sozlesmesi: SovSection (web) + mobil brand sonucu bu alanlari okur.
 SOV_CLIENT_KEYS = {

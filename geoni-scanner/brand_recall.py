@@ -124,7 +124,7 @@ def _next_tavily_key() -> tuple[str, str]:
     _tavily_rr["i"] += 1
     return TAVILY_API_KEYS[idx], f"tavily-{idx + 1}"
 
-SCORING_VERSION = "v4-sov"
+SCORING_VERSION = "v5-gemini"  # v5 (2026-07-19): gemini golge moddan cikti, agirliga katildi
 
 # Canli SSE ilerleme mesajlari (dil secimine gore, bkz. check_brand_recall(lang=))
 PROGRESS_MESSAGES = {
@@ -158,15 +158,18 @@ PROGRESS_MESSAGES = {
 # (WEIGHTS_SOCIAL sov=0.55) bu kalinti oynaklik tamamen giderilemez.
 RECALL_TEMPERATURE = 0.0
 
-# SOV olculemedeginde kullanilan (eski v2) agirliklar
-# NOT (v4): gemini entegrasyon hatasi duzeltilene+stabilize olana dek GOLGE MODDA
-# (agirlik 0); model_results'ta gosterilir ama manseti etkilemez. Eski 0.24 pay
-# claude/openai/perplexity'ye oranli dagitildi (0.16/0.24/0.16 -> 0.23/0.34/0.23).
+# SOV olculemedeginde kullanilan agirliklar
+# NOT (v5, 2026-07-19): gemini GOLGE MODDAN CIKTI. Entegrasyon hatasi duzeldi,
+# gemini-2.5-flash tutarli sonuc veriyor (~83.3). Backtest (9 audit, Fable v2):
+# medyan|D|=2, p95=7 (kapi <=4/<=8 GECTI), gemini<->diger motor Spearman=0.15
+# (redundans YOK, sinyal katiyor). Eski 0.24 payin YARISI (~%15 motor kutlesi)
+# konservatif olarak geri verildi; tam parite 30-60 gun izleme sonrasi (v6?).
+# score_model_version=v5-gemini damgasi eski (v4) skorlari GRANDFATHER birakir.
 WEIGHTS = {
-    "claude":           0.23,
-    "openai":           0.34,
-    "gemini":           0.0,
-    "perplexity":       0.23,
+    "claude":           0.20,
+    "openai":           0.28,
+    "gemini":           0.12,
+    "perplexity":       0.20,
     "response_quality": 0.10,
     "topic_relevance":  0.10,
 }
@@ -175,10 +178,10 @@ WEIGHTS = {
 # Tanima (recall) markayi BILEN kullaniciyi, SOV ise markayi BILMEYEN
 # kullaniciyi temsil eder — GEO'nun asil ticari degeri ikincisidir.
 WEIGHTS_SOV = {
-    "claude":           0.17,
-    "openai":           0.26,
-    "gemini":           0.0,     # v4: golge mod (bkz. WEIGHTS notu); 0.18 dagitildi
-    "perplexity":       0.17,
+    "claude":           0.15,
+    "openai":           0.20,
+    "gemini":           0.10,     # v5: golge moddan cikti (bkz. WEIGHTS notu)
+    "perplexity":       0.15,
     "response_quality": 0.05,
     "topic_relevance":  0.05,
     "share_of_voice":   0.30,
@@ -188,10 +191,10 @@ WEIGHTS_SOV = {
 # (who-to-follow = SOV), tanima degil. Report 18: SOV birincil. SOV %55, recall
 # (modeller) %25, dogruluk %15, web/relevance %5. Yalniz social + SOV olculduyse.
 WEIGHTS_SOCIAL = {
-    "claude":           0.083,
-    "openai":           0.084,
-    "gemini":           0.0,
-    "perplexity":       0.083,
+    "claude":           0.07,
+    "openai":           0.07,
+    "gemini":           0.04,     # v5: golge moddan cikti
+    "perplexity":       0.07,
     "response_quality": 0.15,
     "topic_relevance":  0.05,
     "share_of_voice":   0.55,
