@@ -18,6 +18,7 @@ import json
 import uuid
 from datetime import datetime
 import logging
+import httpx
 
 from crawler import crawl_domain, normalize_domain
 from ssrf_guard import assert_public_host, BlockedHostError
@@ -61,6 +62,7 @@ from gemini_admin import get_gemini_cost_summary
 from total_cost_admin import get_admin_total_cost_summary
 import polar
 import iap
+from turnstile import check_turnstile
 from ticket_automation import (
     fulfill_auto_ticket, prepare_semi_ticket, AUTO_FULFILL_KEYS, SEMI_AUTO_KEYS,
     build_expert_audit_context,
@@ -74,6 +76,7 @@ class AuditRequest(BaseModel):
     lang: Optional[str] = "tr"
     private: Optional[bool] = False
     custom_queries: Optional[List[str]] = None  # kullanici tanimli SOV sorgulari
+    turnstile_token: Optional[str] = None  # Cloudflare Turnstile (anti-abuse); soft-rollout
 
     @field_validator("email")
     @classmethod
@@ -105,6 +108,7 @@ class BrandCheckRequest(BaseModel):
     private: Optional[bool] = False
     custom_queries: Optional[List[str]] = None  # kullanici tanimli SOV sorgulari
     social: Optional[bool] = False  # sosyal mod: SOV rakipleri @handle/hesap olarak
+    turnstile_token: Optional[str] = None  # Cloudflare Turnstile (anti-abuse); soft-rollout
 
 class BrandCheckResponse(BaseModel):
     job_id: str
@@ -212,6 +216,20 @@ def get_client_ip(request: Request) -> str:
         if parts:
             return parts[-1]
     return request.client.host if request.client else "unknown"
+
+
+# ── Cloudflare Turnstile (anti-abuse) ──────────────────────────────────────
+# Anonim ucretsiz taramalarin kotuye kullanimini onler. Mevcut per-IP/e-posta
+# rate-limit'i TAMAMLAR (yerini almaz). Tasarim ilkesi: anti-abuse taramayi
+# ASLA bozmamali -> graceful degrade her yerde (giz yoksa / ag hatasinda /
+# token yoksa soft-allow). Sert zorlama (token sart) TURNSTILE_ENFORCE ile
+# ileride acilir; kod buna hazir.
+async def enforce_turnstile(token: Optional[str], ip: str, lang: str, endpoint: str) -> None:
+    """turnstile.check_turnstile'i sarar; blok durumunda 403 firlatir. Soft-rollout
+    + tum dogrulama mantigi bagimsiz `turnstile.py`'de (fastapi'siz test edilebilsin)."""
+    blocked, msg = await check_turnstile(token, ip, lang, endpoint)
+    if blocked:
+        raise HTTPException(status_code=403, detail=msg)
 
 
 async def set_job_status(job_id: str, status: str):
@@ -562,6 +580,10 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
             headers={"Retry-After": str(e.retry_after_seconds)},
         )
 
+    # Anti-abuse (Turnstile): rate-limit'i tamamlar. Ic tarama muaf.
+    if not _is_internal_scan(http_request):
+        await enforce_turnstile(request.turnstile_token, client_ip, request.lang or "tr", "audit")
+
     # SSRF: ic/ozel adrese cozulen hedefleri erken reddet (crawler'da da guard
     # var; buradaki kontrol kullaniciya bozuk tarama beklemeden 400 dondurur).
     try:
@@ -722,6 +744,10 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
             headers={"Retry-After": str(e.retry_after_seconds)},
         )
 
+    # Anti-abuse (Turnstile): rate-limit'i tamamlar. Ic tarama muaf.
+    if not _is_internal_scan(http_request):
+        await enforce_turnstile(request.turnstile_token, client_ip, request.lang or "tr", "brand-check")
+
     job_id = str(uuid.uuid4())
     brand_checks_store[job_id] = {"job_id": job_id, "status": "queued", "name": request.name, "topic": request.topic, "created_at": datetime.now().isoformat(), "result": None, "error": None}
     brand_check_events[job_id] = asyncio.Queue()
@@ -736,6 +762,7 @@ class SocialCheckRequest(BaseModel):
     niche: Optional[str] = ""
     email: EmailStr
     lang: Optional[str] = "tr"
+    turnstile_token: Optional[str] = None  # Cloudflare Turnstile (anti-abuse); soft-rollout
 
     @field_validator("email")
     @classmethod
@@ -761,6 +788,10 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
             detail=_rate_limit_message(request.lang or "tr", e.retry_after_seconds),
             headers={"Retry-After": str(e.retry_after_seconds)},
         )
+
+    # Anti-abuse (Turnstile): sosyal tarama anonim + ucretsiz -> asil abuse vektoru.
+    if not _is_internal_scan(http_request):
+        await enforce_turnstile(request.turnstile_token, client_ip, request.lang or "tr", "social-check")
 
     handle = request.handle.strip().lstrip("@")
     # Giris varsa token'i gecir: tarama kullanicinin Gecmis'ine dususn (website

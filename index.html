@@ -591,6 +591,9 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
     gtag('config', 'G-2MXW6CXM1N');
   </script>
   <link rel="icon" type="image/png" href="/favicon.png">
+  <!-- Cloudflare Turnstile (anti-abuse): anonim ucretsiz tarama istismarini onler.
+       Managed mod: cogu kullanici gorunmez gecer. -->
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
 
@@ -688,6 +691,9 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
               <input type="text" id="demo-domain" class="demo-input" placeholder="ornek.com" data-i18n-ph="demo_ph_domain">
               <button type="button" id="demo-web-btn" class="demo-btn" data-i18n="demo_btn">Tara →</button>
             </div>
+            <!-- Anti-abuse: Managed Turnstile (cogunlukla gorunmez). Token
+                 tarama istegine eklenir; yuklenmezse istek yine gider. -->
+            <div class="cf-turnstile" data-sitekey="0x4AAAAAAD4ueQF4cOLzYPy4" data-size="flexible" style="margin-top:10px"></div>
             <div id="demo-web-result"></div>
           </div>
 
@@ -1782,10 +1788,12 @@ async function runWebCheck() {
   resultEl.innerHTML = '<div class="web-result"><div class="typing-dots"><span></span><span></span><span></span></div></div>';
 
   try {
+    // Anti-abuse token (Turnstile). Yuklenmediyse bos gonderilir (soft).
+    const tsToken = (window.turnstile && turnstile.getResponse()) || '';
     const res = await fetch('/api/lookup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: domain }),
+      body: JSON.stringify({ name: domain, turnstile_token: tsToken }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'lookup error');
