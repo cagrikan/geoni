@@ -1124,6 +1124,56 @@ async def judge_batch_accuracy(model_texts: dict, web_results: list, person_info
     return {}
 
 
+JUDGE_SAMPLES = max(1, int(os.environ.get("JUDGE_SAMPLES", "3")))
+
+
+async def judge_batch_accuracy_stable(model_texts: dict, web_results: list, person_info: dict) -> dict:
+    """A1-2 (QA 2026-07-19): judge'i JUDGE_SAMPLES kez (default 3) cagirir, model
+    basina MEDYAN (skor/olgu) + COGUNLUK (celiski/uydurma) + MOD (duygu/bilgi_izi)
+    alir. Judge temperature=0 olsa da LLM tam deterministik degil; tek ornek claude
+    alt-skorunda ~D55 oynakliga yol aciyordu (QA). Medyan varyansi kokten dusurur.
+    Maliyet: judge basina +2 cagri (~toplam %2-3). JUDGE_SAMPLES=1 -> eski davranis."""
+    if JUDGE_SAMPLES <= 1:
+        return await judge_batch_accuracy(model_texts, web_results, person_info)
+    samples = await asyncio.gather(*[
+        judge_batch_accuracy(model_texts, web_results, person_info)
+        for _ in range(JUDGE_SAMPLES)
+    ], return_exceptions=True)
+    samples = [s for s in samples if isinstance(s, dict) and s]
+    if not samples:
+        return {}
+    if len(samples) == 1:
+        return samples[0]
+    out: dict = {}
+    for key in model_texts:
+        entries = [s[key] for s in samples if key in s]
+        if not entries:
+            continue
+
+        def _med_float(field: str) -> float:
+            return round(statistics.median(float(e.get(field, 0) or 0) for e in entries), 1)
+
+        def _med_int(field: str) -> int:
+            return int(statistics.median(int(e.get(field, 0) or 0) for e in entries))
+
+        def _majority(field: str) -> bool:
+            return sum(1 for e in entries if e.get(field)) * 2 > len(entries)
+
+        def _mode_str(field: str, default: str) -> str:
+            vals = [e.get(field, default) for e in entries]
+            return max(set(vals), key=vals.count)
+
+        out[key] = {
+            "dogrulanmis_olgu_sayisi": _med_int("dogrulanmis_olgu_sayisi"),
+            "celiski_var": _majority("celiski_var"),
+            "uydurma_suphesi": _majority("uydurma_suphesi"),
+            "dogruluk_skoru": _med_float("dogruluk_skoru"),
+            "duygu": _mode_str("duygu", "notr"),
+            "bilgi_izi": _mode_str("bilgi_izi", "belirsiz"),
+        }
+    return out
+
+
 def _model_score_from_components(taniyor: bool, guven: float, dogruluk_skoru: float,
                                   uzunluk_skoru: float, uydurma_suphesi: bool, celiski_var: bool) -> float:
     if not taniyor:
@@ -1445,7 +1495,7 @@ async def check_brand_recall(
     emit(msgs["comparing"])
     person_info = {"isim": name, "unvan": role, "sirket": company, "sehir": location, "alan": topic}
     representative_texts = {k: v["representative_text"] for k, v in model_raw.items() if v["representative_text"]}
-    judge_results = await judge_batch_accuracy(representative_texts, web_results, person_info)
+    judge_results = await judge_batch_accuracy_stable(representative_texts, web_results, person_info)
     emit(msgs["scoring"])
 
     model_results = {}

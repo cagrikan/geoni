@@ -21,6 +21,12 @@ BRAND_CLIENT_KEYS = {
     "resolved_identity", "needs_niche",
 }
 
+# A3-1 (QA 2026-07-19): "golge modda" motorlar — score_breakdown'da OLCULUP gosterilir
+# ama agirligi 0 oldugu icin mansete KATILMAZ (gemini entegrasyonu stabilize olana dek).
+# Client bunu okuyup "deneysel · skora katilmiyor" etiketi basar; kullanici gemini
+# alt-skorunu (or. 83.3) katki saniyordu (QA ORTA bulgusu).
+SHADOW_ENGINES = ["gemini"]
+
 # sov alt-sozlesmesi: SovSection (web) + mobil brand sonucu bu alanlari okur.
 SOV_CLIENT_KEYS = {
     "checked", "score", "mention_count", "query_count", "engines_used",
@@ -58,6 +64,8 @@ def build_brand_payload(result: dict, name, topic, stability, created_at: str, l
         # nis-eksik bayragi (needs_niche). Payload'a tasinmayinca sosyal akis olur.
         "resolved_identity": result.get("resolved_identity"),
         "needs_niche": result.get("needs_niche", False),
+        # A3-1: golge-mod motorlar (score_breakdown'da var ama skora katkisi 0).
+        "shadow_engines": SHADOW_ENGINES,
         "stability": stability,
         "created_at": created_at,
     }

@@ -1153,7 +1153,16 @@ async def admin_delete_campaign(campaign_id: str, http_request: Request):
 
 @app.get("/api/ticket-types")
 async def ticket_types(lang: str = "tr"):
-    return await list_ticket_types(active_only=True, lang="en" if lang == "en" else "tr")
+    types = await list_ticket_types(active_only=True, lang="en" if lang == "en" else "tr")
+    # B2-1 (QA 2026-07-19): fulfillment_mode TEK DAVRANIS-KAYNAGINDAN (kod kumeleri:
+    # AUTO_FULFILL_KEYS/SEMI_AUTO_KEYS) turetilir. DB'deki verification_type bununla
+    # celisebiliyordu (content_package: DB "manual", gercekte AUTO). Client artik
+    # fulfillment_mode'u okur; verification_type geriye-uyum icin duruyor.
+    for t in (types or []):
+        k = t.get("key")
+        t["fulfillment_mode"] = ("auto" if k in AUTO_FULFILL_KEYS
+                                 else "semi" if k in SEMI_AUTO_KEYS else "human")
+    return types
 
 class TicketPurchaseRequest(BaseModel):
     ticket_type_id: int
