@@ -2908,13 +2908,25 @@ async def rate_ticket(ticket_id: int, rater_id: str, stars: int, comment: str = 
                 return {"success": False, "error": "not_participant"}
             if not ratee:
                 return {"success": False, "error": "no_counterparty"}
+            # QA 2026-07-19: puan "bilet basina her yon TEK" olmali ama upsert
+            # (merge-duplicates) suresiz uzerine yazmaya izin veriyordu. Once mevcut
+            # puani kontrol et; varsa reddet. Yaris durumunda DB unique(ticket_id,
+            # rater_role) kisiti ikinci INSERT'i 409 ile dusurur (asagida yakalanir).
+            ex = await client.get(
+                f"{SUPABASE_URL}/rest/v1/ticket_ratings?ticket_id=eq.{ticket_id}&rater_role=eq.{role}&select=id",
+                headers=_headers(), timeout=10,
+            )
+            if ex.status_code == 200 and ex.json():
+                return {"success": False, "error": "already_rated"}
             up = await client.post(
-                f"{SUPABASE_URL}/rest/v1/ticket_ratings?on_conflict=ticket_id,rater_role",
-                headers={**_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
+                f"{SUPABASE_URL}/rest/v1/ticket_ratings",
+                headers={**_headers(), "Prefer": "return=minimal"},
                 json={"ticket_id": ticket_id, "rater_role": role, "rater_id": rater_id,
                       "ratee_id": ratee, "stars": stars, "comment": (comment or "").strip() or None},
                 timeout=10,
             )
+            if up.status_code == 409:  # unique kisiti: eszamanli ikinci puan
+                return {"success": False, "error": "already_rated"}
             if up.status_code not in (200, 201, 204):
                 return {"success": False, "error": "save_failed"}
             return {"success": True, "role": role, "error": None}

@@ -51,12 +51,11 @@ class Settings(BaseSettings):
     
     # CORS
     CORS_ORIGINS: list = ["http://localhost:3000", "https://geoni.ai"]
-    
-    # Auth
-    JWT_SECRET_KEY: str = "dev-secret-key-change-in-production"
-    JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRATION_HOURS: int = 24
-    
+
+    # Auth: token dogrulama Supabase GoTrue'ya delege edilir (db.get_user_id_from_token
+    # -> /auth/v1/user). Lokal JWT imza/dogrulama YOK; eski JWT_SECRET_KEY/HS256 config
+    # olu ve yaniltici oldugu icin kaldirildi (QA 2026-07-19 guvenlik denetimi).
+
     class Config:
         env_file = ".env"
         case_sensitive = True

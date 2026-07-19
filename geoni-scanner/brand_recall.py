@@ -691,6 +691,20 @@ async def _ask_claude_web(prompt: str, temperature: float = 0.3, max_tokens: int
     return None
 
 
+async def _ask_aux(prompt: str, temperature: float = RECALL_TEMPERATURE, max_tokens: int = 500) -> str | None:
+    """Yardimci (olcum-disi) LLM gorevleri icin dayanikli cagri: rakip cikarimi,
+    konu cikarimi, sosyal kimlik cozumu. ONCE claude (haiku); None donerse (kredi
+    bitmesi/rate/kesinti) OpenAI'ye DUSER. QA 2026-07-19: Anthropic kredisi bitince
+    _ask_claude None donuyor, sov.competitors bos kaliyordu (tek-nokta-ariza).
+    DIKKAT: per-engine 'claude' SKORU'nda KULLANILMAZ — orada fallback olcumu bozar
+    (claude payini openai ile doldurmak yanlis olur); yalniz yardimci gorevlerde."""
+    out = await _ask_claude(prompt, temperature=temperature, max_tokens=max_tokens)
+    if out:
+        return out
+    logger.info("aux LLM: claude bos/basarisiz -> openai fallback")
+    return await _ask_openai(prompt, temperature=temperature, max_tokens=max_tokens)
+
+
 MODEL_ASK_FUNCTIONS = {
     "claude": _ask_claude,
     "openai": _ask_openai,
@@ -1256,7 +1270,7 @@ async def check_brand_recall(
     # bilir). Cozulemezse @handle ile devam (mevcut davranis).
     resolved_identity = None
     if social and name.startswith("@"):
-        resolved_identity = await _resolve_social_identity(name, web_results, _ask_claude)
+        resolved_identity = await _resolve_social_identity(name, web_results, _ask_aux)
         if resolved_identity and resolved_identity.get("name"):
             name = f"{resolved_identity['name']} ({name})"
 
@@ -1472,9 +1486,9 @@ async def check_brand_recall(
     # gibi anlamsiz sorgular uretilmesin); cikarilamazsa SOV puanlanmaz.
     sov_topic = topic
     if not has_usable_topic(name, sov_topic) and not custom_queries:
-        sov_topic = await infer_topic(name, _sanitize_web_results(web_results), _ask_claude)
+        sov_topic = await infer_topic(name, _sanitize_web_results(web_results), _ask_aux)
     sov_task = check_share_of_voice(
-        name, sov_topic, _ask_perplexity_sourced, _ask_claude,
+        name, sov_topic, _ask_perplexity_sourced, _ask_aux,
         ask_google=_ask_gemini_grounded if GOOGLE_API_KEY else None,
         # T2: ChatGPT + Claude web-arama motorlari. Pahali olduklarindan YALNIZ
         # SOV'un sorgularinda calisir (recall'da degil). Anahtar yoksa None gecer.
