@@ -1285,6 +1285,41 @@ async def ticket_audit_context_ep(ticket_id: int, http_request: Request):
         audit = await get_latest_audit_by_target(ticket.get("target") or "")
     return build_expert_audit_context(audit)
 
+
+@app.get("/api/tickets/{ticket_id}/impact")
+async def ticket_impact_ep(ticket_id: int, http_request: Request):
+    """B3-1 (QA 2026-07-19): teslim edilen hizmetin ETKISI — "dosya urettik" ile
+    "gorunurlugun artti" arasindaki kopru + hizmetin ROI kaniti. Baseline (biletin
+    dayandigi tarama, satin alindiginda) vs hedefin EN YENI taramasi. Musteri hedefi
+    yeniden tarayinca (A2-1 cache ucuz) delta guncellenir. Yeni tarama yoksa client
+    "yeniden tara, olcelim" der. Migration YOK — mevcut audits verisinden turetilir."""
+    await _require_ticket_access(ticket_id, http_request)
+    ticket = await get_ticket_by_id(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Bilet bulunamadı")
+    baseline = await admin_get_audit(ticket["audit_id"]) if ticket.get("audit_id") else None
+    latest = await get_latest_audit_by_target(ticket.get("target") or "")
+    has_newer = bool(baseline and latest and baseline.get("id") != latest.get("id"))
+
+    def _slim(a):
+        if not a:
+            return None
+        return {"score": a.get("score"), "at": a.get("completed_at") or a.get("created_at")}
+
+    b = _slim(baseline)
+    l = _slim(latest) if has_newer else None
+    delta = None
+    if b and l and isinstance(b["score"], (int, float)) and isinstance(l["score"], (int, float)):
+        delta = round(l["score"] - b["score"], 1)
+    return {
+        "target": ticket.get("target"),
+        "status": ticket.get("status"),
+        "baseline": b,
+        "latest": l,
+        "delta": delta,
+        "has_newer_scan": has_newer,
+    }
+
 class TicketMessageRequest(BaseModel):
     body: Optional[str] = ""
     attachment_url: Optional[str] = ""
