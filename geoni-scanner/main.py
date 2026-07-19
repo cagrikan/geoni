@@ -161,6 +161,10 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
 async def _start_monitor():
+    # A4-5: Sentry (SENTRY_DSN yoksa no-op). Startup'ta cagrilir ki worker main'i
+    # import edince "api" olarak tetiklenmesin (worker kendi init'ini yapar).
+    from observability import init_sentry
+    init_sentry("api")
     # Izleme v2: haftalik otomatik yeniden tarama dongusu (bkz. monitor.py)
     asyncio.create_task(monitor_loop())
     # Haftalik icerik uretimi: gercek tarama verisinden sosyal icerik uretip

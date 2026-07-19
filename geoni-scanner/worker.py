@@ -29,6 +29,10 @@ import main  # pipeline + jobs_store; uvicorn calismaz, sadece modul
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("worker")
 
+# A4-5: Sentry (SENTRY_DSN yoksa no-op). Worker unhandled exception'lari da toplanir.
+from observability import init_sentry
+init_sentry("worker")
+
 QUEUE_URL = os.environ["SCAN_QUEUE_URL"]
 WORKER_CONCURRENCY = int(os.environ.get("WORKER_CONCURRENCY", "2"))
 VISIBILITY_SECONDS = int(os.environ.get("SCAN_VISIBILITY_SECONDS", "900"))

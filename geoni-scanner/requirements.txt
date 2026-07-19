@@ -1,5 +1,6 @@
 fastapi==0.104.1
 uvicorn==0.24.0
+sentry-sdk>=2.0,<3.0   # A4-5: hata toplama (SENTRY_DSN yoksa no-op)
 pydantic==2.7.0
 pydantic[email]==2.7.0
 pydantic-settings==2.5.0

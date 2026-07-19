@@ -1,0 +1,36 @@
+name: Nightly Canary
+
+# A4-4 (QA 2026-07-19): gecelik canli olcum saglik kontrolu. Sabit hedefi gercek
+# pipeline'dan gecirir; payload-drop / olcum-kirilmasi / kimlik-cozumu regresyonu
+# olursa job KIRMIZI olur (GitHub bildirimi). Elle QA'nin surekli + ucretsiz hali.
+
+on:
+  schedule:
+    - cron: "0 3 * * *"   # her gun 03:00 UTC
+  workflow_dispatch: {}    # elle tetikleme
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+
+      - name: Fetch internal scan token
+        run: |
+          echo "INTERNAL_SCAN_TOKEN=$(aws secretsmanager get-secret-value \
+            --region eu-central-1 --secret-id geoni/internal-scan-token \
+            --query SecretString --output text)" >> "$GITHUB_ENV"
+
+      - name: Run canary
+        run: python scripts/canary.py
