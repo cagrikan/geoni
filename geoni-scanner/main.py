@@ -8,7 +8,8 @@ without a website (e.g. political candidates, executives).
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response, RedirectResponse
+from card import render_score_card
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List
 import asyncio
@@ -1641,6 +1642,32 @@ async def share_card(job_id: str):
     if not data:
         raise HTTPException(status_code=404, detail="Sonuç bulunamadı")
     return data
+
+
+@app.get("/api/share/{job_id}/card.png")
+async def share_card_image(job_id: str, lang: str = "tr"):
+    """Dinamik OG kartı (viral yayılım): geoni.ai/s/<id> paylaşılınca feed'de
+    görünen KİŞİSEL skor görseli. Herhangi bir hata → statik og-share.png'ye
+    düşer (paylaşım önizlemesi asla boş kalmaz)."""
+    try:
+        data = await get_share_result(job_id)
+        if not data or data.get("score") is None:
+            return RedirectResponse("https://geoni.ai/og-share.png", status_code=302)
+        png = await asyncio.to_thread(
+            render_score_card,
+            data.get("label") or "",
+            float(data["score"]),
+            data.get("type") or "web",
+            "en" if (lang or "").startswith("en") else "tr",
+        )
+        return Response(
+            content=png,
+            media_type="image/png",
+            headers={"Cache-Control": "public, max-age=86400, s-maxage=86400"},
+        )
+    except Exception as e:
+        logger.warning(f"share card render failed for {job_id}: {e}")
+        return RedirectResponse("https://geoni.ai/og-share.png", status_code=302)
 
 
 class SocialProfileRequest(BaseModel):

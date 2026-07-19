@@ -69,12 +69,12 @@ export default async function handler(req, res) {
 <meta property="og:type" content="website">
 <meta property="og:title" content="${title}">
 <meta property="og:description" content="${desc}">
-<meta property="og:image" content="https://geoni.ai/og-share.png">
+<meta property="og:image" content="${API}/api/share/${encodeURIComponent(id)}/card.png?lang=${lang}">
 <meta property="og:url" content="https://geoni.ai/s/${esc(id)}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${title}">
 <meta name="twitter:description" content="${desc}">
-<meta name="twitter:image" content="https://geoni.ai/og-share.png">
+<meta name="twitter:image" content="${API}/api/share/${encodeURIComponent(id)}/card.png?lang=${lang}">
 <link rel="icon" href="/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
