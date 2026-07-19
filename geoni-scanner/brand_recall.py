@@ -523,7 +523,10 @@ async def _ask_gemini(prompt: str, temperature: float = RECALL_TEMPERATURE, max_
     return None
 
 
-async def _ask_gemini_grounded(prompt: str, temperature: float = 0.3, max_tokens: int = 500) -> dict | None:
+async def _ask_gemini_grounded(prompt: str, temperature: float = 0.0, max_tokens: int = 500) -> dict | None:
+    # F-Y1 (Fable 2026-07-19): SOV "google" motoru — temp 0.3 mention sayisini koşudan
+    # koşuya oynatıp skoru savuruyordu. temp 0 = deterministik sentez (web arama sonuclari
+    # yine degisebilir ama model orneklemesi sabitlenir).
     """
     Google Search grounding'li Gemini — Google AI Overviews'un esdegeri
     (ayni arama altyapisi + ayni model ailesi; resmi AIO API'si yok).
@@ -641,7 +644,7 @@ async def _ask_perplexity(prompt: str, temperature: float = RECALL_TEMPERATURE, 
     return None
 
 
-async def _ask_openai_web(prompt: str, temperature: float = 0.3, max_tokens: int = 500) -> dict | None:
+async def _ask_openai_web(prompt: str, temperature: float = 0.0, max_tokens: int = 500) -> dict | None:  # F-Y1: SOV motoru deterministik (temp 0.3 mention/skor oynatiyordu)
     """
     T2: OpenAI Responses API + web_search araci ile CANLI arama. ChatGPT'nin
     oneri yuzeyi buyuk olcude Bing'e dayanir; bu, SOV'da "ChatGPT motoru"nun en
@@ -690,7 +693,7 @@ async def _ask_openai_web(prompt: str, temperature: float = 0.3, max_tokens: int
     return None
 
 
-async def _ask_claude_web(prompt: str, temperature: float = 0.3, max_tokens: int = 500) -> dict | None:
+async def _ask_claude_web(prompt: str, temperature: float = 0.0, max_tokens: int = 500) -> dict | None:  # F-Y1: SOV motoru deterministik (temp 0.3 mention/skor oynatiyordu)
     """
     T2: Anthropic Messages API + web_search_20250305 server tool ile CANLI arama.
     Claude'un retrieval yuzeyi Brave'e dayanir; bu, SOV'da "Claude motoru"nun
@@ -1285,7 +1288,7 @@ async def _generate_brand_topics(name: str, topic: str, google_results: list, re
             r = await _post_retry(c,
                 "https://api.anthropic.com/v1/messages",
                 headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-                json={"model": "claude-haiku-4-5", "max_tokens": 800, "temperature": 0.3, "messages": [{"role": "user", "content": prompt}]},
+                json={"model": "claude-haiku-4-5", "max_tokens": 800, "temperature": 0, "messages": [{"role": "user", "content": prompt}]},  # F-Y1: rakip/konu tutarliligi (temp 0.3 koşudan koşuya oynatiyordu, Fable D2)
                 timeout=30,
             )
             if r.status_code == 200:
@@ -1800,7 +1803,9 @@ async def infer_brand_identity(domain: str, page_titles: list[str]) -> dict:
     )
 
     try:
-        raw = await _ask_claude(prompt, temperature=0.3, max_tokens=200)
+        # F-Y1: kimlik cikarimi (ad/alan) DETERMINISTIK olmali — temp 0.3'te site
+        # audit'inde ad/topic koşudan koşuya degisip tum taramayi savuruyordu.
+        raw = await _ask_claude(prompt, temperature=0, max_tokens=200)
         if not raw:
             return {"name": fallback_name, "topic": fallback_name}
         name_m  = re.search(r"MARKA:\s*(.+)", raw)
