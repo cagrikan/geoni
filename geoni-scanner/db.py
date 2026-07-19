@@ -2149,7 +2149,9 @@ async def purchase_ticket(user_id: str, ticket_type_id: int, audit_id: str | Non
                 headers=_headers(),
                 json={
                     "user_id": user_id, "amount": -cost, "type": "ticket_purchase",
-                    "description": f"Bilet satın alma: {ticket_type['name']}",
+                    # O7 (Fable 2026-07-19): [service_key] ön-eki ile client i18n çevirir
+                    # (EN kullanıcı TR hizmet adı görmesin); admin için okunur ad korunur.
+                    "description": f"[{ticket_type['key']}] {ticket_type['name']}",
                 },
                 timeout=10,
             )
@@ -2282,7 +2284,7 @@ async def create_paid_ticket(user_id: str, ticket_type_id: int, target: str, ext
     # 1) Para -> token: cuzdana kredi (ledger'da +token, odenen tutarla).
     ok = await record_purchase(
         user_id, credits, amount_paid, currency, external_id, channel=channel,
-        description=f"App Store hizmet: {ticket_type['name']}",
+        description=f"[{ticket_type['key']}] {ticket_type['name']}",  # O7: client i18n çevirir
     )
     if not ok:
         return {"success": False, "error": "credit_failed"}
