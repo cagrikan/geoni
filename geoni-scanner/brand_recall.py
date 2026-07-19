@@ -1681,13 +1681,19 @@ async def check_brand_recall(
     M = sum(model_w.values())
     avail = sum(model_w[k] for k in measured)
     eff_model = {k: model_w[k] * (M / avail) for k in measured} if avail > 0 else {}
+    # F-O2 REGRESYON FIX (Fable re-test 2026-07-19): needs_niche dalinda base_weights=WEIGHTS
+    # secilir ve WEIGHTS'te 'share_of_voice' YOKTUR; sov_checked=true iken kosulsuz
+    # base_weights["share_of_voice"] KeyError -> 500 (nissiz+taninan sosyal tarama coker).
+    # sov_weight, share_of_voice YOKSA 0 olur: hem KeyError imkansiz hem SOV manşete
+    # katilmaz (F-O2 niyeti: nis yoksa recall-agirlikli skor).
+    sov_weight = base_weights.get("share_of_voice", 0.0)
     _overall = (
         sum(per_model_final_score[k] * eff_model.get(k, 0.0) for k in model_keys)
         + quality_score * base_weights["response_quality"]
         + relevance_score * base_weights["topic_relevance"]
     )
-    if sov_checked:
-        _overall += sov_result["score"] * base_weights["share_of_voice"]
+    if sov_checked and sov_weight:
+        _overall += sov_result["score"] * sov_weight
     overall_score = int(round(_overall))
 
     # ---- GOLGE SKOR (Grup B faz-1) — manseti DEGISTIRMEZ, score_shadow olarak
@@ -1700,8 +1706,8 @@ async def check_brand_recall(
         sum(per_model_shadow_score[k] * eff_shadow.get(k, 0.0) for k in model_keys)
         + relevance_score * base_weights["topic_relevance"]
     )
-    if sov_checked:
-        _shadow += sov_result["score"] * base_weights["share_of_voice"]
+    if sov_checked and sov_weight:
+        _shadow += sov_result["score"] * sov_weight
     score_shadow = int(round(_shadow))
 
     # Karsilastirma icin eski (legacy) skor da hesaplanir
@@ -1719,7 +1725,7 @@ async def check_brand_recall(
         "perplexity":     round(per_model_final_score["perplexity"], 1),
         "yanit_kalitesi": round(quality_score, 1),
         "konu_uyumu":     round(relevance_score, 1),
-        **({"kategori_gorunurlugu": round(sov_result["score"], 1)} if sov_checked else {}),
+        **({"kategori_gorunurlugu": round(sov_result["score"], 1)} if sov_checked and sov_weight else {}),
     }
 
     # recognition_count yukarida (F-O3 skor tabani) hesaplandi — tek kaynak.
