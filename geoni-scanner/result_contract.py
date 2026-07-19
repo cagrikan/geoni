@@ -66,6 +66,8 @@ def build_brand_payload(result: dict, name, topic, stability, created_at: str, l
         "needs_niche": result.get("needs_niche", False),
         # A3-1: golge-mod motorlar (score_breakdown'da var ama skora katkisi 0).
         "shadow_engines": SHADOW_ENGINES,
+        # A4-6: tarama telemetrisi (internal gozlemlenebilirlik; client okumaz).
+        "telemetry": result.get("telemetry"),
         "stability": stability,
         "created_at": created_at,
     }

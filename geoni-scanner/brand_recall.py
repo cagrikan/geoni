@@ -1602,6 +1602,25 @@ async def check_brand_recall(
     topics_task = _generate_brand_topics(name, topic, web_results, representative_texts)
     sov_result, topics = await asyncio.gather(sov_task, topics_task)
 
+    # A1-4 (QA 2026-07-19): rakip TEK KAYNAK. Iki liste vardi — sov.competitors
+    # (kategori hesaplari) ve opportunity_topics[].competitors (konu-bazli domainler);
+    # biri bos biri dolu olabiliyor, client hangisine guvenecegini bilmiyordu. sov.
+    # competitors ASIL kaynak; BOS ise opportunity_topics'ten turetip client'a tek
+    # guvenilir liste veririz (competitors_source ile isaretli, isteyene ayirt eder).
+    if isinstance(sov_result, dict) and sov_result.get("checked") and not sov_result.get("competitors"):
+        seen: set = set()
+        merged: list = []
+        for _t in (topics.get("opportunity_topics") or []):
+            for _c in (_t.get("competitors") or []):
+                cn = str(_c).strip()
+                k = cn.lower()
+                if cn and k not in seen:
+                    seen.add(k)
+                    merged.append({"name": cn, "mentions": 1})
+        if merged:
+            sov_result["competitors"] = merged[:5]
+            sov_result["competitors_source"] = "opportunity_topics"
+
     # Step 4: Genel skor
     model_keys = list(model_raw.keys())
 
@@ -1715,6 +1734,21 @@ async def check_brand_recall(
         # nis-eksik bayragi (UI "nis gir, olcelim" akisi). Web/marka modunda None/False.
         "resolved_identity": resolved_identity,
         "needs_niche": needs_niche,
+        # A4-6 (QA 2026-07-19): tarama telemetrisi — result_json'a gomulur ki
+        # "sessiz bozulma" SQL'le izlenebilsin (migration yok). competitors_empty /
+        # engines_measured=0 gibi sinyaller determinizm/saglayici-kesinti tartismalarini
+        # "yeniden kos ve gozle" yerine veriyle cevaplar (canary bunlari kontrol eder).
+        "telemetry": {
+            "engines_measured": sum(1 for m in model_results.values()
+                                    if isinstance(m, dict) and m.get("recognized") is not None),
+            "sov_checked": sov_checked,
+            "competitors_count": len(sov_result.get("competitors") or []),
+            "competitors_source": sov_result.get("competitors_source", "sov"),
+            "competitors_empty": not bool(sov_result.get("competitors")),
+            "resolved_identity_ok": bool(resolved_identity),
+            "web_results": len(web_results),
+            "web_search_failed": bool(web_search_failed),
+        },
         # F-YUKSEK-4: hicbir motor olculemedi (tumu API hatasi) VE SOV de yoksa
         # bu tarama guvenilir degil. Eskiden kosulsuz True doner, ~0 skor
         # kaliciya (izleme/paylasim karti dahil) yazilirdi. checked=False ile
