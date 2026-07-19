@@ -42,7 +42,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from db import log_provider_call
+from db import log_provider_call, get_pinned_sov_queries
 from perplexity_admin import record_perplexity_call
 from sov import check_share_of_voice, has_usable_topic, infer_topic
 from ssrf_guard import assert_public_host, BlockedHostError
@@ -124,7 +124,7 @@ def _next_tavily_key() -> tuple[str, str]:
     _tavily_rr["i"] += 1
     return TAVILY_API_KEYS[idx], f"tavily-{idx + 1}"
 
-SCORING_VERSION = "v5-gemini"  # v5 (2026-07-19): gemini golge moddan cikti, agirliga katildi
+SCORING_VERSION = "v6"  # v6 (2026-07-19): SOV skoru hücre (sorgu×motor) tabanli, determinizm (F-Y1)
 
 # Canli SSE ilerleme mesajlari (dil secimine gore, bkz. check_brand_recall(lang=))
 PROGRESS_MESSAGES = {
@@ -1606,6 +1606,10 @@ async def check_brand_recall(
     sov_topic = topic
     if not has_usable_topic(name, sov_topic) and not custom_queries:
         sov_topic = await infer_topic(name, _sanitize_web_results(web_results), _ask_aux)
+    # F-Y1 determinizm: SOV sorgu setini (name, type, lang, topic) anahtarli son
+    # audit'ten PINLE -> ayni hedef ayni sorgulari alir, SOV koşu-arasi savrulmaz.
+    # custom_queries verilmisse pinleme yok (kullanici niyeti onceliklidir).
+    pinned_q = None if custom_queries else await get_pinned_sov_queries(name, entity_type, lang, topic)
     sov_task = check_share_of_voice(
         name, sov_topic, _ask_perplexity_sourced, _ask_aux,
         ask_google=_ask_gemini_grounded if GOOGLE_API_KEY else None,
@@ -1618,6 +1622,7 @@ async def check_brand_recall(
         social=social,
         lang=lang,
         location=location,  # O6: yerel SOV sorgusu ("<sehir>'de en iyi X")
+        pinned_queries=pinned_q,
     )
     topics_task = _generate_brand_topics(name, topic, web_results, representative_texts,
                                          lang=lang, social=social)

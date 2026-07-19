@@ -585,7 +585,7 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
                                ask_google=None, ask_openai_web=None, ask_claude_web=None,
                                custom_queries: list | None = None,
                                own_domain: str = "", social: bool = False, lang: str = "tr",
-                               location: str = "") -> dict:
+                               location: str = "", pinned_queries: list | None = None) -> dict:
     """
     Tam SOV olcumu (cok motorlu + atif istihbarati):
       - Sorgular: kullanici tanimli (varsa) yoksa 3 uretilmis kategori sorgusu
@@ -629,6 +629,16 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
     custom = sanitize_custom_queries(custom_queries)
     if custom:
         queries = [{"query": q, "adjacent": False, "topic": topic} for q in custom]
+    elif pinned_queries:
+        # F-Y1 determinizm (Fable re-test 2026-07-19): onceki taramanin sorgu setini
+        # YENIDEN KULLAN (ayni hedef ayni sorgular -> SOV skoru koşu-arasi savrulmaz).
+        # force=true bile ayni sorgulari kullanir ("aynı aletle yeniden ölç").
+        queries = [{"query": q.get("query"), "adjacent": bool(q.get("adjacent")),
+                    "topic": q.get("topic") or topic}
+                   for q in pinned_queries if q.get("query")]
+        if not queries:  # bozuk pin -> uret
+            queries = await generate_category_queries(name, topic, ask_llm, social=social,
+                                                      lang=lang, location=location)
     elif not has_usable_topic(name, topic):
         # Alan bilinmiyor ve ozel sorgu da yok: 'bu alan' gibi anlamsiz
         # sorgularla olcum uydurmak yerine SOV durustce atlanir —
@@ -724,21 +734,29 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
     adjacent_mentions = sum(1 for pq in per_query if pq.get("adjacent") and pq["mentioned"])
     mention_count = primary_mentions + adjacent_mentions  # ham sayim (rapor + geriye uyum)
 
-    # T3: atifli-bahis agirligi. Markanin anildigi bir yanitta KENDI SITESI de
-    # atif aldiysa bahis yapisaldir (agirlik 1.0); yalnizca anildiysa "atifsiz"
-    # bahistir (0.7) — atifsiz bahis modelin sonraki retrieval'inda kaybolabilir.
-    # Asiri-iddia yaratmamak icin: motorlarin HICBIRI atif dondurmediyse (atif
-    # altyapisi devrede degil) agirlik notr (1.0) kalir; herkesi 0.7'ye cekmeyiz.
-    # T4: pozisyon agirligi atifli-bahis agirligiyla CARPIM olarak birlesir
-    # (carpismaz): atifsiz + geride onerilen bahis en dusuk agirligi alir.
+    # v6 (F-Y1 determinizm, Fable re-test 2026-07-19): SOV skoru artik SORGU degil
+    # (SORGU × MOTOR) HÜCRE tabanli. Eski payda = yanit veren primary sorgu sayisi (~3);
+    # tek mention farki = 33 puan × 0.55 sosyal agirlik = manşette ±18 -> force×4'te Δ24.
+    # Yeni payda = yanit veren primary HÜCRE sayisi (~12): adim 33→8.3, manset etkisi
+    # ±18→±4.6. Ayrica daha durust SoV: "yanitlarin yuzde kaci aniyor" (eskiden "en az
+    # bir motor andi mi" OR -> tek motor flake'i tum sorguyu 1 sayiyordu).
+    answered_cells = sum(1 for pq in primary_q
+                         for c in pq["engines"].values() if c.get("answered"))
+    if answered_cells == 0:
+        return {**empty, "queries": per_query}
+
+    # T3: atifli-bahis agirligi (1.0 atifli / 0.7 atifsiz). T4: pozisyon agirligi CARPIM.
+    # v6: her (sorgu,motor) hücresi AYRI sayilir; adjacent hücreler BONUS (numerator'a
+    # girer, paydaya girmez — Y6 komsu-alan korunur). cite_w/pos_w sorgu-bazli kalir.
     any_citations = bool(source_counter)
-    weighted_mentions = 0.0
+    weighted_cells = 0.0
     for qi, pq in enumerate(per_query):
-        if pq["mentioned"]:
-            cite_w = 1.0 if (not any_citations or per_query_own_cited[qi]) else 0.7
-            pos_w = _position_weight(query_positions[qi])
-            weighted_mentions += cite_w * pos_w
-    score = round(min(100.0, (weighted_mentions / answered) * 100), 1)
+        cite_w = 1.0 if (not any_citations or per_query_own_cited[qi]) else 0.7
+        pos_w = _position_weight(query_positions[qi])
+        for c in pq["engines"].values():
+            if c.get("mentioned"):
+                weighted_cells += cite_w * pos_w
+    score = round(min(100.0, (weighted_cells / answered_cells) * 100), 1)
     competitors = await _extract_competitors(answers, name, ask_llm, social=social)
 
     sources = [

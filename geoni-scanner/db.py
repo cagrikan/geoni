@@ -275,6 +275,48 @@ async def get_recent_cached_brand(name: str, entity_type: str, lang: str,
     return None
 
 
+async def get_pinned_sov_queries(name: str, entity_type: str, lang: str, topic: str) -> list | None:
+    """F-Y1 determinizm (2026-07-19, Fable re-test): SOV sorgu setini (ad, tip, dil,
+    nis/topic) anahtarli SON complete audit'ten yeniden kullanir. Boylece ayni hedef
+    HER koşuda AYNI sorgulari alir -> mention pattern koşu-arasi savrulmaz, SOV skoru
+    deterministik olur. Sorgu = olcum ALETI (metodoloji), olcum degil:
+    - skorlama surumunden BAGIMSIZ (v5 audit'inin sorgulari v6 taramada kullanilabilir),
+    - YAS siniri YOK (nis/kategori yavas degisir; force=true bile AYNI aletle olcer).
+    Sorgu seti yenileme AYRI/bilincli eylem (topic degisimi -> anahtar degisir -> otomatik).
+    Donus: [{query, adjacent, topic}, ...] ya da None (eslesen audit/sorgu yoksa)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return None
+    nm = (name or "").strip()
+    if not nm:
+        return None
+    nt = _norm_topic(topic)
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/audits",
+                headers=_headers(),
+                params={"name": f"eq.{nm}", "type": f"eq.{entity_type}",
+                        "status": "eq.complete", "select": "result_json",
+                        "order": "completed_at.desc", "limit": "10"},
+                timeout=8,
+            )
+            if r.status_code != 200:
+                return None
+            for row in r.json():
+                res = row.get("result_json") or {}
+                if res.get("lang") != lang or _norm_topic(res.get("topic")) != nt:
+                    continue
+                qs = ((res.get("sov") or {}).get("queries")) or []
+                pinned = [{"query": q.get("query"), "adjacent": bool(q.get("adjacent")),
+                           "topic": q.get("adjacent_topic") or topic}
+                          for q in qs if q.get("query")]
+                if pinned:
+                    return pinned
+    except Exception as e:
+        logger.info(f"get_pinned_sov_queries skip: {e}")
+    return None
+
+
 async def deduct_credits(user_id: str, amount: int, description: str, reference_id: str = None) -> bool:
     """Deduct credits from user balance and record transaction."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
