@@ -79,6 +79,23 @@ def _is_denied_competitor(cname: str) -> bool:
     return any(_bounded_match(tok, norm) for tok in _DENYLIST_STRONG_TOKENS)
 
 
+# O10 (Fable 2026-07-19): citation_gap'te sosyal AG PLATFORMLARININ KENDISI
+# ("instagram.com" bir Instagram hesabinin atif-firsatinda) gurultu — mecra,
+# atif firsati degil. Backend'de elenir ki hem web hem mobil temiz gorsun.
+_SOCIAL_PLATFORM_DOMAINS = {
+    "instagram.com", "tiktok.com", "youtube.com", "youtu.be", "twitter.com",
+    "x.com", "facebook.com", "fb.com", "linkedin.com", "threads.net",
+    "pinterest.com", "snapchat.com",
+}
+
+
+def _is_social_platform_domain(d: str) -> bool:
+    dd = (d or "").lower().strip().lstrip(".")
+    if dd.startswith("www."):
+        dd = dd[4:]
+    return dd in _SOCIAL_PLATFORM_DOMAINS
+
+
 def _is_own_brand(cname: str, own_name: str) -> bool:
     """O3: rakip adi markanin kendisi mi? Eskiden yalniz TAM normalize eslesme
     vardi ('Acme Yazilim A.S.' vs 'Acme Yazilim' kaciyordu). Iki yonlu, kelime-
@@ -744,6 +761,7 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
         {"domain": d, "mentions": n, "own": False}
         for d, n in gap_counter.most_common(10)
         if not _is_own_domain(d, own) and d not in brand_domains
+        and not _is_social_platform_domain(d)  # O10: mecra domainleri gurultu
     ]
     # T4: anilan sorgularda ortalama oneri sirasi (dusuk = daha ust siralarda).
     mentioned_positions = [
