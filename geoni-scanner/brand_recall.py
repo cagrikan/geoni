@@ -1641,8 +1641,14 @@ async def check_brand_recall(
 
     # Step 4: Genel skor
     model_keys = list(model_raw.keys())
+    recognition_count = sum(1 for v in model_results.values() if v.get("recognized"))
 
-    if dogruluk_values:
+    if recognition_count == 0:
+        # F-O3 (Fable 2026-07-19): HICBIR motor tanimıyorsa "bilmiyorum" yanitlarinin
+        # uzunluk/dogruluk kalitesi SKOR URETMEMELI. Eskiden uydurma/taninmayan hesap
+        # quality bileseninden (0.10-0.15 agirlik) 10-13/100 taban skoru aliyordu.
+        quality_score = 0.0
+    elif dogruluk_values:
         quality_score = sum(dogruluk_values) / len(dogruluk_values)
     else:
         quality_score = sum(_length_band_score(t) for t in representative_texts.values()) / max(len(representative_texts), 1)
@@ -1650,17 +1656,19 @@ async def check_brand_recall(
     relevance_score = _topic_relevance_score(web_results, name, topic)
 
     sov_checked = bool(sov_result.get("checked")) and sov_result.get("score") is not None
-    # Sosyal modda SOV birincil (report 18): social + SOV olculduyse WEIGHTS_SOCIAL.
-    if social and sov_checked:
+    # F-O2 (Fable 2026-07-19): sosyal skorda SOV %55 agirlikli. Nis KULLANICI tarafindan
+    # verilmediyse SOV, oto-tahmin nisle kosuluyor -> guvenilmez (or. Cristiano nissiz 37,
+    # legacy 77 + 4/4 taniniyor). Cozum: nis yoksa (a) needs_niche isareti + (b) guvenilmez
+    # oto-SOV'u manşete 0.55 agirlikla KATMA -> recall-agirlikli skor. Kullanici nis girince
+    # tam SOV-agirlikli skor gelir. has_usable_topic'e gore degil, nis SAGLANDI MI'ya bakilir.
+    niche_provided = bool((topic or "").strip()) or bool(custom_queries)
+    needs_niche = bool(social and not niche_provided)
+    if social and sov_checked and not needs_niche:
         base_weights = WEIGHTS_SOCIAL
-    elif sov_checked:
+    elif sov_checked and not needs_niche:
         base_weights = WEIGHTS_SOV
     else:
         base_weights = WEIGHTS
-    # Report 18: sosyalde nis (SOV) asil deger. Nis cozulemedigi icin SOV
-    # olculemediyse skoru sessizce kirik recall'a dusurme -> UI'a "nis gir" isareti.
-    needs_niche = bool(social and not sov_checked and not custom_queries
-                       and not has_usable_topic(name, sov_topic))
     # A5+Q2: olculemeyen (API hatasi) motorun payini SADECE olculen motorlar
     # arasinda dagit; model grubu toplam payi (M) sabit kalir. quality/topic/sov
     # agirliklari DOKUNULMAZ — dusen bir motor SOV'u/kaliteyi daha onemli yapmaz.
@@ -1711,8 +1719,7 @@ async def check_brand_recall(
         **({"kategori_gorunurlugu": round(sov_result["score"], 1)} if sov_checked else {}),
     }
 
-    recognition_count = sum(1 for v in model_results.values() if v["recognized"])
-
+    # recognition_count yukarida (F-O3 skor tabani) hesaplandi — tek kaynak.
     raw_parts = []
     for key in model_keys:
         resp = model_raw[key]["representative_text"]

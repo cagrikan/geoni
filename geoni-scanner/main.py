@@ -21,6 +21,7 @@ import logging
 import httpx
 
 from crawler import crawl_domain, normalize_domain
+from db import normalize_domain as _valid_domain  # geçersiz domain -> None (F-Y4 submit validasyonu)
 from ssrf_guard import assert_public_host, BlockedHostError
 from indexing import check_indexing_status
 from scoring import compute_ai_visibility_score
@@ -606,6 +607,11 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
     if not _is_internal_scan(http_request):
         await enforce_turnstile(request.turnstile_token, client_ip, request.lang or "tr", "audit")
 
+    # F-Y4 (Fable 2026-07-19): geçersiz domain (boşluk/@/bozuk yapı) submit'te reddedilir.
+    # Yoksa crawler 0 sayfa tarayıp "complete" + uydurma skor (34) üretir + LLM parası yakar.
+    if not _valid_domain(request.domain):
+        raise HTTPException(status_code=422, detail="Geçersiz web sitesi adresi. Örnek: example.com")
+
     # SSRF: ic/ozel adrese cozulen hedefleri erken reddet (crawler'da da guard
     # var; buradaki kontrol kullaniciya bozuk tarama beklemeden 400 dondurur).
     try:
@@ -617,6 +623,16 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
     # Extract user_id from Authorization header if present
     auth_header = http_request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
+
+    # F-O1 (Fable 2026-07-19): private tarama kredi/auth ön-kontrolü SUBMIT'te olmalı.
+    # Yoksa job açılır, ~1sn sonra run_audit_job'da "failed" → status endpoint'i 500
+    # "Audit failed" döner ve client "insufficient_credits" sebebini alamaz.
+    if request.private:
+        pre_uid = await get_user_id_from_token(token) if token else None
+        if not pre_uid:
+            raise HTTPException(status_code=401, detail="Özel tarama için giriş gerekli.")
+        if await get_credit_balance(pre_uid) < 5:
+            raise HTTPException(status_code=402, detail="insufficient_credits")
 
     if sqs_enabled():
         # DIKKAT: SQS modunda jobs_store/audit_events'e kayit ACILMAZ —
