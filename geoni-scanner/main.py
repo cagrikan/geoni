@@ -316,7 +316,7 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
 
         score_result = await compute_ai_visibility_score(crawl_result, indexing_status, brand_recall_result)
 
-        topics = await generate_topics_and_opportunities(request.domain, crawl_result["pages"])
+        topics = await generate_topics_and_opportunities(request.domain, crawl_result["pages"], request.lang or "tr")
 
         result_payload = {
             "domain": request.domain,

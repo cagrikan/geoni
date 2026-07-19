@@ -65,7 +65,7 @@ async def _scan_web_item(item: dict) -> int | None:
         website=domain,
     )
     score_result = await compute_ai_visibility_score(crawl_result, indexing_status, brand_recall_result)
-    topics = await generate_topics_and_opportunities(domain, crawl_result["pages"])
+    topics = await generate_topics_and_opportunities(domain, crawl_result["pages"], item.get("lang") or "tr")
 
     # NOT: main.run_audit_job'daki result_payload ile ayni sekil olmali —
     # dashboard bu kaydi tiklaninca normal rapor olarak acar.

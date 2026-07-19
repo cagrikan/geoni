@@ -30,7 +30,7 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 
-PROMPT_TEMPLATE = """IMPORTANT: Respond entirely in Turkish (Türkçe). All topic names, descriptions, and text must be in Turkish.
+PROMPT_TEMPLATE = """{lang_instruction}
 
 You are an AI visibility analyst. Given a website's crawled page titles \
 and descriptions below, identify:
@@ -74,7 +74,17 @@ def _looks_like_injection(text: str) -> bool:
     return any(re.search(p, norm) for p in _INJECTION_PATTERNS)
 
 
-def _build_prompt(domain: str, pages: list[dict]) -> str:
+def _lang_instruction(lang: str) -> str:
+    # F-Y2 (Fable 2026-07-19): cikti dili PARAMETRIK. Eskiden hardcoded Turkce ->
+    # EN kullanici kendi sitesini tarayinca Turkce konu adlari goruyordu.
+    if (lang or "tr") == "tr":
+        return ("IMPORTANT: Respond entirely in Turkish (Türkçe). "
+                "All topic names, descriptions, and text must be in Turkish.")
+    return ("IMPORTANT: Respond entirely in English. "
+            "All topic names, descriptions, and text must be in English.")
+
+
+def _build_prompt(domain: str, pages: list[dict], lang: str = "tr") -> str:
     summaries = []
     dropped = 0
     for p in pages[:20]:  # cap context size
@@ -90,7 +100,8 @@ def _build_prompt(domain: str, pages: list[dict]) -> str:
     if dropped:
         logger.info(f"topics.py: {dropped} sayfa injection şüphesiyle prompttan çıkarıldı ({domain})")
     page_summaries = "\n".join(summaries) if summaries else "(no page metadata available)"
-    return PROMPT_TEMPLATE.format(domain=domain, page_summaries=page_summaries)
+    return PROMPT_TEMPLATE.format(domain=domain, page_summaries=page_summaries,
+                                  lang_instruction=_lang_instruction(lang))
 
 
 def _extract_json(text: str) -> dict | None:
@@ -217,12 +228,13 @@ def _static_fallback(domain: str, pages: list[dict]) -> dict:
     }
 
 
-async def generate_topics_and_opportunities(domain: str, pages: list[dict]) -> dict:
+async def generate_topics_and_opportunities(domain: str, pages: list[dict], lang: str = "tr") -> dict:
     """
     Generate performing/opportunity topics using the first available LLM provider.
     Falls back to a static heuristic if none are configured or all calls fail.
+    `lang` cikti dilini belirler (F-Y2): 'tr' -> Turkce, digeri -> Ingilizce.
     """
-    prompt = _build_prompt(domain, pages)
+    prompt = _build_prompt(domain, pages, lang)
 
     for name, fn in PROVIDER_CHAIN:
         result = await fn(prompt)
