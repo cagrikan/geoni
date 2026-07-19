@@ -4,13 +4,30 @@
 //   * DM'ler: ig_autoreply_mode='ai' -> Claude ile GERCEK SOHBET (gecmis turlar
 //     ig_dm_log'dan; AI gorunurlugu/GEONI konusunda bilgili, kisa IG uslubu).
 //     mode='template' -> tek satir sablon (yedek).
-//   * Yorumlar: tek-seferlik kisa sablon (sohbet DM'de yasar).
+//   * Yorumlar: mode='ai' -> "arada sirada 3-5" canli-hesap kurgusu: gunluk
+//     tavan (DAILY_COMMENT_CAP) altinda, yanit-degeri olan yorumlara dogal AI
+//     yaniti; spam/alakasiz/salt-emoji ve tavan sonrasi SESSIZ. mode='template'
+//     -> eski tek-satir sablon (yedek, comment_text tanimliysa).
 // Ayarlar app_config'te (deploy'suz degisir). Idempotency: mesaj mid'i ve
 // yorum id'si ig_replies ile tekillestirilir (Meta yeniden gonderimlerine dayanikli).
 import crypto from 'crypto';
 
 const GRAPH = 'https://graph.instagram.com/v23.0';
 const DAILY_DM_CAP = 15; // gonderen basina gunluk AI cevap tavani (dongu/istismar freni)
+// Yorumlar: HER yoruma cevap vermek botvari/spam. "Arada sirada 3-5" -> gunluk
+// global tavan + AI'in kendi SKIP filtresi (spam/alakasiz -> sessiz). Gercek,
+// canli bir hesap gibi: bazi yorumlara doganl yanit verir, hepsine degil.
+const DAILY_COMMENT_CAP = 5;
+
+const COMMENT_SYSTEM = `Sen GEONI'nin (geoni.ai) Instagram hesabini yoneten GERCEK bir kisisin.
+Bir gonderinin altindaki YORUMA kisa, samimi, DOGAL bir yanit yaz — sablon degil, insan gibi.
+KURALLAR:
+- TEK cumle, en fazla ~14 kelime. En fazla 1 emoji (cogu zaman 0).
+- Yoruma OZEL yanit ver; soru varsa kisaca cevapla. Her yanit farkli olsun.
+- Satis yapma. Nadiren, dogal denk gelirse "profilden ucretsiz tara" ya da "App Store'da GEONI" gecebilir — HER yanitta DEGIL.
+- Yorum Turkce ise Turkce, Ingilizce ise Ingilizce yanitla.
+- Spam, kufur, alakasiz, salt-emoji ya da anlamsiz yoruma yanit verme: yalnizca "SKIP" yaz.
+GEONI: markalarin/kisilerin ChatGPT-Claude-Gemini-Perplexity gibi AI motorlarindaki gorunurlugunu olcen ve iyilestiren arac.`;
 
 function sb(path, init = {}) {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -147,6 +164,50 @@ async function aiReply(senderId, userText, cfg, extraSystem = '') {
   return text || null;
 }
 
+/** Bugun kac yoruma AI ile yanit verdik? (gunluk tavan icin). ig_replies'ta
+ *  cmday:<gun>:<commentId> kayitlari like ile sayilir — created_at kolonu gerekmez. */
+async function commentsRepliedToday() {
+  const day = new Date().toISOString().slice(0, 10); // UTC gun
+  const r = await sb(`ig_replies?target_id=like.cmday:${day}:*&select=target_id`, {
+    headers: { Prefer: 'count=exact', Range: '0-0' },
+  }).catch(() => null);
+  const cr = (r && r.headers.get('content-range')) || '';
+  const total = parseInt(cr.split('/')[1] || '0', 10);
+  return { used: Number.isFinite(total) ? total : 0, day };
+}
+
+/** Cok kisa / salt-emoji / anlamsiz yorumlari AI'a gitmeden ele (bosa cagri yok). */
+function isReplyWorthyComment(text) {
+  const t = (text || '').trim();
+  if (t.length < 3) return false;
+  if (!/[a-zA-Z0-9çğıöşüÇĞİÖŞÜ]/.test(t)) return false; // harf/rakam yoksa (salt emoji/noktalama)
+  return true;
+}
+
+/** Yoruma kisa, dogal, marka sesiyle AI yaniti. Uygunsuzsa (spam/alakasiz) null. */
+async function aiCommentReply(commentText) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-5',
+      max_tokens: 80,
+      system: COMMENT_SYSTEM,
+      messages: [{ role: 'user', content: `Gonderi altindaki yorum: "${String(commentText).slice(0, 500)}"\n\nBuna kisa, dogal bir yanit yaz; uygunsuz/alakasizsa yalnizca SKIP yaz.` }],
+    }),
+  }).catch(() => null);
+  if (!r || !r.ok) return null;
+  const data = await r.json().catch(() => null);
+  let text = ((data && data.content) || []).filter((b) => b.type === 'text').map((b) => b.text).join(' ').trim();
+  if (!text || /^skip\b/i.test(text) || text.toUpperCase() === 'SKIP') return null;
+  text = text.replace(/^["'“”]+|["'“”]+$/g, '').trim(); // sarmalayan tirnaklari at
+  return text.slice(0, 280) || null;
+}
+
 /** Bu gonderenle bugunden ONCE konusmusluk var mi? (donus karsilamasi icin) */
 async function talkedBeforeToday(senderId) {
   const t = new Date(); t.setUTCHours(0, 0, 0, 0);
@@ -223,15 +284,31 @@ async function autoReply(body, cfg) {
       await handleDm(sender, m.message, cfg);
     }
 
-    // Yorumlar: kisa tek-seferlik sablon (sohbet DM'de)
+    // Yorumlar: "arada sirada 3-5" canli-hesap kurgusu. HER yoruma degil —
+    //  AI modda gunluk tavan (DAILY_COMMENT_CAP) altinda, yanit-degeri olan
+    //  yorumlara dogal AI yaniti; digerlerinde SESSIZ (gercek hesap gibi).
+    const aiComments = cfg.ig_autoreply_mode === 'ai' && !!process.env.ANTHROPIC_API_KEY;
     for (const c of entry.changes || []) {
       if (c.field !== 'comments' || !c.value) continue;
       const v = c.value;
       const commentId = v.id && String(v.id);
       const from = v.from?.id && String(v.from.id);
+      const text = (v.text || '').trim();
       if (!commentId || !from || from === self) continue;
-      if (await claim(`cm:${commentId}`, 'comment')) {
-        await replyToComment(commentId, cfg.ig_autoreply_comment_text || '', token);
+      if (!(await claim(`cm:${commentId}`, 'comment'))) continue; // tekillestir (Meta yeniden gonderimi)
+
+      if (!aiComments) {
+        // Yedek: template modu (eski davranis) — yalnizca metin tanimliysa
+        if (cfg.ig_autoreply_comment_text) await replyToComment(commentId, cfg.ig_autoreply_comment_text, token);
+        continue;
+      }
+      if (!isReplyWorthyComment(text)) continue; // salt-emoji/cok kisa -> sessiz
+      const { used, day } = await commentsRepliedToday();
+      if (used >= DAILY_COMMENT_CAP) continue; // gunluk tavan doldu -> sessiz
+      const reply = await aiCommentReply(text);
+      if (!reply) continue; // AI SKIP (spam/alakasiz) -> sessiz
+      if (await claim(`cmday:${day}:${commentId}`, 'comment_ai')) { // bütçe slotu (idempotent)
+        await replyToComment(commentId, reply, token);
       }
     }
   }
