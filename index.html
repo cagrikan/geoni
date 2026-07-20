@@ -127,7 +127,7 @@ h1 .grad{background:linear-gradient(135deg,var(--accent) 20%,var(--accent-2) 100
 .hero-btns{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
 .btn-p{background:var(--accent);color:#FFFFFF;padding:13px 26px;border-radius:6px;font-size:1rem;font-weight:600;text-decoration:none;transition:opacity .2s,transform .2s;display:inline-block}
 .btn-p:hover{opacity:.85;transform:translateY(-1px)}
-.btn-g{color:var(--text-sub);padding:13px 22px;border-radius:6px;font-size:1rem;text-decoration:none;border:1px solid var(--border-mid);transition:all .2s}
+.btn-g{background:transparent;font-family:inherit;cursor:pointer;color:var(--text-sub);padding:13px 22px;border-radius:6px;font-size:1rem;text-decoration:none;border:1px solid var(--border-mid);transition:all .2s}
 .btn-g:hover{color:var(--text);border-color:rgba(124,134,245,.35)}
 
 /* CHAT WINDOW */
@@ -652,7 +652,9 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
             </div>
             <!-- Anti-abuse: Managed Turnstile (cogunlukla gorunmez). Token
                  tarama istegine eklenir; yuklenmezse istek yine gider. -->
-            <div class="cf-turnstile" data-sitekey="0x4AAAAAAD4ueQF4cOLzYPy4" data-size="flexible" style="margin-top:10px"></div>
+            <div class="cf-turnstile" data-sitekey="0x4AAAAAAD4ueQF4cOLzYPy4" data-size="flexible" data-theme="dark" style="margin-top:10px"></div>
+            <script>/* Turnstile'i kayıtlı site temasıyla render et (async yarışına dayanıklı): */
+              (function(){try{var t=(localStorage.getItem('geoni_site_theme')==='light')?'light':'dark';var e=document.querySelector('.cf-turnstile');if(e)e.setAttribute('data-theme',t);}catch(_){}})();</script>
             <div id="demo-web-result" role="status" aria-live="polite"></div>
           </div>
 
@@ -1384,13 +1386,23 @@ const SUN_ICON = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4
 const MOON_ICON = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
 
 function applyTheme(theme) {
-  if (theme === 'light') {
-    document.documentElement.setAttribute('data-theme', 'light');
-  } else {
-    document.documentElement.setAttribute('data-theme', 'dark');
-  }
+  const t = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', t);
   const icon = document.getElementById('theme-icon');
   if (icon) icon.innerHTML = theme === 'light' ? MOON_ICON : SUN_ICON;
+  // Turnstile widget'ini site temasina uydur (koyu temada beyaz "Başarılı" barı
+  // çirkin duruyordu). Init'te attribute set edilir -> widget doğru temayla render
+  // olur; zaten render edildiyse yeni temayla yeniden render et.
+  const ts = document.querySelector('.cf-turnstile');
+  if (ts) {
+    ts.setAttribute('data-theme', t);
+    if (window.turnstile && ts.dataset.tsRendered) {
+      try {
+        window.turnstile.remove(ts);
+        window.turnstile.render(ts, { sitekey: ts.getAttribute('data-sitekey'), size: 'flexible', theme: t });
+      } catch (e) { /* yok say */ }
+    }
+  }
 }
 
 function toggleTheme() {
