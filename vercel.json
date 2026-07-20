@@ -18,6 +18,14 @@
       "destination": "/terms.html"
     },
     {
+      "source": "/isbirligi",
+      "destination": "/isbirligi.html"
+    },
+    {
+      "source": "/creator",
+      "destination": "/isbirligi.html"
+    },
+    {
       "source": "/social-callback",
       "destination": "/social-callback.html"
     },

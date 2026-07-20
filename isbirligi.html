@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GEONI — İçerik Üreticileri İçin İş Birliği</title>
+<meta name="description" content="Kitlenin sorduğu soruyu ölçen araç senin olsun. GEONI, markaların ChatGPT/Gemini/Perplexity'de görünürlüğünü ölçer. Barter ya da uzman-ortak — önce dene.">
+<link rel="canonical" href="https://geoni.ai/isbirligi">
+<meta name="robots" content="index,follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="GEONI — İçerik üreticileri için iş birliği">
+<meta property="og:description" content="AI seni tanıyor mu? Ölç, paylaş, konuşalım. Barter ya da uzman-ortak modeli — önce ücretsiz dene.">
+<meta property="og:image" content="https://geoni.ai/og-share.png">
+<meta property="og:url" content="https://geoni.ai/isbirligi">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://geoni.ai/og-share.png">
+<link rel="icon" href="/favicon.png">
+<style>:root{color-scheme:light}body{margin:0;padding:0;background:#faf9f5}</style>
+<style>
+  :root{
+    --accent:#7C86F5; --accent-deep:#5b63e6; --amber:#F5A623;
+    --bg:#FAFAFE; --surface:#FFFFFF; --surface-2:#F3F3FB;
+    --text:#17181f; --muted:#5d6178; --faint:#8a8fa6;
+    --border:rgba(99,102,241,.16); --border-strong:rgba(99,102,241,.30);
+    --good:#1fa971;
+    --shadow:0 1px 2px rgba(23,24,31,.04),0 10px 30px -12px rgba(60,40,130,.14);
+    --mono:"SF Mono","JetBrains Mono",ui-monospace,Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--bg:#121017;--surface:#1b1926;--surface-2:#232130;--text:#ecebf5;--muted:#a6a2bc;--faint:#7d7a97;
+      --border:rgba(124,134,245,.16);--border-strong:rgba(124,134,245,.34);--good:#2fbd84;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 18px 40px -16px rgba(0,0,0,.6);}
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.6;-webkit-font-smoothing:antialiased}
+  :focus-visible{outline:2.5px solid var(--accent);outline-offset:3px;border-radius:5px}
+  .wrap{max-width:720px;margin:0 auto;padding:0 24px 96px}
+  h1,h2,h3{text-wrap:balance;margin:0}
+  p{margin:0}
+  a{color:inherit}
+  .eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);display:inline-flex;align-items:center;gap:9px}
+  .eyebrow::before{content:"✦";color:var(--amber)}
+  header{position:relative;overflow:hidden;border-bottom:1px solid var(--border)}
+  #sky{position:absolute;inset:0;width:100%;height:100%;z-index:0}
+  .head-in{position:relative;z-index:1;padding:60px 0 44px}
+  .brand{display:flex;align-items:center;gap:12px;margin-bottom:34px}
+  .brand svg{flex:none}
+  .brand b{font-weight:800;font-size:1.15rem;letter-spacing:-.02em}
+  .brand .tag{margin-left:auto;font-family:var(--mono);font-size:.68rem;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);border:1px solid var(--border-strong);border-radius:999px;padding:4px 11px}
+  h1{font-size:clamp(1.9rem,5vw,2.7rem);font-weight:800;letter-spacing:-.03em;line-height:1.07;margin:14px 0 0;max-width:16ch}
+  h1 .g{background:linear-gradient(96deg,var(--accent),var(--amber));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .lede{margin-top:20px;font-size:1.1rem;color:var(--muted);max-width:56ch}
+  section{padding:44px 0;border-bottom:1px solid var(--border)}
+  h2{font-size:1.35rem;font-weight:800;letter-spacing:-.02em;margin-top:10px}
+  .sub{color:var(--muted);margin-top:10px;font-size:.98rem;max-width:60ch}
+  .why{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:22px}
+  .why .cell{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:18px 20px;box-shadow:var(--shadow)}
+  .why .k{font-family:var(--mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+  .why .v{margin-top:7px;font-size:.95rem}
+  .models{display:grid;gap:16px;margin-top:24px}
+  .model{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:var(--shadow)}
+  .model-h{display:flex;align-items:center;gap:11px;padding:16px 22px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+  .badge{font-family:var(--mono);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--accent);border-radius:6px;padding:4px 9px}
+  .badge.star{background:var(--amber);color:#1a1200}
+  .model-h b{font-size:1.05rem;font-weight:700}
+  .model-h .rec{margin-left:auto;font-family:var(--mono);font-size:.64rem;letter-spacing:.08em;text-transform:uppercase;color:var(--amber)}
+  .model-b{padding:20px 22px}
+  .model-b .line{display:flex;gap:11px;align-items:baseline;margin-top:11px;font-size:.96rem}
+  .model-b .line:first-child{margin-top:0}
+  .model-b .line .m{font-family:var(--mono);font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);min-width:74px;flex:none}
+  .model-b .give{color:var(--muted)}
+  .model-b .give b{color:var(--text);font-weight:600}
+  .steps{counter-reset:s;display:grid;gap:12px;margin-top:22px}
+  .step{display:flex;gap:15px;align-items:flex-start}
+  .step::before{counter-increment:s;content:counter(s);font-family:var(--mono);font-weight:700;font-size:.9rem;color:var(--amber);border:1px solid var(--border-strong);border-radius:9px;width:34px;height:34px;display:grid;place-items:center;flex:none}
+  .step div{font-size:.97rem;padding-top:5px}
+  .step b{font-weight:700}
+  .note{display:flex;gap:13px;align-items:flex-start;margin-top:24px;padding:16px 18px;background:var(--surface-2);border:1px solid var(--border);border-left:3px solid var(--amber);border-radius:12px}
+  .note .i{color:var(--amber);font-family:var(--mono);font-weight:700;flex:none}
+  .note p{font-size:.92rem;color:var(--text)}
+  .cta{margin-top:26px;background:linear-gradient(150deg,var(--accent),var(--accent-deep));color:#fff;border-radius:16px;padding:30px;box-shadow:var(--shadow)}
+  .cta h3{font-size:1.3rem;font-weight:800;letter-spacing:-.02em}
+  .cta p{margin-top:10px;opacity:.92;font-size:.98rem}
+  .cta-btn{display:inline-flex;align-items:center;gap:8px;margin-top:20px;background:#fff;color:var(--accent-deep);font-weight:700;text-decoration:none;padding:12px 22px;border-radius:11px}
+  .cta .row{margin-top:18px;display:flex;flex-wrap:wrap;gap:10px 22px;font-family:var(--mono);font-size:.82rem}
+  .cta .row a{color:#fff;opacity:.9;text-decoration:none;border-bottom:1px solid rgba(255,255,255,.4)}
+  footer{padding:34px 0 0;color:var(--faint);font-family:var(--mono);font-size:.72rem;letter-spacing:.03em;text-align:center}
+  @media(max-width:620px){.why{grid-template-columns:1fr}}
+  @media(prefers-reduced-motion:reduce){#sky{display:none}}
+</style>
+</head>
+<body>
+  <header>
+    <canvas id="sky" aria-hidden="true"></canvas>
+    <div class="wrap head-in">
+      <div class="brand">
+        <svg width="30" height="30" viewBox="0 0 100 100" aria-hidden="true">
+          <g fill="none" stroke="#7C86F5" stroke-width="7" stroke-linecap="round"><path d="M62 26 A28 28 0 1 0 62 74"/></g>
+          <g stroke="#7C86F5" stroke-width="2.5" opacity=".55"><line x1="62" y1="26" x2="78" y2="40"/><line x1="78" y1="40" x2="66" y2="56"/><line x1="66" y1="56" x2="40" y2="50"/><line x1="40" y1="50" x2="50" y2="72"/></g>
+          <g fill="#7C86F5"><circle cx="78" cy="40" r="4"/><circle cx="40" cy="50" r="4"/><circle cx="50" cy="72" r="4"/></g>
+          <circle cx="66" cy="56" r="5.5" fill="#F5A623"/>
+        </svg>
+        <b>geoni</b>
+        <span class="tag">İş Birliği Brief'i</span>
+      </div>
+      <span class="eyebrow">Senin için · içerik üreticileri</span>
+      <h1>Kitlenin sorduğu soruyu <span class="g">ölçen araç</span> senin olsun.</h1>
+      <p class="lede">GEONI, bir markanın ChatGPT, Gemini ve Perplexity cevaplarında görünüp
+        görünmediğini 60 saniyede ölçer. Bu brief, seninle nasıl çalışabileceğimizi anlatıyor —
+        zorlama yok, önce dene.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section>
+      <span class="eyebrow">Neden şimdi ilgini çeker</span>
+      <h2>AI görünürlüğü, içeriğinin bir sonraki büyük konusu</h2>
+      <p class="sub">Arama, on mavi linkten tek bir AI cevabına kaydı. Takipçilerin de bunu
+        merak ediyor: "AI beni/markamı tanıyor mu?" Ölçülebilir, paylaşılabilir, tartışmalı — tam
+        senlik bir içerik.</p>
+      <div class="why">
+        <div class="cell"><div class="k">Yeni kategori</div><div class="v">GEO/AEO Türkiye'de yeni. Erken konuşan otorite olur.</div></div>
+        <div class="cell"><div class="k">Paylaşılabilir</div><div class="v">Skor kartı ("54/100") + "AI'ın önerdiği rakipler" = doğal etkileşim.</div></div>
+        <div class="cell"><div class="k">Kişisel</div><div class="v">Herkes kendi adını/markasını merak eder. Yorum yağar.</div></div>
+        <div class="cell"><div class="k">Ücretsiz dene</div><div class="v">60 saniye, üyeliksiz. İçeriğe malzeme anında.</div></div>
+      </div>
+    </section>
+
+    <section>
+      <span class="eyebrow">İki yol · sana uygun olanı seç</span>
+      <h2>Nasıl çalışırız</h2>
+      <div class="models">
+        <div class="model">
+          <div class="model-h"><span class="badge">A</span><b>Barter — hızlı, hafif</b></div>
+          <div class="model-b">
+            <div class="line"><span class="m">Sen alırsın</span><span class="give"><b>Sınırsız tarama</b> + kendi markan için ücretsiz AI görünürlük iyileştirmesi (llms.txt, schema) + erken erişim.</span></div>
+            <div class="line"><span class="m">Sen verirsin</span><span class="give">Dürüst bir deneme paylaşımı — skorunu göster, "denedim" de. Senaryo dayatmıyoruz.</span></div>
+            <div class="line"><span class="m">Kime</span><span class="give">Etkileşimi güçlü, samimi içerik üreten herkese.</span></div>
+          </div>
+        </div>
+        <div class="model">
+          <div class="model-h"><span class="badge star">B</span><b>Uzman-Ortak — derin, gelirli</b><span class="rec">önerilen</span></div>
+          <div class="model-b">
+            <div class="line"><span class="m">Fikir</span><span class="give">SEO/GEO işini zaten yapıyorsan, GEONI <b>uzmanı</b> olursun.</span></div>
+            <div class="line"><span class="m">Kazanç</span><span class="give">Gelen işleri (llms.txt, schema, içerik) sen yaparsın, <b>para kazanırsın.</b></span></div>
+            <div class="line"><span class="m">Kitlene</span><span class="give">Yeni bir "AI görünürlük" hizmeti sunmuş olursun — hem içerik hem gelir.</span></div>
+            <div class="line"><span class="m">Neden iyi</span><span class="give">Tek seferlik post değil; menfaatin var, sürekli savunucu olursun.</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <span class="eyebrow">Basit</span>
+      <h2>Üç adım</h2>
+      <div class="steps">
+        <div class="step"><div><b>Dene.</b> Kendi adını ya da bir markayı 60 saniyede tara. Skorunu gör.</div></div>
+        <div class="step"><div><b>Konuşalım.</b> Beğendiysen 15 dakika — barter mı, uzman-ortak mı, sana uygun olanı netleştirelim.</div></div>
+        <div class="step"><div><b>Başlayalım.</b> Erişimini/uzmanlığını açarız; sen kendi tarzında paylaşırsın.</div></div>
+      </div>
+      <div class="note"><span class="i">!</span><p>Şeffaflık bizim için önemli: iş birliği içerikleri <b>#işbirliği</b> ya da <b>#reklam</b> etiketiyle paylaşılır. Dürüst deneme, dayatılmış senaryodan hep daha iyi çalışır.</p></div>
+    </section>
+
+    <div class="cta">
+      <h3>Önce sadece dene — skorunu merak ettik 👀</h3>
+      <p>Bir markanı ya da adını 60 saniyede ölç. Beğenirsen konuşuruz; beğenmezsen olsun.</p>
+      <a class="cta-btn" href="https://app.geoni.ai?utm_source=isbirligi&utm_medium=creator" target="_blank" rel="noopener">Ücretsiz tara →</a>
+      <div class="row">
+        <a href="https://app.geoni.ai?utm_source=isbirligi" target="_blank" rel="noopener">Dene: geoni.ai</a>
+        <a href="https://apps.apple.com/app/id6790143973" target="_blank" rel="noopener">App Store'da GEONI</a>
+        <a href="mailto:mail@geoni.ai">İletişim: mail@geoni.ai</a>
+      </div>
+    </div>
+
+    <footer>geoni — Generative Engine Optimization · AI görünürlük ölçme &amp; iyileştirme</footer>
+  </main>
+
+<script>
+(function(){
+  var c=document.getElementById('sky'); if(!c) return;
+  if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion:reduce)').matches) return;
+  var ctx=c.getContext('2d'),W,H,DPR=Math.min(window.devicePixelRatio||1,2),st=[];
+  function cv(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+  function size(){var r=c.getBoundingClientRect();W=r.width;H=r.height;c.width=W*DPR;c.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
+    var n=Math.round(Math.min(40,W/28));st=[];for(var i=0;i<n;i++)st.push({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.13,vy:(Math.random()-.5)*.13,r:Math.random()*1.4+.6,s:Math.random()<.15});}
+  function frame(){ctx.clearRect(0,0,W,H);var IC=cv('--accent')||'#7C86F5',SC=cv('--amber')||'#F5A623';
+    for(var i=0;i<st.length;i++){var a=st[i];a.x+=a.vx;a.y+=a.vy;if(a.x<0||a.x>W)a.vx*=-1;if(a.y<0||a.y>H)a.vy*=-1;
+      for(var j=i+1;j<st.length;j++){var b=st[j],dx=a.x-b.x,dy=a.y-b.y,d=Math.hypot(dx,dy);if(d<115){ctx.globalAlpha=(1-d/115)*.15;ctx.strokeStyle=IC;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();}}}
+    for(var k=0;k<st.length;k++){var p=st[k];ctx.globalAlpha=p.s?.9:.5;ctx.fillStyle=p.s?SC:IC;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.283);ctx.fill();}
+    ctx.globalAlpha=1;requestAnimationFrame(frame);}
+  size();frame();var t;window.addEventListener('resize',function(){clearTimeout(t);t=setTimeout(size,180);});
+})();
+</script>
+</body>
+</html>
