@@ -77,6 +77,24 @@ async function sendDm(recipientId, text, token) {
   }).catch(() => {});
 }
 
+// "Catch": influencer/isbirligi niyeti yakalaninca ekibe EMAIL (Resend). ig_dm_log
+// role kisitli oldugu icin log yerine gercek bildirim. Gunde 1 mail/sender (idempotent).
+async function notifyInfluencerLead(senderId, userText) {
+  if (!process.env.RESEND_API_KEY) return;
+  const day = new Date().toISOString().slice(0, 10);
+  if (!(await claim(`leadmail:${senderId}:${day}`, 'dm'))) return; // gunde 1/sender
+  await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: 'GEONI <mail@geoni.ai>',
+      to: ['mail@cagricakir.com.tr'],
+      subject: 'Yeni influencer/creator DM lead',
+      text: `Instagram DM'de influencer/creator ilgisi yakalandi.\n\nsender_id: ${senderId}\nmesaj: "${String(userText).slice(0, 400)}"\n\nIG inbox'tan konusmayi takip et; bot hesap+nis bilgisini sohbette topluyor.`,
+    }),
+  }).catch(() => {});
+}
+
 // ── AI DM asistani ─────────────────────────────────────────────────────────
 
 const DM_SYSTEM = `Sen GEONI'nin Instagram DM asistanisin. GEONI (geoni.ai), markalarin,
@@ -234,10 +252,9 @@ async function handleDm(senderId, msg, cfg) {
   if (cfg.ig_autoreply_mode === 'ai' && process.env.ANTHROPIC_API_KEY && userText) {
     await logDm(senderId, 'user', userText);
 
-    // "Catch": influencer/isbirligi niyeti → ekip ig_dm_log'da filtreleyebilsin
-    // diye isaretli kayit (best-effort; role kisitliysa logDm sessiz gecer).
+    // "Catch": influencer/isbirligi niyeti → ekibe email bildirimi (gunde 1/sender).
     if (/(influencer|creator|i[şs]birli[ğg]i|isbirligi|collab|reklam ver|partner|el[çc]i ol|sponsor|birlikte [çc]al[ıi])/i.test(userText)) {
-      await logDm(senderId, 'influencer_lead', userText.slice(0, 300));
+      await notifyInfluencerLead(senderId, userText);
     }
 
     const count = await todaysCount(senderId);
