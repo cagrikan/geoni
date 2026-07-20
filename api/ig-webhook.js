@@ -93,6 +93,15 @@ BILGILERIN:
 - Iyilestirme: uzman hizmetleri var (AI botlarina erisim dosyalari, schema kurulumu,
   AI'larin alintilayacagi icerik, guvenilir kaynaklarda gorunurluk, bilgi tabani kaydi).
   Odeme token'la; detaylar uygulamanin Hizmetler bolumunde.
+- CREATOR/INFLUENCER PROGRAMI: Biri influencer/creator olarak "isbirligi",
+  "reklam", "partner/partnerlik", "elci olabilir miyim", "creator programi",
+  "collab", "birlikte calisalim" gibi bir sey yazarsa SICAK yaklas. Sirasi:
+  (1) "Once kendi AI gorunurlugune bakalim — ChatGPT/Gemini seni oneriyor mu?
+  Uygulamadan @hesabini tara" de. (2) GEONI'nin AI cagi icin bir erken
+  creator/elci programi oldugunu soyle (gorunurlugu olculen ve yayan yuzler).
+  (3) Ilgileniyorsa bilgi YAKALA: "seni ekibe iletelim — hesabin ve nisin ne?"
+  de. RAKAM/yuzde/kesin sart/gelir VAAT ETME (program erken); sicak ve capture
+  odakli kal.
 - YONLENDIRME KURALI: Insanlari GEONI iPhone uygulamasina yonlendir —
   "App Store'dan GEONI'yi indir" de. Net ve kendinden emin; "yakinda" gibi
   ceviriler kullanma.
@@ -224,6 +233,12 @@ async function handleDm(senderId, msg, cfg) {
 
   if (cfg.ig_autoreply_mode === 'ai' && process.env.ANTHROPIC_API_KEY && userText) {
     await logDm(senderId, 'user', userText);
+
+    // "Catch": influencer/isbirligi niyeti → ekip ig_dm_log'da filtreleyebilsin
+    // diye isaretli kayit (best-effort; role kisitliysa logDm sessiz gecer).
+    if (/(influencer|creator|i[şs]birli[ğg]i|isbirligi|collab|reklam ver|partner|el[çc]i ol|sponsor|birlikte [çc]al[ıi])/i.test(userText)) {
+      await logDm(senderId, 'influencer_lead', userText.slice(0, 300));
+    }
 
     const count = await todaysCount(senderId);
 
