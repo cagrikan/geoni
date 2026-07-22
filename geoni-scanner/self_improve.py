@@ -37,6 +37,38 @@ import json as _json
 _EXP_PREFIX = "experiment:"
 
 
+# Faz1-1.1: ACTION_POLICY — her sinyal icin AKSIYON ve otonom/onayli SINIRI (ÖLÇ->AKSIYON
+# halkasini resmen kapatir; Fable vizyonu). "otonom" = motor kendi yapar (olcum/shadow/bildirim);
+# "onayli" = musteri-gorunur (WEIGHTS/sorgu-havuzu/urun) -> asla otomatik, kurucu onayi (Ilke 16).
+ACTION_POLICY = {
+    "content_gap":     {"action": "content_gen haftalik icerik taslagi", "mode": "otonom"},
+    "quality_model":   {"action": "engine_reliability hesapla -> score_shadow_v2 challenger besle", "mode": "otonom-shadow"},
+    "shadow_compare":  {"action": "v4_to_shadow deneyi + esikte gecis-hazir mail", "mode": "yari-otonom"},
+    "reweight_compare":{"action": "engine-reweight challenger deneyi (shadow)", "mode": "otonom-shadow"},
+    "niche_pain":      {"action": "haftalik kalite mailinde acili nis; sik-tarama/urun", "mode": "otonom(bildirim)/onayli(aksiyon)"},
+    "content_decay":   {"action": "bayatlayan hedef uyarisi (mail)", "mode": "otonom"},
+    "query_quality":   {"action": "birincil-cevapsiz izle; sorgu-havuzu degisimi", "mode": "otonom(olcum)/onayli(havuz)"},
+    "own_recognition": {"action": "kendi gorunurluk trendi; ani dususte alarm", "mode": "otonom"},
+    "competitor_sov":  {"action": "SOV-drift ic-sinyal; urun karari", "mode": "otonom(sinyal)/onayli(urun)"},
+    "WEIGHTS_change":  {"action": "skor formulu/agirlik", "mode": "ONAYLI (Ilke 16 musteri-skoru)"},
+}
+
+
+def _engine_reliability(m_total, m_recog, m_acc_sum, m_acc_n, m_hallu, m_contra) -> dict:
+    """Faz1-1.4: quality_model'den motor GUVENILIRLIK carpani (0.1-1.0). Yuksek dogruluk +
+    dusuk halusinasyon/celiski -> ~1.0; guvenilmez motor -> ~0.1. score_shadow_v2 challenger'i
+    bu carpanla motorlari yeniden-agirliklar (SHADOW-only; manseti degistirmez)."""
+    rel = {}
+    for e in m_total:
+        tot = m_total[e] or 1
+        acc = (m_acc_sum[e] / m_acc_n[e] / 100.0) if m_acc_n.get(e) else 0.6
+        hallu = m_hallu.get(e, 0) / tot
+        contra = m_contra.get(e, 0) / tot
+        r = max(0.1, min(1.0, acc * (1 - hallu) * (1 - contra)))
+        rel[e] = round(r, 3)
+    return rel
+
+
 async def _load_experiment(client: httpx.AsyncClient, name: str) -> dict:
     try:
         r = await client.get(
@@ -256,6 +288,7 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
     m_contra = defaultdict(int)               # celiski_var
     shadow_deltas = []                        # Grup B: v4 score - score_shadow (flip karari)
     shadow_tail = 0                           # |delta| > 10 (KUYRUK — B7'nin etkiledigi uc vakalar)
+    audit_engine_scores = []                  # Faz1-1.4: audit basina {motor: per-engine score}
     scanned = 0
 
     for a in rows:
@@ -335,6 +368,11 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
                 m_hallu[meng] += 1
             if j.get("celiski_var"):
                 m_contra[meng] += 1
+        # Faz1-1.4: bu audit'in per-engine skorlari (reweight backtest icin)
+        esc = {k: mv.get("score") for k, mv in (rj.get("model_results") or {}).items()
+               if isinstance(mv, dict) and isinstance(mv.get("score"), (int, float))}
+        if esc:
+            audit_engine_scores.append(esc)
 
     # ---- Sinyalleri kur ----
     signals = []
@@ -422,6 +460,34 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
                         "detail": {"n": _n, "tail_gt10": shadow_tail,
                                    "tail_rate": round(shadow_tail / _n, 3),
                                    "max_abs": round(max(abs(d) for d in shadow_deltas), 1)}})
+
+    # Faz1-1.4: engine-reweight CHALLENGER (offline backtest, SHADOW-only, musteri-skoru
+    # DEGISMEZ). Motor-portresini champion (WEIGHTS) vs challenger (WEIGHTS×guvenilirlik)
+    # yeniden-agirlikla kiyaslar; fark = guvenilmez motorun (or. gemini %33 halusinasyon)
+    # skordaki etkisinin ne kadar azalacagi. gemini golge-cikisinin OTOMATIK, surekli hali.
+    # quality_model sinyali -> bu challenger'i besler (ACTION_POLICY). Yeterli veri + kararli
+    # fark olunca kademeli terfi (onayli, Ilke 16). Hicbir seyi otomatik degistirmez.
+    engine_rel = _engine_reliability(m_total, m_recog, m_acc_sum, m_acc_n, m_hallu, m_contra)
+    if audit_engine_scores and engine_rel:
+        from brand_recall import WEIGHTS as _BW
+        ew = {k: _BW.get(k, 0) for k in ("claude", "openai", "gemini", "perplexity")}
+        rw_deltas = []
+        for esc in audit_engine_scores:
+            present = [k for k in esc if ew.get(k, 0) > 0]
+            cw = sum(ew[k] for k in present)
+            chw = sum(ew[k] * engine_rel.get(k, 1.0) for k in present)
+            if cw > 0 and chw > 0:
+                champ = sum(esc[k] * ew[k] for k in present) / cw
+                chall = sum(esc[k] * ew[k] * engine_rel.get(k, 1.0) for k in present) / chw
+                rw_deltas.append(chall - champ)
+        if rw_deltas:
+            _n = len(rw_deltas)
+            _tail = sum(1 for d in rw_deltas if abs(d) > 10)
+            signals.append({"kind": "reweight_compare", "subject": "model_portion",
+                            "metric": round(sum(rw_deltas) / _n, 1),
+                            "detail": {"n": _n, "tail_gt10": _tail,
+                                       "tail_rate": round(_tail / _n, 3),
+                                       "reliability": engine_rel}})
 
     # Faz2-2.3: content_decay (izlenen web hedeflerinde freshness dususu) — ayri fetch.
     signals.extend(await _content_decay_signals())
