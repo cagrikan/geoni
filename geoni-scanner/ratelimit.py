@@ -74,8 +74,61 @@ class InMemoryRateLimiter:
         bucket.timestamps.append(now)
 
 
-# Single shared instance for the process (mirrors the in-memory jobs_store pattern in main.py)
+# In-memory (tek proses) — Redis yoksa/erisilemezse fallback.
 RATE_LIMIT_STORE = InMemoryRateLimiter()
+
+
+class _RedisRateLimiter:
+    """Dagitik SABIT-pencere sayaci (Upstash/Redis). Coklu App Runner instance'inda
+    PAYLASIMLI -> rate-limit instance sayisindan bagimsiz dogru kalir (autoscale'de
+    in-memory'nin instance-sayisinca gevsemesi cozulur). INCR+EXPIRE tek pipeline
+    (atomik, ucuz). Kisa timeout: rate-limit kontrolu event loop'u uzun bloklamasin;
+    Redis yavas/olu ise hizli fail -> cagiran in-memory'ye duser."""
+
+    def __init__(self, url: str):
+        import redis as _redis  # requirements'ta rezerve; yalnizca REDIS_URL varsa yuklenir
+        self._r = _redis.from_url(
+            url, socket_timeout=0.3, socket_connect_timeout=0.3, decode_responses=True,
+        )
+        self._r.ping()  # baglanti dogrulama (basarisizsa kurulum iptal -> in-memory)
+
+    def check_and_record(self, key: str, limit: int, window_seconds: int) -> None:
+        now = int(time.time())
+        rkey = f"rl:{key}:{now // window_seconds}"  # sabit-pencere kova
+        pipe = self._r.pipeline()
+        pipe.incr(rkey)
+        pipe.expire(rkey, window_seconds)
+        count = pipe.execute()[0]
+        if count > limit:
+            retry_after = window_seconds - (now % window_seconds)
+            raise RateLimitExceeded(dimension=key, retry_after_seconds=max(retry_after, 1))
+
+
+# REDIS_URL gercek bir Upstash/Redis ise paylasimli limiter'i kur (localhost
+# varsayilani = yapilandirilmamis -> in-memory). Baglanamazsa sessizce in-memory.
+_REDIS_URL = os.environ.get("REDIS_URL", "")
+_redis_limiter = None
+if _REDIS_URL and not _REDIS_URL.startswith("redis://localhost"):
+    try:
+        _redis_limiter = _RedisRateLimiter(_REDIS_URL)
+        logger.info("Rate limit: paylasimli Redis aktif (Upstash)")
+    except Exception as e:
+        logger.warning(f"Rate limit: Redis baglanamadi, in-memory fallback: {e}")
+        _redis_limiter = None
+
+
+def _check(key: str, limit: int, window_seconds: int) -> None:
+    """Redis varsa paylasimli sayac; RateLimitExceeded disi HERHANGI bir Redis
+    hatasinda in-memory'ye duser (rate-limit asla uygulamayi kirmaz — fail-open)."""
+    if _redis_limiter is not None:
+        try:
+            _redis_limiter.check_and_record(key, limit, window_seconds)
+            return
+        except RateLimitExceeded:
+            raise
+        except Exception as e:
+            logger.warning(f"Rate limit Redis hatasi, in-memory'ye dusuluyor: {e}")
+    RATE_LIMIT_STORE.check_and_record(key, limit, window_seconds)
 
 
 def enforce_audit_rate_limits(client_ip: str, email: str, domain: str) -> None:
@@ -83,15 +136,16 @@ def enforce_audit_rate_limits(client_ip: str, email: str, domain: str) -> None:
     Enforce all three rate limit dimensions for an incoming audit request.
     Call this before enqueueing the background job. Raises RateLimitExceeded
     on the first dimension that's violated (IP checked first since it's
-    cheapest to hit and most indicative of scripted abuse).
+    cheapest to hit and most indicative of scripted abuse). Redis (paylasimli)
+    varsa onu, yoksa in-memory'yi kullanir — cagiran imzasi degismez.
     """
     normalized_email = email.strip().lower()
     normalized_domain = domain.strip().lower()
 
     try:
-        RATE_LIMIT_STORE.check_and_record(f"ip:{client_ip}", IP_LIMIT, IP_WINDOW_SECONDS)
-        RATE_LIMIT_STORE.check_and_record(f"email:{normalized_email}", EMAIL_LIMIT, EMAIL_WINDOW_SECONDS)
-        RATE_LIMIT_STORE.check_and_record(f"domain:{normalized_domain}", DOMAIN_LIMIT, DOMAIN_WINDOW_SECONDS)
+        _check(f"ip:{client_ip}", IP_LIMIT, IP_WINDOW_SECONDS)
+        _check(f"email:{normalized_email}", EMAIL_LIMIT, EMAIL_WINDOW_SECONDS)
+        _check(f"domain:{normalized_domain}", DOMAIN_LIMIT, DOMAIN_WINDOW_SECONDS)
     except RateLimitExceeded as e:
         logger.warning(f"Rate limit hit: {e.dimension}, retry after {e.retry_after_seconds}s")
         raise
