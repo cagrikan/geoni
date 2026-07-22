@@ -54,8 +54,10 @@ export default async function handler(req, res) {
     const href = `/s/${esc(it.job_id)}`;
     // Site hucresi gercek <a> link: klavye + ekran okuyucu + SEO erisilebilir.
     // Satir tiklamasi yalnizca fare kolayligi (onclick JS kapaliysa link calisir).
+    // onclick job_id'yi JS string'ine ENJEKTE ETMEZ; zaten escape'li <a> href'ini
+    // okur -> JS-context injection yuzeyi yok (savunma-derinligi).
     return `
-    <tr class="lb-row" onclick="location.href='${href}'">
+    <tr class="lb-row" onclick="location.href=this.querySelector('.site-link').href">
       <td class="rank">${i + 1}</td>
       <td class="site"><a class="site-link" href="${href}">${esc(it.domain)}</a></td>
       <td class="score${seal ? '' : ' score--low'}">${Math.round(it.score)}</td>
