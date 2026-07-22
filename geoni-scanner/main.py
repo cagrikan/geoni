@@ -1116,6 +1116,28 @@ async def admin_add_topup(body: TopupRequest, http_request: Request):
         raise HTTPException(status_code=400, detail="Top-up kaydedilemedi")
     return {"success": True}
 
+
+@app.post("/api/internal/retention/run")
+async def internal_run_retention(http_request: Request):
+    """Ops/test: retention islerini elle tetikler (X-Internal-Scan korumali).
+    Normalde monitor_loop otomatik kosar (bakiye saatlik, temizlik gunluk)."""
+    if not _is_internal_scan(http_request):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    from db import (
+        run_attachment_retention, run_audit_retention,
+        run_low_balance_alert, get_provider_remaining_balances,
+    )
+    attachments = await run_attachment_retention()
+    slimmed = await run_audit_retention(None)
+    balances = await get_provider_remaining_balances()
+    alerted = await run_low_balance_alert()
+    return {
+        "attachments": attachments,
+        "audits_slimmed": slimmed,
+        "provider_balances": balances,
+        "low_balance_alerted": [a["provider"] for a in alerted],
+    }
+
 class ManualCostRequest(BaseModel):
     provider: str
     current_cost: float

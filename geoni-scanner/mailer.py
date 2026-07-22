@@ -362,6 +362,50 @@ async def send_refund_email(to_email: str, credits: int) -> bool:
     )
 
 
+async def send_retention_warning_email(to_email: str, ref_code: str, days: int) -> bool:
+    """(B) Bilet eklerinin `days` gün sonra kalıcı silineceğini bildirir —
+    müşteri gerekirse şimdi indirir (KVKK veri-minimizasyonu + ödenen teslimatı korur)."""
+    return await send_ticket_email(
+        to_email,
+        f"Dosya hatırlatması — {ref_code} ekleri {days} gün sonra silinecek",
+        "Bilet dosyalarınız yakında kaldırılacak",
+        [
+            f"<strong style=\"color:#EDEFF5\">{ref_code}</strong> numaralı tamamlanmış biletinizin "
+            f"dosyaları (ekler ve teslim edilen çıktılar) <strong style=\"color:#EDEFF5\">{days} gün</strong> "
+            f"sonra kalıcı olarak silinecek.",
+            "Gerekli dosyaları kaybetmemek için lütfen bu süre içinde indirin. Bu, verinizi "
+            "gereğinden uzun saklamamak için uygulanan otomatik bir temizliktir.",
+            "<em>Your completed ticket's files will be permanently removed soon — please download anything you still need.</em>",
+        ],
+        cta_label="Bilete Git",
+        cta_url="https://app.geoni.ai/dashboard?tab=my_tickets",
+    )
+
+
+async def send_low_balance_alert_email(to_email: str, providers: list, threshold: float) -> bool:
+    """(D) Prepaid sağlayıcı bakiyesi eşiğin altına düşünce admin'e uyarı.
+    providers: [{provider, remaining, topups, spend}]."""
+    rows = [
+        f"<strong style=\"color:#EDEFF5\">{p['provider']}</strong>: kalan "
+        f"<strong style=\"color:#F5A97C\">${p['remaining']:.2f}</strong> "
+        f"(yüklenen ${p.get('topups', 0):.2f} − harcanan ${p.get('spend', 0):.2f})"
+        for p in providers
+    ]
+    return await send_ticket_email(
+        to_email,
+        f"⚠️ Düşük bakiye — {len(providers)} sağlayıcı ${threshold:.0f} altında",
+        "Prepaid sağlayıcı bakiyesi kritik",
+        [
+            f"Aşağıdaki önden-yüklemeli hesapların kalan bakiyesi <strong style=\"color:#EDEFF5\">"
+            f"${threshold:.0f}</strong> eşiğinin altına düştü — servis kesintisini önlemek için yükleme yapın:",
+            *rows,
+            "<em>Prepaid provider balance is low — top up to avoid service interruption.</em>",
+        ],
+        cta_label="Admin Paneli",
+        cta_url="https://app.geoni.ai/admin",
+    )
+
+
 async def send_monitor_email(to_email: str, label: str, old_score: int, new_score: int) -> bool:
     """
     Izleme v2: duzenli otomatik taramada skor anlamli degistiginde (±5)

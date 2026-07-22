@@ -5,6 +5,7 @@ Uses service role key to bypass RLS.
 """
 
 import asyncio
+import json
 import os
 import re
 import time
@@ -151,6 +152,9 @@ async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str
                 # Deduct credits if user is logged in
                 if user_id and deduct:
                     await deduct_credits(user_id, 5, "web_audit", job_id)
+                # (C) Ayni hedefin ESKI tam raporunu hemen sadelestir (skor kalir).
+                if user_id:
+                    asyncio.create_task(run_audit_retention(user_id))
                 return True
             logger.warning(f"Supabase audit save failed: {r.status_code} {r.text[:200]}")
     except Exception as e:
@@ -197,6 +201,9 @@ async def save_brand_check(job_id: str, request_data: dict, result: dict, user_i
                 logger.info(f"Brand check {job_id} saved to Supabase")
                 if user_id and deduct:
                     await deduct_credits(user_id, credits, f"{entity_type}_check", job_id)
+                # (C) Ayni kisi/marka'nin ESKI tam raporunu hemen sadelestir.
+                if user_id:
+                    asyncio.create_task(run_audit_retention(user_id))
                 return True
             logger.warning(f"Supabase brand check save failed: {r.status_code} {r.text[:200]}")
     except Exception as e:
@@ -1042,21 +1049,36 @@ async def delete_user_account(user_id: str) -> bool:
         return False
     try:
         async with httpx.AsyncClient() as client:
-            # Biletlere bagli alt kayitlar (varsa) once temizlenir.
+            # Biletlere bagli alt kayitlar + STORAGE DOSYALARI once temizlenir.
+            ticket_ids = []
             try:
                 tk = await client.get(
                     f"{SUPABASE_URL}/rest/v1/tickets?user_id=eq.{user_id}&select=id",
                     headers=_headers(), timeout=10,
                 )
-                for t in (tk.json() if tk.status_code == 200 else []):
-                    tid = t.get("id")
-                    await client.delete(f"{SUPABASE_URL}/rest/v1/ticket_tasks?ticket_id=eq.{tid}", headers=_headers(), timeout=10)
-                    await client.delete(f"{SUPABASE_URL}/rest/v1/ticket_messages?ticket_id=eq.{tid}", headers=_headers(), timeout=10)
+                ticket_ids = [t.get("id") for t in (tk.json() if tk.status_code == 200 else [])
+                              if t.get("id") is not None]
             except Exception:
                 pass
+            # KVKK silinme hakki: kullanicinin bilet dosyalarini (ekler +
+            # uretilen teslimatlar) storage'dan da sil; yoksa hesap gittikten
+            # sonra dosyalar kalici public URL'lerle bucket'ta kalir.
+            if ticket_ids:
+                try:
+                    await _delete_attachment_files_for_tickets(client, ticket_ids)
+                except Exception:
+                    pass
+            for tid in ticket_ids:
+                try:
+                    await client.delete(f"{SUPABASE_URL}/rest/v1/ticket_tasks?ticket_id=eq.{tid}", headers=_headers(), timeout=10)
+                    await client.delete(f"{SUPABASE_URL}/rest/v1/ticket_messages?ticket_id=eq.{tid}", headers=_headers(), timeout=10)
+                    await client.delete(f"{SUPABASE_URL}/rest/v1/ticket_ratings?ticket_id=eq.{tid}", headers=_headers(), timeout=10)
+                except Exception:
+                    pass
             for tbl, col in [
                 ("tickets", "user_id"), ("audits", "user_id"), ("credit_transactions", "user_id"),
                 ("watchlist", "user_id"), ("push_tokens", "user_id"), ("iap_intents", "user_id"),
+                ("notifications", "user_id"), ("tracked_assets", "user_id"),
                 ("profiles", "id"),
             ]:
                 try:
@@ -3337,6 +3359,270 @@ async def upload_ticket_file(ticket_id: int, filename: str, content: str,
     return None
 
 
+# ── Veri saklama / retention temizligi ───────────────────────────────────
+# Ilke: hicbir dosya/rapor sonsuza saklanmaz (depolama maliyeti + KVKK veri-
+# minimizasyonu + sizan public URL'nin omrunu sinirlama). Dort is:
+#  (A) hesap silinince kullanicinin storage dosyalari da silinir (delete_user_account),
+#  (B) verified biletin ekleri RETENTION_ATTACHMENT_DAYS gun sonra silinir
+#      (RETENTION_WARN_DAYS gun once bir kez uyari e-postasi),
+#  (C) ayni (kullanici+tur+hedef) rapor tekrar taraninca/eskiyince sadelestirilir
+#      (apply_audit_retention RPC; skor+tarih trend grafigi icin kalir),
+#  (D) prepaid saglayici bakiyesi LOW_BALANCE_THRESHOLD_USD altina dusunce admin uyarilir.
+# Gunluk isler (B,C) monitor_loop icinden _claim_daily_job ile TEK sefer kosar
+# (cok-instance guvenli). Dusuk-bakiye uyarisi (D) her turda debounce'lu kosar.
+
+RETENTION_ATTACHMENT_DAYS = int(os.environ.get("RETENTION_ATTACHMENT_DAYS", "30"))
+RETENTION_WARN_DAYS = int(os.environ.get("RETENTION_WARN_DAYS", "7"))
+RETENTION_AUDIT_DAYS = int(os.environ.get("RETENTION_AUDIT_DAYS", "30"))
+LOW_BALANCE_THRESHOLD_USD = float(os.environ.get("LOW_BALANCE_THRESHOLD_USD", "5"))
+
+
+def _storage_headers() -> dict:
+    # _headers() 'Prefer: return=minimal' iceriyor; storage list yaniti
+    # gerektirdiginden ayri (minimal'siz) baslik kullanilir.
+    return {
+        "apikey": SUPABASE_SERVICE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+        "Content-Type": "application/json",
+    }
+
+
+async def _delete_attachment_files_for_tickets(client: httpx.AsyncClient, ticket_ids: list) -> int:
+    """Verilen biletlere ait TUM storage dosyalarini ({ticket_id}/ prefix'i:
+    musteri ekleri + uretilen teslimatlar) kalici siler. Storage REST API
+    uzerinden silinir ki S3'te yetim dosya kalmasin; en iyi caba (biri patlasa
+    da digerleri silinir). Hesap silme (A) ve retention (B) ayni yardimciyi kullanir."""
+    deleted = 0
+    for tid in ticket_ids:
+        try:
+            lr = await client.post(
+                f"{SUPABASE_URL}/storage/v1/object/list/ticket-attachments",
+                headers=_storage_headers(),
+                json={"prefix": f"{tid}/", "limit": 1000},
+                timeout=15,
+            )
+            if lr.status_code != 200:
+                continue
+            paths = [f"{tid}/{o['name']}" for o in lr.json()
+                     if isinstance(o, dict) and o.get("name")]
+            for i in range(0, len(paths), 100):
+                chunk = paths[i:i + 100]
+                dr = await client.request(
+                    "DELETE",
+                    f"{SUPABASE_URL}/storage/v1/object/ticket-attachments",
+                    headers=_storage_headers(),
+                    json={"prefixes": chunk},
+                    timeout=30,
+                )
+                if dr.status_code == 200:
+                    deleted += len(chunk)
+        except Exception as e:
+            logger.warning(f"attachment purge error (ticket {tid}): {e}")
+    return deleted
+
+
+async def _claim_daily_job(job_key: str) -> bool:
+    """Cok-instance guvenli gunluk kilit: app_config'te job satirini BUGUNE
+    atomik gunceller. Yalnizca degeri bugunden eski olan instance True alir
+    (isi o kosar); ayni gun ikinci cagri False doner. Satir yoksa olusturan
+    kazanir (ignore-duplicates)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    now_iso = datetime.now(timezone.utc).isoformat()
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    key = f"job_last_run:{job_key}"
+    try:
+        async with httpx.AsyncClient() as client:
+            # Kosullu atomik UPDATE: yalnizca value<today olan satiri bugune tasi.
+            r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/app_config?key=eq.{key}&value=lt.{today}",
+                headers={**_headers(), "Prefer": "return=representation"},
+                json={"value": today, "updated_at": now_iso},
+                timeout=10,
+            )
+            if r.status_code == 200 and r.json():
+                return True  # bizim UPDATE'imiz satiri bugune tasidi -> kilit bizde
+            # Satir yok VEYA zaten bugun -> yoksa biz olusturmaya calisalim.
+            ins = await client.post(
+                f"{SUPABASE_URL}/rest/v1/app_config",
+                headers={**_headers(),
+                         "Prefer": "return=representation,resolution=ignore-duplicates"},
+                json={"key": key, "value": today, "updated_at": now_iso},
+                timeout=10,
+            )
+            if ins.status_code in (200, 201) and ins.json():
+                return True  # satiri ilk defa biz olusturduk -> kilit bizde
+    except Exception as e:
+        logger.warning(f"_claim_daily_job({job_key}) error: {e}")
+    return False
+
+
+async def run_audit_retention(user_id: str | None = None) -> int:
+    """(C) apply_audit_retention RPC: superseded/eski tam raporlari sadelestirir.
+    Tarama bitince user_id ile (o kullaniciyi hemen), gunluk isde None (tum tablo)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return 0
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/apply_audit_retention",
+                headers=_headers(),
+                json={"p_retention_days": RETENTION_AUDIT_DAYS, "p_user_id": user_id},
+                timeout=20,
+            )
+            if r.status_code == 200:
+                try:
+                    return int(r.json())
+                except Exception:
+                    return 0
+    except Exception as e:
+        logger.warning(f"run_audit_retention error: {e}")
+    return 0
+
+
+async def run_attachment_retention() -> dict:
+    """(B) verified+RETENTION_ATTACHMENT_DAYS dolan biletlerin dosyalarini siler;
+    RETENTION_WARN_DAYS gun once bir kez uyari e-postasi atar. Acik/islemdeki
+    biletlere dokunmaz. Damgalarla (warned/purged) idempotent."""
+    out = {"warned": 0, "purged_tickets": 0, "deleted_files": 0}
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return out
+    now = datetime.now(timezone.utc)
+    warn_cut = (now - timedelta(days=max(RETENTION_ATTACHMENT_DAYS - RETENTION_WARN_DAYS, 0))).isoformat()
+    del_cut = (now - timedelta(days=RETENTION_ATTACHMENT_DAYS)).isoformat()
+    try:
+        async with httpx.AsyncClient() as client:
+            # 1) UYARI: silme penceresine RETENTION_WARN_DAYS kala, henuz
+            #    uyarilmamis ve silinmemis biletler.
+            wr = await client.get(
+                f"{SUPABASE_URL}/rest/v1/tickets"
+                f"?status=eq.verified&verified_at=lte.{warn_cut}"
+                f"&attachments_purge_warned_at=is.null&attachments_purged_at=is.null"
+                f"&select=id,user_id,ref_code",
+                headers=_headers(), timeout=15,
+            )
+            for t in (wr.json() if wr.status_code == 200 else []):
+                tid = t["id"]
+                has_files = False
+                try:
+                    lr = await client.post(
+                        f"{SUPABASE_URL}/storage/v1/object/list/ticket-attachments",
+                        headers=_storage_headers(),
+                        json={"prefix": f"{tid}/", "limit": 1}, timeout=10)
+                    has_files = lr.status_code == 200 and bool(lr.json())
+                except Exception:
+                    pass
+                if has_files:
+                    email = await get_auth_email(t.get("user_id"))
+                    if email:
+                        await send_retention_warning_email(
+                            email, t.get("ref_code") or f"#{tid}", RETENTION_WARN_DAYS)
+                    out["warned"] += 1
+                # dosyasiz olsa da isaretle ki her gun tekrar bakilmasin
+                await client.patch(
+                    f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{tid}",
+                    headers=_headers(),
+                    json={"attachments_purge_warned_at": now.isoformat()}, timeout=10)
+            # 2) SIL: verified_at <= del_cut, henuz silinmemis.
+            dr = await client.get(
+                f"{SUPABASE_URL}/rest/v1/tickets"
+                f"?status=eq.verified&verified_at=lte.{del_cut}"
+                f"&attachments_purged_at=is.null&select=id",
+                headers=_headers(), timeout=15,
+            )
+            ids = [t["id"] for t in (dr.json() if dr.status_code == 200 else [])]
+            if ids:
+                out["deleted_files"] = await _delete_attachment_files_for_tickets(client, ids)
+                out["purged_tickets"] = len(ids)
+                for tid in ids:
+                    await client.patch(
+                        f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{tid}",
+                        headers=_headers(),
+                        json={"attachments_purged_at": now.isoformat()}, timeout=10)
+    except Exception as e:
+        logger.warning(f"run_attachment_retention error: {e}")
+    return out
+
+
+async def get_provider_remaining_balances() -> list:
+    """(D) Prepaid saglayici kalan bakiyesi = toplam topup - tum-zaman harcama.
+    Yalnizca topup'i loglanmis (prepaid) VE harcamasi hesaplanabilen
+    saglayicilar dahil (yanlis alarma girmemek icin). [{provider,remaining,...}]."""
+    try:
+        from openai_admin import get_openai_cost_summary
+        from anthropic_admin import get_anthropic_cost_summary
+        from gemini_admin import get_gemini_cost_summary
+        from perplexity_admin import get_perplexity_cost_summary
+    except Exception as e:
+        logger.warning(f"remaining balance import error: {e}")
+        return []
+    providers = {
+        "openai": get_openai_cost_summary,
+        "anthropic": get_anthropic_cost_summary,
+        "gemini": get_gemini_cost_summary,
+        "perplexity": get_perplexity_cost_summary,
+    }
+    out = []
+    for name, fn in providers.items():
+        try:
+            topups = await get_manual_topups_total(name)
+            if not topups or topups <= 0:
+                continue  # prepaid degil / topup loglanmamis
+            summ = await fn()
+            spend = (summ or {}).get("usd_all_time")
+            if spend is None:
+                continue  # harcama hesaplanamadi -> yanlis alarm verme
+            out.append({
+                "provider": name,
+                "remaining": round(topups - spend, 2),
+                "topups": round(topups, 2),
+                "spend": round(spend, 2),
+            })
+        except Exception as e:
+            logger.warning(f"remaining balance ({name}) error: {e}")
+    return out
+
+
+async def run_low_balance_alert() -> list:
+    """(D) Kalan bakiyesi LOW_BALANCE_THRESHOLD_USD altina dusen prepaid
+    saglayicilar icin admin'e TEK uyari e-postasi. Debounce (app_config):
+    bir saglayici esigin altindayken gunde en fazla bir kez uyarilir; esigin
+    ustune cikinca durumu silinir (tekrar dusunce yeniden uyarir)."""
+    below = [b for b in await get_provider_remaining_balances()
+             if b["remaining"] < LOW_BALANCE_THRESHOLD_USD]
+    key = "low_balance_alerted"
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    to_alert: list = []
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/app_config?key=eq.{key}&select=value",
+                headers=_headers(), timeout=10)
+            prev = {}
+            if r.status_code == 200 and r.json():
+                try:
+                    prev = json.loads(r.json()[0].get("value") or "{}")
+                except Exception:
+                    prev = {}
+            # bugun bu saglayici icin daha once uyarilmadiysa uyar
+            to_alert = [b for b in below if prev.get(b["provider"]) != today]
+            if to_alert:
+                for adm in await _ticket_admin_emails():
+                    await send_low_balance_alert_email(adm, to_alert, LOW_BALANCE_THRESHOLD_USD)
+            # yeni durum: yalnizca esigin ALTINDAKILER bugunun tarihiyle tutulur
+            # (ustune cikan otomatik silinir -> tekrar dusunce yeniden uyarilir)
+            new_state = {b["provider"]: today for b in below}
+            await client.post(
+                f"{SUPABASE_URL}/rest/v1/app_config",
+                headers={**_headers(), "Prefer": "resolution=merge-duplicates"},
+                json={"key": key, "value": json.dumps(new_state),
+                      "updated_at": datetime.now(timezone.utc).isoformat()},
+                timeout=10)
+    except Exception as e:
+        logger.warning(f"run_low_balance_alert error: {e}")
+    return to_alert
+
+
 # ── Bilet e-posta bildirimleri ───────────────────────────────────────────
 # Bilet sistemindeki en kritik islevsel eksik buydu: mesaj/atama/teslim/
 # onay olaylarinda kimseye haber gitmiyordu, herkes panele girip kirmizi
@@ -3344,7 +3630,11 @@ async def upload_ticket_file(ticket_id: int, filename: str, content: str,
 # Hepsi fire-and-forget: asyncio.create_task ile ateslenir, mail servisi
 # yavas/kapali olsa bile endpoint yaniti gecikmez.
 
-from mailer import send_ticket_email  # noqa: E402  (dosya sonu import: dairesel degil, mailer db'yi kullanmiyor)
+from mailer import (  # noqa: E402  (dosya sonu import: dairesel degil, mailer db'yi kullanmiyor)
+    send_ticket_email,
+    send_retention_warning_email,
+    send_low_balance_alert_email,
+)
 
 
 async def _ticket_admin_emails() -> list:

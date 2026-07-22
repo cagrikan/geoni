@@ -33,6 +33,7 @@ from topics import generate_topics_and_opportunities
 from db import (
     list_due_watchlist_items, update_watchlist_after_scan, get_auth_email,
     save_audit, save_brand_check, get_credit_balance,
+    _claim_daily_job, run_attachment_retention, run_audit_retention, run_low_balance_alert,
 )
 from mailer import send_monitor_email
 from pushnotify import send_score_change_push
@@ -243,4 +244,20 @@ async def monitor_loop():
                 await _process_item(item)
         except Exception as e:
             logger.warning(f"monitor: dongu hatasi: {e}")
+        # Prepaid saglayici dusuk-bakiye uyarisi: her turda (saatlik) kontrol,
+        # debounce db tarafinda (ayni saglayici gunde bir kez uyarilir).
+        try:
+            alerted = await run_low_balance_alert()
+            if alerted:
+                logger.info(f"monitor: dusuk-bakiye uyarisi -> {[a['provider'] for a in alerted]}")
+        except Exception as e:
+            logger.warning(f"monitor: dusuk-bakiye kontrol hatasi: {e}")
+        # Gunluk retention temizligi: cok-instance guvenli kilitle TEK sefer.
+        try:
+            if await _claim_daily_job("retention"):
+                att = await run_attachment_retention()
+                slim = await run_audit_retention(None)
+                logger.info(f"monitor: retention -> ekler {att}, rapor sadelestirme {slim}")
+        except Exception as e:
+            logger.warning(f"monitor: retention hatasi: {e}")
         await asyncio.sleep(MONITOR_CYCLE_SECONDS)
