@@ -36,17 +36,30 @@ jobs:
       - name: Login to ECR
         run: aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 016031489497.dkr.ecr.eu-central-1.amazonaws.com
       
+      # :latest App Runner/ECS'in cektigi tag (davranis ayni). Ek olarak :$SHA
+      # immutable tag: her deploy'un tam kaynagi ECR'de kalir -> gerektiginde
+      # belirli bir surume rollback + denetim izi (mutable :latest yaris riski).
       - name: Build Docker image
-        run: cd geoni-scanner && docker build --platform linux/amd64 -t 016031489497.dkr.ecr.eu-central-1.amazonaws.com/geoni-scanner:latest .
-      
+        run: |
+          cd geoni-scanner
+          REPO=016031489497.dkr.ecr.eu-central-1.amazonaws.com/geoni-scanner
+          docker build --platform linux/amd64 -t $REPO:latest -t $REPO:${{ github.sha }} .
+
       - name: Push to ECR
-        run: docker push 016031489497.dkr.ecr.eu-central-1.amazonaws.com/geoni-scanner:latest
-      
+        run: |
+          REPO=016031489497.dkr.ecr.eu-central-1.amazonaws.com/geoni-scanner
+          docker push $REPO:latest
+          docker push $REPO:${{ github.sha }}
+
       # API artık App Runner'da (2026-07-18 taşıma), ECS geoni-scanner-service silindi.
+      # Worker'a deployment circuit breaker (rollback=true): bozuk task ayaga
+      # kalkamazsa ECS otomatik onceki saglikli revizyona doner (App Runner'in
+      # kendi health-check rollback'i zaten var). Idempotent — her deploy'da uygulanir.
       - name: Deploy API (App Runner) + worker (ECS)
         run: |
           aws apprunner start-deployment --region eu-central-1 --service-arn arn:aws:apprunner:eu-central-1:016031489497:service/geoni-scanner-api/61139b9ae7114ea88304c93458af9ff9
-          aws ecs update-service --cluster geoni-cluster --service geoni-scan-worker --force-new-deployment --region eu-central-1
+          aws ecs update-service --cluster geoni-cluster --service geoni-scan-worker --force-new-deployment --region eu-central-1 \
+            --deployment-configuration "deploymentCircuitBreaker={enable=true,rollback=true}"
 
       - name: Wait for worker to stabilize
         run: aws ecs wait services-stable --cluster geoni-cluster --services geoni-scan-worker --region eu-central-1

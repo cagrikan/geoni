@@ -15,7 +15,10 @@ phases:
       - aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin $ECR
   build:
     commands:
-      - docker build -t $ECR/$REPO:latest .
+      # :latest (App Runner/ECS ceker) + :$SHA immutable (rollback/denetim izi).
+      - SHA=${CODEBUILD_RESOLVED_SOURCE_VERSION:-manual}
+      - docker build -t $ECR/$REPO:latest -t $ECR/$REPO:$SHA .
   post_build:
     commands:
       - docker push $ECR/$REPO:latest
+      - docker push $ECR/$REPO:$SHA
