@@ -312,7 +312,8 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
 
         await set_job_status(job_id, "indexing")
         emit(msgs["checking_bots"])
-        indexing_status = await check_indexing_status(crawl_result["pages"])
+        indexing_status = await check_indexing_status(
+            crawl_result["pages"], domain=crawl_result.get("domain") or request.domain)
         emit(msgs["index_checked"])
 
         await set_job_status(job_id, "scoring")

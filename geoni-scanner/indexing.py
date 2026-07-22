@@ -237,7 +237,7 @@ async def check_google_indexed(domain: str, sample_size: int = 5) -> int:
     return 0
 
 
-async def check_indexing_status(pages: list[dict], brand_name: str = "") -> dict:
+async def check_indexing_status(pages: list[dict], brand_name: str = "", domain: str = "") -> dict:
     """
     Check indexing status across Google and AI crawler access
     (egitim vs arama ayrimiyla, Madde 2.5), artı llms.txt sinyali.
@@ -262,42 +262,47 @@ async def check_indexing_status(pages: list[dict], brand_name: str = "") -> dict
           "perplexity": bool,
         }
     """
-    if not pages:
-        return {
-            "indexed_count": 0, "google": 0,
-            "bot_access": {"egitim": {}, "arama": {}, "robots_found": False},
-            "llms_txt": False, "brave_indexed": None, "bot_protection_suspected": False,
-            "openai": False, "anthropic": False, "perplexity": False,
-        }
-
     from urllib.parse import urlparse
-    domain = urlparse(pages[0]["url"]).netloc or urlparse(pages[0]["url"]).path
+    eff_domain = domain
+    if not eff_domain and pages:
+        eff_domain = urlparse(pages[0]["url"]).netloc or urlparse(pages[0]["url"]).path
 
-    # SSRF savunma-derinligi: domain crawl asamasinda dogrulaniyor ama indexing
-    # bagimsiz cagrilabilir; host public degilse (ic-IP/metadata) hic istek atma.
-    host = (domain or "").split(":")[0]
+    _empty = {
+        "indexed_count": 0, "google": 0,
+        "bot_access": {"egitim": {}, "arama": {}, "robots_found": False},
+        "llms_txt": False, "brave_indexed": None, "bot_protection_suspected": False,
+        "openai": False, "anthropic": False, "perplexity": False,
+    }
+    if not eff_domain:
+        return _empty  # gercekten domain yok -> olculemez, tam-bos
+
+    # KOK NEDEN FIX (derin test 2026-07-22): crawl 0 sayfa donse bile (bot-block/
+    # JS/timeout) domain varsa robots/llms/google/brave httpx kontrolleri KOSAR
+    # (Playwright'a bagimli degil). Eskiden pages bos -> tum kontroller atlanip
+    # ai_access sahte-100 + bot_protection_suspected sahte-False kaliyordu -> buyuk/
+    # korumali sitelere ongorulemez skor. 0 sayfa + gecerli domain = bot koruma suphesi.
+    crawl_blocked = not pages
+
+    # SSRF savunma-derinligi: host public degilse (ic-IP/metadata) hic istek atma.
+    host = (eff_domain or "").split(":")[0]
     try:
         await asyncio.to_thread(assert_public_host, host)
     except BlockedHostError:
         logger.warning(f"indexing atlandi, public olmayan host: {host}")
-        return {
-            "indexed_count": 0, "google": 0,
-            "bot_access": {"egitim": {}, "arama": {}, "robots_found": False},
-            "llms_txt": False, "brave_indexed": None, "bot_protection_suspected": False,
-            "openai": False, "anthropic": False, "perplexity": False,
-        }
+        return _empty
 
     google_count, ai_access, llms_txt, brave = await asyncio.gather(
-        check_google_indexed(domain),
-        check_robots_ai_access(domain),
-        check_llms_txt(domain),
-        check_brave_index(domain, brand_name),
+        check_google_indexed(eff_domain),
+        check_robots_ai_access(eff_domain),
+        check_llms_txt(eff_domain),
+        check_brave_index(eff_domain, brand_name),
     )
 
-    indexed_count = google_count  # Bing kaldirildigi icin artik yalnizca Google
+    # crawl bloklandiysa len(pages)=0 ile cap'leme (indexed'i 0'a ezmesin).
+    indexed_count = google_count if crawl_blocked else min(google_count, len(pages))
 
     return {
-        "indexed_count": min(indexed_count, len(pages)),
+        "indexed_count": indexed_count,
         "google": google_count,
         "bot_access": {
             "egitim": ai_access["egitim"],
@@ -307,7 +312,7 @@ async def check_indexing_status(pages: list[dict], brand_name: str = "") -> dict
         "llms_txt": llms_txt,
         # T5: Brave devrede degilse None (scoring 0.5/0.5'e duser).
         "brave_indexed": (brave.get("brave_indexed") if brave else None),
-        "bot_protection_suspected": ai_access.get("bot_protection_suspected", False),  # M6
+        "bot_protection_suspected": ai_access.get("bot_protection_suspected", False) or crawl_blocked,  # M6 + crawl-block
         "openai": ai_access.get("openai", True),
         "anthropic": ai_access.get("anthropic", True),
         "perplexity": ai_access.get("perplexity", True),

@@ -149,8 +149,14 @@ def compute_ai_access_score(indexing_status: dict, crawl_result: dict) -> dict:
     arama = bot_access.get("arama", {}) or {}
     egitim = bot_access.get("egitim", {}) or {}
 
-    arama_ratio = (sum(1 for v in arama.values() if v) / len(arama)) if arama else 1.0
-    egitim_ratio = (sum(1 for v in egitim.values() if v) / len(egitim)) if egitim else 1.0
+    # KOK NEDEN FIX (derin test 2026-07-22): bos dict = "olculemedi"; 1.0
+    # (tam-izinli) VARSAYMA -> crawl 0 sayfa donunce ai_access sahte-sisiyordu.
+    # Olculemediyse muhafazakar notr taban (0.5). (indexing fix'iyle artik crawl
+    # bloklansa bile robots httpx kontrolu kosuyor; bos genelde gercekten veri-yok.)
+    UNMEASURED_RATIO = 0.5
+    arama_measured, egitim_measured = bool(arama), bool(egitim)
+    arama_ratio = (sum(1 for v in arama.values() if v) / len(arama)) if arama_measured else UNMEASURED_RATIO
+    egitim_ratio = (sum(1 for v in egitim.values() if v) / len(egitim)) if egitim_measured else UNMEASURED_RATIO
     llms_txt = bool(indexing_status.get("llms_txt"))
     sitemap_found = bool(crawl_result.get("sitemap_found"))
 
@@ -164,6 +170,8 @@ def compute_ai_access_score(indexing_status: dict, crawl_result: dict) -> dict:
         "score": min(100.0, score),
         "arama_ratio": round(arama_ratio, 2),
         "egitim_ratio": round(egitim_ratio, 2),
+        "measured": arama_measured or egitim_measured,
+        "bot_protection_suspected": bool(indexing_status.get("bot_protection_suspected")),
         "llms_txt": llms_txt,
         "sitemap_found": sitemap_found,
     }
