@@ -27,7 +27,7 @@ FMT = "%Y-%m-%dT%H:%M:%SZ"
 # pages summed - reporting $0 spend even when real recent spend is nonzero.
 # 120 days is few enough pages to be reliable while still covering realistic
 # GEONI-era usage. Cached so every admin panel load doesn't re-walk it.
-ALL_TIME_LOOKBACK_DAYS = 120
+ALL_TIME_LOOKBACK_DAYS = 365  # B2 (2026-07-22): 120->365, dusuk-bakiye false-negative penceresi daraltildi (hesaplar <1yil -> etkin tum-zaman)
 _all_time_daily_cache = {"value": None, "fetched_at": None}
 _ALL_TIME_CACHE_TTL = timedelta(hours=6)
 

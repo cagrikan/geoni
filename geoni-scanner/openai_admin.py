@@ -27,7 +27,7 @@ OPENAI_ADMIN_KEY = os.environ.get("OPENAI_ADMIN_KEY", "")
 # early with only the (all-zero) earliest pages summed - reporting $0 spend
 # even when real recent spend is nonzero. 120 days is few enough pages to be
 # reliable while still covering realistic GEONI-era usage.
-ALL_TIME_LOOKBACK_DAYS = 120
+ALL_TIME_LOOKBACK_DAYS = 365  # B2 (2026-07-22): 120->365, dusuk-bakiye false-negative penceresi daraltildi (hesaplar <1yil -> etkin tum-zaman)
 
 # All-time spend can span hundreds of daily buckets (many paginated calls) -
 # cache it for a while so every admin panel load doesn't re-walk the full

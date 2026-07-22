@@ -40,7 +40,7 @@ _token_cache = {"token": None, "expiry": None}
 _table_cache = {"name": None, "fetched_at": None}
 _TABLE_CACHE_TTL = timedelta(hours=24)
 
-ALL_TIME_LOOKBACK_DAYS = 120
+ALL_TIME_LOOKBACK_DAYS = 365  # B2 (2026-07-22): 120->365, dusuk-bakiye false-negative penceresi daraltildi (hesaplar <1yil -> etkin tum-zaman)
 
 _summary_cache = {"value": None, "fetched_at": None}
 _SUMMARY_CACHE_TTL = timedelta(minutes=15)  # BigQuery queries aren't free - cache longer than the others

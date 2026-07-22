@@ -371,6 +371,14 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
                 "scoring_version": brand_recall_result.get("scoring_version"),
                 "inferred_name": identity["name"],
                 "inferred_topic": identity["topic"],
+                # B3 (derin test 2026-07-22): zengin teshis audits'e yaziliyordu ATILIYORDU
+                # -> "neden bu skor" sorusu kayitlardan cevaplanamiyordu. model_results
+                # (motor bazli dogruluk/celiski/uydurma), score_breakdown ve telemetry
+                # (sessiz bozulmayi SQL'le izlemek icin) artik result_json'a gomulur.
+                # (retention zaten superseded/eski result_json'lari sadelestiriyor.)
+                "model_results": brand_recall_result.get("model_results"),
+                "score_breakdown": brand_recall_result.get("score_breakdown"),
+                "telemetry": brand_recall_result.get("telemetry"),
             },
             # v3: Share of Voice — markayi bilmeyen kullanicinin kategori
             # sorgularinda gorunurluk + ayni yanitlardan cikarilan rakipler.

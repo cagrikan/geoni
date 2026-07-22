@@ -1075,6 +1075,26 @@ async def delete_user_account(user_id: str) -> bool:
                     await client.delete(f"{SUPABASE_URL}/rest/v1/ticket_ratings?ticket_id=eq.{tid}", headers=_headers(), timeout=10)
                 except Exception:
                     pass
+            # B1 (derin test 2026-07-22): silinen kullanici bir UZMANSA, BASKA
+            # musterilerin ona ATANMIS aktif biletlerini SILME (onlar baska
+            # musterinin) — admin kuyruguna devret: uzmani kaldir + 'open'a al ki
+            # admin yeniden atasin (hayalet-uzman bileti kalmasin). Uzmanlik
+            # alanlarini temizle. expert_payouts/expert_contracts finansal/hukuki
+            # saklama gerekcesiyle BIRAKILIR (expert_id artik PII'siz yetim id).
+            try:
+                await client.patch(
+                    f"{SUPABASE_URL}/rest/v1/tickets"
+                    f"?assigned_expert_id=eq.{user_id}"
+                    f"&status=not.in.(verified,closed,cancelled,refunded)",
+                    headers=_headers(),
+                    json={"assigned_expert_id": None, "status": "open"},
+                    timeout=10,
+                )
+                await client.delete(
+                    f"{SUPABASE_URL}/rest/v1/expert_ticket_types?expert_id=eq.{user_id}",
+                    headers=_headers(), timeout=10)
+            except Exception:
+                pass
             for tbl, col in [
                 ("tickets", "user_id"), ("audits", "user_id"), ("credit_transactions", "user_id"),
                 ("watchlist", "user_id"), ("push_tokens", "user_id"), ("iap_intents", "user_id"),

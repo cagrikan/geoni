@@ -24,7 +24,7 @@ INPUT_PRICE_PER_M = 1.0
 OUTPUT_PRICE_PER_M = 1.0
 LOW_CONTEXT_REQUEST_FEE = 0.005  # $5 / 1000 requests, default "low" search_context_size
 
-ALL_TIME_LOOKBACK_DAYS = 120
+ALL_TIME_LOOKBACK_DAYS = 365  # B2 (2026-07-22): 120->365, dusuk-bakiye false-negative penceresi daraltildi (hesaplar <1yil -> etkin tum-zaman)
 
 
 def compute_cost(prompt_tokens: int, completion_tokens: int) -> float:
