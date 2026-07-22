@@ -1126,6 +1126,7 @@ async def internal_run_retention(http_request: Request):
     from db import (
         run_attachment_retention, run_audit_retention,
         run_low_balance_alert, get_provider_remaining_balances,
+        _get_usd_try_rate,
     )
     attachments = await run_attachment_retention()
     slimmed = await run_audit_retention(None)
@@ -1136,6 +1137,7 @@ async def internal_run_retention(http_request: Request):
         "audits_slimmed": slimmed,
         "provider_balances": balances,
         "low_balance_alerted": [a["provider"] for a in alerted],
+        "usd_try_rate": await _get_usd_try_rate(),
     }
 
 class ManualCostRequest(BaseModel):

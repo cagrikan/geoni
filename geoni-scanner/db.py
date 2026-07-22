@@ -3380,12 +3380,39 @@ LOW_BALANCE_THRESHOLD_USD = float(os.environ.get("LOW_BALANCE_THRESHOLD_USD", "5
 # adina ragmen deger TRY). Digerleri USD. Esik USD oldugundan TRY bakiye
 # USD_TRY_RATE ile USD'ye cevrilip karsilastirilir (yaklasik; env ile guncellenir).
 PROVIDER_CURRENCY = {"gemini": "TRY"}
+# Fail-safe varsayilan: FX API cekilemezse kullanilir (yaklasik).
 USD_TRY_RATE = float(os.environ.get("USD_TRY_RATE", "40"))
 
+_FX_CACHE = {"rate": None, "at": None}
+_FX_TTL = timedelta(hours=24)   # kur gunde bir kez yenilenir
 
-def _to_usd(amount: float, currency: str) -> float:
-    if currency == "TRY" and USD_TRY_RATE:
-        return amount / USD_TRY_RATE
+
+async def _get_usd_try_rate() -> float:
+    """Guncel USD/TRY kuru — gemini'nin TRY bakiyesini USD esigiyle
+    karsilastirmak icin. Ucretsiz/anahtarsiz kaynak (open.er-api.com),
+    12 saat cache. Basarisizsa son bilinen degere, o da yoksa USD_TRY_RATE
+    env varsayilanina duser (alarm hicbir zaman FX yuzunden patlamaz)."""
+    now = datetime.now(timezone.utc)
+    if _FX_CACHE["rate"] and _FX_CACHE["at"] and now - _FX_CACHE["at"] < _FX_TTL:
+        return _FX_CACHE["rate"]
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get("https://open.er-api.com/v6/latest/USD", timeout=10)
+            if r.status_code == 200:
+                rate = (r.json().get("rates") or {}).get("TRY")
+                if rate and float(rate) > 0:
+                    _FX_CACHE["rate"] = float(rate)
+                    _FX_CACHE["at"] = now
+                    return float(rate)
+    except Exception as e:
+        logger.warning(f"USD/TRY kur cekme hatasi: {e}")
+    return _FX_CACHE["rate"] or USD_TRY_RATE
+
+
+def _to_usd(amount: float, currency: str, rate: float | None = None) -> float:
+    r = rate if rate is not None else USD_TRY_RATE
+    if currency == "TRY" and r:
+        return amount / r
     return amount
 
 
@@ -3574,6 +3601,7 @@ async def get_provider_remaining_balances() -> list:
         "gemini": get_gemini_cost_summary,
         "perplexity": get_perplexity_cost_summary,
     }
+    fx = await _get_usd_try_rate()   # canli USD/TRY (gunde bir cekilir, cache'li)
     out = []
     for name, fn in providers.items():
         try:
@@ -3589,8 +3617,8 @@ async def get_provider_remaining_balances() -> list:
             out.append({
                 "provider": name,
                 "currency": currency,
-                "remaining": remaining,                       # kendi para biriminde
-                "remaining_usd": round(_to_usd(remaining, currency), 2),  # esik karsilastirmasi
+                "remaining": remaining,                                   # kendi para biriminde
+                "remaining_usd": round(_to_usd(remaining, currency, fx), 2),  # esik karsilastirmasi (canli kur)
                 "topups": round(topups, 2),
                 "spend": round(spend, 2),
             })

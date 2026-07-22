@@ -159,6 +159,33 @@ def test_to_usd_converts_try(monkeypatch):
     assert db._to_usd(10.0, "USD") == 10.0
 
 
+def test_get_usd_try_rate_fetches_and_caches(monkeypatch):
+    """Kur ucretsiz kaynaktan cekilir (rates.TRY)."""
+    db._FX_CACHE["rate"] = None
+    db._FX_CACHE["at"] = None
+
+    def router(method, url, kw):
+        if "open.er-api.com" in url:
+            return FakeResp(200, {"rates": {"TRY": 41.5}})
+        return FakeResp(200, {})
+
+    monkeypatch.setattr(db.httpx, "AsyncClient", lambda *a, **k: FakeClient(router))
+    assert asyncio.run(db._get_usd_try_rate()) == 41.5
+
+
+def test_get_usd_try_rate_fallback_on_error(monkeypatch):
+    """FX API hata verirse env varsayilanina duser (alarm patlamaz)."""
+    db._FX_CACHE["rate"] = None
+    db._FX_CACHE["at"] = None
+    monkeypatch.setattr(db, "USD_TRY_RATE", 38.0)
+
+    def router(method, url, kw):
+        return FakeResp(500, {})
+
+    monkeypatch.setattr(db.httpx, "AsyncClient", lambda *a, **k: FakeClient(router))
+    assert asyncio.run(db._get_usd_try_rate()) == 38.0
+
+
 def test_low_balance_alert_uses_usd_for_try_provider(monkeypatch):
     """TRY saglayici esik karsilastirmasinda USD karsiligiyla degerlendirilir:
     ~$8 (₺330) SAGLIKLI uyarilmaz; ~$2.5 (₺100) DUSUK uyarilir."""
