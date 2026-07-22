@@ -3,7 +3,7 @@ Configuration module for GEONI Visibility Scanner.
 Loads from .env and environment variables.
 """
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 
 
@@ -55,9 +55,8 @@ class Settings(BaseSettings):
     # -> /auth/v1/user). Lokal JWT imza/dogrulama YOK; eski JWT_SECRET_KEY/HS256 config
     # olu ve yaniltici oldugu icin kaldirildi (QA 2026-07-19 guvenlik denetimi).
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    # pydantic-settings v2: eski nested `class Config` yerine (2.0'dan beri deprecated).
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
 
 settings = Settings()

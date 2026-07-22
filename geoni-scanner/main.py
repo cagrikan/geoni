@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse, Response, RedirectResponse
 from card import render_score_card
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List
+from contextlib import asynccontextmanager
 import asyncio
 import os
 import secrets
@@ -133,12 +134,32 @@ from scanqueue import acquire_scan_slot, release_scan_slot, estimate_wait_second
 # (admin/webhook uclari + semalar) herkese acar — uretimde kapali. Yerel/dev
 # icin GEONI_ENABLE_DOCS=1 ile acilabilir.
 _docs_on = os.environ.get("GEONI_ENABLE_DOCS", "") == "1"
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # FastAPI lifespan (eski @app.on_event("startup") yerine — 0.115'te deprecated).
+    # A4-5: Sentry (SENTRY_DSN yoksa no-op). Startup'ta cagrilir ki worker main'i
+    # import edince "api" olarak tetiklenmesin (worker kendi init'ini yapar).
+    from observability import init_sentry
+    init_sentry("api")
+    # Izleme v2: haftalik otomatik yeniden tarama dongusu (bkz. monitor.py)
+    asyncio.create_task(monitor_loop())
+    # Haftalik icerik uretimi: gercek tarama verisinden sosyal icerik uretip
+    # kurucuya e-postalar (bkz. content_gen.py). Post/DM ATMAZ.
+    asyncio.create_task(content_loop())
+    # Oz-gelisim motoru: gunluk olarak taramalardan sinyal turetir (kendi
+    # gorunurluk, icerik boslugu, nis aci, kalite). Riskli degisiklik yapmaz.
+    asyncio.create_task(improvement_loop())
+    yield
+    # shutdown: arka plan task'leri event loop kapaninca sonlanir; ozel temizlik yok.
+
+
 app = FastAPI(
     title="GEONI Visibility Scanner MVP", version="0.9.0",
     description="AI visibility auditing with Playwright crawling, 6-dimension domain scoring, brand recall with rich context, identity verification, and email delivery",
     docs_url="/docs" if _docs_on else None,
     redoc_url="/redoc" if _docs_on else None,
     openapi_url="/openapi.json" if _docs_on else None,
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -163,22 +184,6 @@ async def _security_headers(request, call_next):
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())  # config.LOG_LEVEL artik etkin
 logger = logging.getLogger(__name__)
-
-@app.on_event("startup")
-async def _start_monitor():
-    # A4-5: Sentry (SENTRY_DSN yoksa no-op). Startup'ta cagrilir ki worker main'i
-    # import edince "api" olarak tetiklenmesin (worker kendi init'ini yapar).
-    from observability import init_sentry
-    init_sentry("api")
-    # Izleme v2: haftalik otomatik yeniden tarama dongusu (bkz. monitor.py)
-    asyncio.create_task(monitor_loop())
-    # Haftalik icerik uretimi: gercek tarama verisinden sosyal icerik uretip
-    # kurucuya e-postalar (bkz. content_gen.py). Post/DM ATMAZ.
-    asyncio.create_task(content_loop())
-    # Oz-gelisim motoru: gunluk olarak taramalardan sinyal turetir (kendi
-    # gorunurluk, icerik boslugu, nis aci, kalite). Riskli degisiklik yapmaz.
-    asyncio.create_task(improvement_loop())
-
 
 jobs_store = {}
 brand_checks_store = {}
