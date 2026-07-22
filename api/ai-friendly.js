@@ -51,10 +51,13 @@ export default async function handler(req, res) {
 
   const rows = items.map((it, i) => {
     const seal = it.seal ?? (it.score >= 70); // eski API cevabinda seal alani yok
+    const href = `/s/${esc(it.job_id)}`;
+    // Site hucresi gercek <a> link: klavye + ekran okuyucu + SEO erisilebilir.
+    // Satir tiklamasi yalnizca fare kolayligi (onclick JS kapaliysa link calisir).
     return `
-    <tr onclick="location.href='/s/${esc(it.job_id)}'">
+    <tr class="lb-row" onclick="location.href='${href}'">
       <td class="rank">${i + 1}</td>
-      <td class="site">${esc(it.domain)}</td>
+      <td class="site"><a class="site-link" href="${href}">${esc(it.domain)}</a></td>
       <td class="score${seal ? '' : ' score--low'}">${Math.round(it.score)}</td>
       <td class="sealcol">${seal ? '<span class="sealchip">✓</span>' : '<span class="nochip">—</span>'}</td>
       <td class="date">${esc(it.date)}</td>
@@ -106,6 +109,9 @@ tbody tr:last-child td{border-bottom:0}
 .rank{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent);width:44px}
 tbody tr:nth-child(1) .rank{color:#F5A623}
 .site{font-weight:600}
+.site-link{color:inherit;text-decoration:none;outline:none}
+.site-link:hover{text-decoration:underline}
+.site-link:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
 .score{font-family:'JetBrains Mono',monospace;font-weight:700;color:#2fbd84;width:64px}
 .score--low{color:#F5A623}
 .sealcol{width:64px;text-align:center}
