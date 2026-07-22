@@ -1342,20 +1342,26 @@ async def get_admin_provider_usage() -> dict:
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
     week_start = (now - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
     provider_usage = {"today": {}, "week": {}}
+    # Sayim DB'de (provider_usage_counts RPC): eskiden ham satirlar cekilip
+    # limit=5000 ile Python'da sayiliyordu -> haftalik kullanim 5000'i gecince
+    # kesilecekti (latent). RPC'de limit yok, olcekli, verimli.
     try:
         async with httpx.AsyncClient() as client:
-            r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/provider_usage?select=provider,created_at&created_at=gte.{week_start}&order=created_at.desc&limit=5000",
-                headers=_headers(), timeout=10,
+            r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/provider_usage_counts",
+                headers=_headers(),
+                json={"p_today_start": today_start, "p_week_start": week_start},
+                timeout=10,
             )
             if r.status_code == 200:
                 for row in r.json():
-                    p = row.get("provider", "unknown")
-                    provider_usage["week"][p] = provider_usage["week"].get(p, 0) + 1
-                    if row.get("created_at", "") >= today_start:
-                        provider_usage["today"][p] = provider_usage["today"].get(p, 0) + 1
+                    p = row.get("provider") or "unknown"
+                    provider_usage["week"][p] = int(row.get("week_count") or 0)
+                    tc = int(row.get("today_count") or 0)
+                    if tc:
+                        provider_usage["today"][p] = tc
             else:
-                logger.info(f"provider_usage query failed ({r.status_code}) - table may not exist yet")
+                logger.info(f"provider_usage_counts RPC failed ({r.status_code})")
     except Exception as e:
         logger.warning(f"Provider usage aggregate failed: {e}")
     return provider_usage
