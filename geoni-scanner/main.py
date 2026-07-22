@@ -57,6 +57,7 @@ from db import (
     get_ticket_by_id, get_latest_audit_by_target, get_recent_cached_brand,
 )
 from self_improve import run_improvement_cycle, get_signals, improvement_loop
+from sentry_admin import get_sentry_summary
 from anthropic_admin import get_anthropic_cost_summary
 from aws_cost import get_aws_cost_summary
 from openai_admin import get_openai_cost_summary
@@ -1629,6 +1630,13 @@ async def admin_improvement(http_request: Request, cycle_date: str | None = None
     nis aci, kalite. Salt okuma."""
     await _require_full_admin(http_request)
     return await get_signals(cycle_date)
+
+@app.get("/api/admin/sentry")
+async def admin_sentry(http_request: Request):
+    """Sentry hata izleme ozeti: acik (unresolved) issue listesi + son donem
+    cozulen sayisi. Salt okuma gozlemleme -> is_admin yeter (finansal degil)."""
+    await _require_admin(http_request)
+    return await get_sentry_summary()
 
 @app.post("/api/admin/improvement/run")
 async def admin_improvement_run(http_request: Request, days: int = 7):
