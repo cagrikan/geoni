@@ -449,6 +449,35 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
     except Exception as e:
         logger.warning(f"signal write error: {e}")
 
+    # Faz1-1.1: KALITE REGRESYON ALARMI (otonom, anlik). Cevap orani bir onceki
+    # donguye gore ANI dususse (arama motoru kalitesi bozulmasi) kurucuya HEMEN uyar
+    # (haftalik ozeti bekleme). Salt-bildirim; hicbir sey degistirmez.
+    cur_ar = round(q_answered / q_total, 3) if q_total else None
+    if cur_ar is not None:
+        try:
+            async with httpx.AsyncClient() as _rc:
+                today_s = datetime.now(timezone.utc).date().isoformat()
+                pr = await _rc.get(
+                    f"{SUPABASE_URL}/rest/v1/improvement_signals?kind=eq.quality_overall"
+                    f"&subject=eq.answer_rate&cycle_date=lt.{today_s}"
+                    f"&select=metric,cycle_date&order=cycle_date.desc&limit=1",
+                    headers=_headers(), timeout=10)
+                prev = pr.json() if pr.status_code == 200 else []
+                if prev and isinstance(prev[0].get("metric"), (int, float)):
+                    prev_ar = float(prev[0]["metric"])
+                    if prev_ar - cur_ar >= 0.10:  # >=10 puan dusus -> regresyon
+                        from mailer import send_ticket_email
+                        await send_ticket_email(
+                            FOUNDER_EMAIL, "⚠️ GEONI: arama kalitesi düştü",
+                            "Sorgu cevap oranında ani düşüş (otonom alarm)",
+                            [f"Önceki döngü ({prev[0].get('cycle_date')}): %{round(prev_ar * 100)}",
+                             f"Bugün: %{round(cur_ar * 100)}",
+                             f"Düşüş: {round((prev_ar - cur_ar) * 100)} puan — motor/sağlayıcı/skorlama incelenmeli."],
+                            cta_label="Admin · İzleme", cta_url="https://app.geoni.ai/admin")
+                        logger.warning(f"KALITE REGRESYON: answer_rate {prev_ar}->{cur_ar}, kurucuya bildirildi")
+        except Exception as e:
+            logger.warning(f"regression alert error: {e}")
+
     # Faz1-1.3 + Karar#1: v4->golge skor gecisini FORMAL deney olarak izle. Esik
     # karsilaninca kurucuya TEK SEFER "hazir, onaylıyor musun" e-postasi (yari-otonom:
     # tetik otonom, UYGULAMA hep onayli — skor musteri-gorunur ucretli sozlesme, asla
