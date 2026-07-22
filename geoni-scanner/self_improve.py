@@ -12,6 +12,7 @@ Iki iz, tek gecis:
 Sinyalleri improvement_signals'e yazar, digest doner. RISKLI hicbir sey otomatik
 degistirmez — sadece olcer ve raporlar; prompt/agirlik degisimi admin onayina duser.
 """
+import os
 import re
 import asyncio
 import logging
@@ -26,6 +27,43 @@ _GEONI = re.compile(r"geoni", re.I)
 
 
 SELF_SCAN_DOMAIN = "geoni.ai"
+# Otonom bilgilendirme: haftalik kalite ozeti buraya gider (content_gen ile ayni kutu).
+FOUNDER_EMAIL = os.environ.get("GEONI_CONTENT_EMAIL", "mail@geoni.ai")
+
+
+def _quality_digest_lines(digest: dict, m_total, m_recog, m_hallu,
+                          shadow_deltas, shadow_tail) -> list:
+    """Kurucuya gidecek KALITE ozeti (amac: arama motoru kalitesini yukseltmek —
+    kalite sinyalleri gozle gorunur olsun). run_improvement_cycle'in locallerinden
+    beslenir; salt-okuma, hicbir sey degistirmez."""
+    q = digest.get("quality", {}) or {}
+    ar = q.get("answer_rate") or 0
+    lines = [
+        f"Taranan tarama (7g): {digest.get('scanned_audits', 0)}",
+        f"Sorgu cevap oranı: %{round(ar * 100)} · skor kararlılık ±{q.get('avg_stability')} · "
+        f"kaynaksız cevap: {q.get('answers_no_source')}",
+    ]
+    if m_total:
+        lines.append("Motor tanınma: " + ", ".join(
+            f"{e} %{round((m_recog.get(e, 0) / m_total[e]) * 100) if m_total[e] else 0}"
+            for e in sorted(m_total)))
+        worst = max(((e, (m_hallu.get(e, 0) / m_total[e]) if m_total[e] else 0) for e in m_total),
+                    key=lambda x: x[1])
+        lines.append(f"En yüksek halüsinasyon: {worst[0]} %{round(worst[1] * 100)}")
+    if shadow_deltas:
+        n = len(shadow_deltas)
+        tr = shadow_tail / n
+        lines.append(f"Skor sapması (v4↔gölge): kuyruk %{round(tr * 100)} ({shadow_tail}/{n}), "
+                     f"ort {round(sum(shadow_deltas) / n, 1)}")
+        if tr > 0.15:
+            lines.append("⚠️ Skor sapması yüksek — v4→gölge faz-2 geçişi değerlendirilmeli (Kritik Karar #1).")
+    pn = (digest.get("painful_niches") or [])[:3]
+    if pn:
+        lines.append("En düşük skorlu nişler: " + ", ".join(f"{p['topic']} ({p['avg_score']})" for p in pn))
+    tq = (digest.get("top_questions") or [])[:3]
+    if tq:
+        lines.append("En sık sorular: " + " · ".join(tq))
+    return lines
 
 
 async def self_scan() -> int | None:
@@ -54,9 +92,11 @@ async def improvement_loop():
             if await _claim_daily_job("improvement"):
                 # Pazartesi self-scan'i cycle'dan ONCE calissin ki taze geoni.ai
                 # own_recognition AYNI gun sinyaline girsin (eskiden 1 gun gecikiyordu).
-                if datetime.now(timezone.utc).weekday() == 0:
+                is_monday = datetime.now(timezone.utc).weekday() == 0
+                if is_monday:
                     await self_scan()
-                d = await run_improvement_cycle(days=7)
+                # Haftalik (Pazartesi) kurucuya otonom kalite ozeti maili (notify).
+                d = await run_improvement_cycle(days=7, notify=is_monday)
                 logger.info(f"improvement_loop ran: {d.get('signals_written')} signals")
             else:
                 logger.info("improvement_loop: bugun baska instance calisti, atlandi")
@@ -65,7 +105,7 @@ async def improvement_loop():
         await asyncio.sleep(24 * 3600)  # gunluk
 
 
-async def run_improvement_cycle(days: int = 7, top_n: int = 25) -> dict:
+async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = False) -> dict:
     """Son `days` gunun brand/person/social taramalarini hasat eder, A/B/C/Q
     sinyallerini hesaplar, improvement_signals'e (bugun icin) yazar ve digest doner."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
@@ -221,6 +261,20 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25) -> dict:
                         "metric": round(sum(scores) / len(scores), 1),
                         "detail": {"scans": len(scores), "top_competitors": top_comp}})
 
+    # Faz0-0.2: competitor_sov — nis basina rakip PAYI (share of voice) AYRI sinyal.
+    # Rakip verisi eskiden yalniz niche_pain.detail'a gomuluydu (zaman-serisi cikmaz);
+    # kind bazli yazilinca hafta-hafta SOV-drift (kim yukseliyor/dusuyor) turetilebilir.
+    for topic, ctr in competitor_freq.items():
+        tot = sum(ctr.values())
+        if tot < 1:
+            continue
+        for comp, cnt in ctr.most_common(5):
+            signals.append({"kind": "competitor_sov",
+                            "subject": f"{topic[:120]}|{comp[:120]}",
+                            "metric": round(cnt / tot, 3),
+                            "detail": {"topic": topic[:200], "competitor": comp[:200],
+                                       "mentions": cnt, "of": tot}})
+
     # Q: 4-MOTOR kalite (claude/gemini/openai/perplexity) — model_results'tan
     for meng in m_total:
         tot = m_total[meng]
@@ -294,6 +348,23 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25) -> dict:
         "signals_written": written,
     }
     logger.info(f"improvement cycle: {scanned} audits, {written} signals")
+
+    # Faz0-0.1/0.3 — OTONOM BİLGİLENDİRME (kullanici: "hersey otonom, bilgilendirme yolla").
+    # Amac arama motoru KALITESINI yukseltmek -> kurucu kalite sinyallerini/anomalileri
+    # elle panele bakmadan gorur. Haftalik (notify=True) gonderilir; hata gonderimi kirmasin.
+    if notify:
+        try:
+            lines = _quality_digest_lines(digest, m_total, m_recog, m_hallu, shadow_deltas, shadow_tail)
+            if lines:
+                from mailer import send_ticket_email
+                subject = f"GEONI arama-kalite özeti · {datetime.now(timezone.utc).date().isoformat()}"
+                await send_ticket_email(
+                    FOUNDER_EMAIL, subject, "Arama motoru kalite raporu (otonom)", lines,
+                    cta_label="Admin · İzleme", cta_url="https://app.geoni.ai/admin")
+                logger.info("quality digest e-postasi gonderildi")
+        except Exception as e:
+            logger.warning(f"quality notify error: {e}")
+
     return digest
 
 
