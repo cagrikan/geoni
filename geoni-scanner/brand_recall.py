@@ -601,7 +601,11 @@ async def _ask_perplexity_sourced(prompt: str, temperature: float = RECALL_TEMPE
                 body = r.json()
                 usage = body.get("usage")
                 if usage:
-                    asyncio.create_task(record_perplexity_call(usage))
+                    # await (fire-and-forget DEGIL): create_task referans
+                    # tutmadigindan SOV'un paralel burst'unde task'lar GC'lenip
+                    # harcama loglarinin ~yarisi kayboluyordu (kok neden).
+                    # log_perplexity_usage hata-yutan + 5s timeout -> scan'i kirmaz.
+                    await record_perplexity_call(usage)
                 citations = list(body.get("citations") or [])
                 for sr in body.get("search_results") or []:
                     if isinstance(sr, dict) and sr.get("url"):
@@ -638,7 +642,11 @@ async def _ask_perplexity(prompt: str, temperature: float = RECALL_TEMPERATURE, 
                 body = r.json()
                 usage = body.get("usage")
                 if usage:
-                    asyncio.create_task(record_perplexity_call(usage))
+                    # await (fire-and-forget DEGIL): create_task referans
+                    # tutmadigindan SOV'un paralel burst'unde task'lar GC'lenip
+                    # harcama loglarinin ~yarisi kayboluyordu (kok neden).
+                    # log_perplexity_usage hata-yutan + 5s timeout -> scan'i kirmaz.
+                    await record_perplexity_call(usage)
                 return body["choices"][0]["message"]["content"].strip()
             asyncio.create_task(_provider_health_alert("perplexity", r.status_code, r.text))
             logger.warning(f"Perplexity {r.status_code}: {r.text[:200]}")

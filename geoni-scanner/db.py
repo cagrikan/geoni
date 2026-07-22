@@ -1427,28 +1427,33 @@ async def log_perplexity_usage(cost_usd: float, prompt_tokens: int, completion_t
 
 
 async def get_perplexity_cost_daily(start: datetime, end: datetime) -> dict:
-    """date (YYYY-MM-DD) -> USD cost that day, summed from GEONI's own
-    perplexity_usage_log rows (self-computed, since Perplexity has no cost API)."""
+    """date (YYYY-MM-DD) -> USD cost that day, from GEONI's own
+    perplexity_usage_log (self-computed, Perplexity'nin cost API'si yok).
+    KOK NEDEN DUZELTMESI: eskiden ham satirlar PostgREST'ten cekilip Python'da
+    toplaniyordu; PostgREST satir limiti (~1000) 1964+ satiri kesip harcamayi
+    ~yariya dusuruyordu. Artik toplama DB'de (perplexity_cost_daily RPC) yapilir
+    -> limit yok, olcekli, verimli (gunluk ~<=120 satir doner)."""
     daily = {}
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return daily
     try:
         async with httpx.AsyncClient() as client:
-            r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/perplexity_usage_log"
-                f"?select=cost_usd,created_at"
-                f"&created_at=gte.{start.strftime('%Y-%m-%dT%H:%M:%SZ')}"
-                f"&created_at=lt.{end.strftime('%Y-%m-%dT%H:%M:%SZ')}",
-                headers=_headers(), timeout=15,
+            r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/perplexity_cost_daily",
+                headers=_headers(),
+                json={
+                    "p_start": start.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                    "p_end": end.strftime('%Y-%m-%dT%H:%M:%SZ'),
+                },
+                timeout=15,
             )
             if r.status_code == 200:
                 for row in r.json():
-                    date_key = (row.get("created_at") or "")[:10]
-                    if not date_key:
-                        continue
-                    daily[date_key] = daily.get(date_key, 0) + float(row.get("cost_usd") or 0)
+                    date_key = str(row.get("day") or "")[:10]
+                    if date_key:
+                        daily[date_key] = float(row.get("cost") or 0)
             else:
-                logger.info(f"perplexity_usage_log query failed ({r.status_code}) - table may not exist yet")
+                logger.info(f"perplexity_cost_daily RPC failed ({r.status_code})")
     except Exception as e:
         logger.warning(f"get_perplexity_cost_daily error: {e}")
     return daily
