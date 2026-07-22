@@ -42,8 +42,8 @@ def _quality_digest_lines(digest: dict, m_total, m_recog, m_hallu,
         f"Taranan tarama (7g): {digest.get('scanned_audits', 0)}",
         f"Sorgu cevap oranı: %{round(ar * 100)} · skor kararlılık ±{q.get('avg_stability')} · "
         f"kaynaksız cevap: {q.get('answers_no_source')}",
-        f"Sorgu kalitesi: konudan-kayma %{round((q.get('adjacent_rate') or 0) * 100)} · "
-        f"ölü sorgu %{round((q.get('dead_query_rate') or 0) * 100)}",
+        f"Sorgu kalitesi: ölü sorgu %{round((q.get('dead_query_rate') or 0) * 100)} · "
+        f"birincil-cevapsız %{round((q.get('primary_dead_rate') or 0) * 100)}",
     ]
     if m_total:
         lines.append("Motor tanınma: " + ", ".join(
@@ -161,8 +161,12 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
     q_answered = 0                            # Q1: cevaplanan
     no_source = 0                             # Q5: cevaplandi ama HIC kaynak yok
     q_count = 0                               # Faz1-1.2: toplam sorgu (query-motor cifti DEGIL)
-    q_adjacent = 0                            # sorgu konudan kaydi (adjacent) — uretim kalitesi
-    q_dead = 0                                # HIC motor cevaplamadi — zayif sorgu formulasyonu
+    q_primary = 0                             # birincil (adjacent OLMAYAN) sorgu sayisi
+    q_dead = 0                                # HIC motor cevaplamadi — zayif sorgu
+    q_primary_dead = 0                        # birincil sorgu ama hic motor cevaplamadi
+    # NOT: adjacent sorgular KASITLI (SOV_ADJACENT_COUNT komsu-alan; 2/5=%40 tasarim).
+    # O yuzden "adjacent_rate" bir sabittir, kalite metrigi DEGIL — olcmuyoruz. Gercek
+    # kalite = birincil sorgularin cevapsiz kalma orani (query uretimi cekirdek konuda zayif mi).
     m_total = defaultdict(int)                # 4-motor (model_results: claude/gemini/openai/perplexity)
     m_recog = defaultdict(int)                # taninma
     m_acc_sum = defaultdict(float)            # dogruluk_skoru toplami
@@ -206,8 +210,9 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
             if qt:
                 query_freq[qt] += 1
             q_count += 1
-            if q.get("adjacent"):        # sorgu hedef konudan komsu konuya kaydi
-                q_adjacent += 1
+            _is_adj = bool(q.get("adjacent"))   # KASITLI komsu-alan sorgusu (design)
+            if not _is_adj:
+                q_primary += 1
             _answered_any = False
             for eng, ed in (q.get("engines") or {}).items():
                 if not isinstance(ed, dict):
@@ -231,6 +236,8 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
                     no_source += 1
             if not _answered_any:   # hicbir motor cevaplamadi -> olu/zayif sorgu
                 q_dead += 1
+                if not _is_adj:     # birincil sorgu cevapsiz -> gercek uretim kalite sinyali
+                    q_primary_dead += 1
         # 4-MOTOR kalite (model_results): taninma + dogruluk + halusinasyon + celiski
         for meng, mv in (rj.get("model_results") or {}).items():
             if not isinstance(mv, dict):
@@ -316,12 +323,14 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
     # Yuksek deger -> generate_category_queries iyilestirilmeli (olcum otonom; sorgu
     # havuzunu degistirmek stability'yi bozabilecegi icin ONAYLI kalir).
     if q_count:
-        signals.append({"kind": "query_quality", "subject": "adjacent_rate",
-                        "metric": round(q_adjacent / q_count, 3),
-                        "detail": {"queries": q_count, "adjacent": q_adjacent}})
         signals.append({"kind": "query_quality", "subject": "dead_query_rate",
                         "metric": round(q_dead / q_count, 3),
                         "detail": {"queries": q_count, "dead": q_dead}})
+    if q_primary:
+        signals.append({"kind": "query_quality", "subject": "primary_dead_rate",
+                        "metric": round(q_primary_dead / q_primary, 3),
+                        "detail": {"primary_queries": q_primary, "dead": q_primary_dead,
+                                   "note": "birincil sorgu hic cevap almadi (uretim zayif)"}})
     # Grup B flip-karari sinyali: v4 vs golge (B6+B7). ORTALAMAYA degil KUYRUGA bak
     # (Fable): tail = |v4 - shadow| > 10 vaka. metric = ort kayma; detail.tail_rate
     # kritik. Faz-2 gecis karari yeterli tail vakasi + kabul edilebilir kayma ile.
@@ -367,8 +376,8 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
             key=lambda x: x["avg_score"])[:10],
         "quality": {"answer_rate": round(q_answered / q_total, 3) if q_total else 0,
                     "avg_stability": avg_stab, "answers_no_source": no_source,
-                    "adjacent_rate": round(q_adjacent / q_count, 3) if q_count else 0,
-                    "dead_query_rate": round(q_dead / q_count, 3) if q_count else 0},
+                    "dead_query_rate": round(q_dead / q_count, 3) if q_count else 0,
+                    "primary_dead_rate": round(q_primary_dead / q_primary, 3) if q_primary else 0},
         "model_recognition": {e: round(m_recog[e] / m_total[e], 3) if m_total[e] else 0 for e in m_total},
         "signals_written": written,
     }
