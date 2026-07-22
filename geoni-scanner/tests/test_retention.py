@@ -150,3 +150,43 @@ def test_low_balance_alert_debounced_same_day(monkeypatch):
     alerted = asyncio.run(db.run_low_balance_alert())
     assert alerted == []   # bugun zaten uyarildi -> yeni uyari yok
     assert sent == []      # e-posta atilmadi
+
+
+def test_to_usd_converts_try(monkeypatch):
+    """TRY -> USD kur ile cevrilir; USD oldugu gibi kalir."""
+    monkeypatch.setattr(db, "USD_TRY_RATE", 40.0)
+    assert db._to_usd(400.0, "TRY") == 10.0
+    assert db._to_usd(10.0, "USD") == 10.0
+
+
+def test_low_balance_alert_uses_usd_for_try_provider(monkeypatch):
+    """TRY saglayici esik karsilastirmasinda USD karsiligiyla degerlendirilir:
+    ~$8 (₺330) SAGLIKLI uyarilmaz; ~$2.5 (₺100) DUSUK uyarilir."""
+    _cfg(monkeypatch)
+    monkeypatch.setattr(db, "LOW_BALANCE_THRESHOLD_USD", 5.0)
+
+    async def balances():
+        return [
+            {"provider": "gemini", "currency": "TRY", "remaining": 330.0,
+             "remaining_usd": 8.25, "topups": 500, "spend": 170},
+            {"provider": "geminilow", "currency": "TRY", "remaining": 100.0,
+             "remaining_usd": 2.5, "topups": 100, "spend": 0},
+        ]
+
+    async def admins():
+        return ["a@x"]
+
+    sent = []
+
+    async def send(to, providers, threshold):
+        sent.append([p["provider"] for p in providers])
+        return True
+
+    monkeypatch.setattr(db, "get_provider_remaining_balances", balances)
+    monkeypatch.setattr(db, "_ticket_admin_emails", admins)
+    monkeypatch.setattr(db, "send_low_balance_alert_email", send)
+    monkeypatch.setattr(db.httpx, "AsyncClient", lambda *a, **k: FakeClient(lambda m, u, kw: FakeResp(200, [])))
+
+    alerted = asyncio.run(db.run_low_balance_alert())
+    assert [a["provider"] for a in alerted] == ["geminilow"]
+    assert sent == [["geminilow"]]

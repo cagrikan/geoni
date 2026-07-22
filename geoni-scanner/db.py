@@ -3375,6 +3375,18 @@ RETENTION_ATTACHMENT_DAYS = int(os.environ.get("RETENTION_ATTACHMENT_DAYS", "30"
 RETENTION_WARN_DAYS = int(os.environ.get("RETENTION_WARN_DAYS", "7"))
 RETENTION_AUDIT_DAYS = int(os.environ.get("RETENTION_AUDIT_DAYS", "30"))
 LOW_BALANCE_THRESHOLD_USD = float(os.environ.get("LOW_BALANCE_THRESHOLD_USD", "5"))
+# Saglayici para birimi: Gemini faturalandirmasi Google billing hesabi TRY
+# oldugundan hem harcama (BigQuery cost) hem top-up TRY'dir (usd_all_time alan
+# adina ragmen deger TRY). Digerleri USD. Esik USD oldugundan TRY bakiye
+# USD_TRY_RATE ile USD'ye cevrilip karsilastirilir (yaklasik; env ile guncellenir).
+PROVIDER_CURRENCY = {"gemini": "TRY"}
+USD_TRY_RATE = float(os.environ.get("USD_TRY_RATE", "40"))
+
+
+def _to_usd(amount: float, currency: str) -> float:
+    if currency == "TRY" and USD_TRY_RATE:
+        return amount / USD_TRY_RATE
+    return amount
 
 
 def _storage_headers() -> dict:
@@ -3572,9 +3584,13 @@ async def get_provider_remaining_balances() -> list:
             spend = (summ or {}).get("usd_all_time")
             if spend is None:
                 continue  # harcama hesaplanamadi -> yanlis alarm verme
+            currency = PROVIDER_CURRENCY.get(name, "USD")
+            remaining = round(topups - spend, 2)
             out.append({
                 "provider": name,
-                "remaining": round(topups - spend, 2),
+                "currency": currency,
+                "remaining": remaining,                       # kendi para biriminde
+                "remaining_usd": round(_to_usd(remaining, currency), 2),  # esik karsilastirmasi
                 "topups": round(topups, 2),
                 "spend": round(spend, 2),
             })
@@ -3588,8 +3604,9 @@ async def run_low_balance_alert() -> list:
     saglayicilar icin admin'e TEK uyari e-postasi. Debounce (app_config):
     bir saglayici esigin altindayken gunde en fazla bir kez uyarilir; esigin
     ustune cikinca durumu silinir (tekrar dusunce yeniden uyarir)."""
+    # Esik USD; TRY saglayicilar (gemini) USD karsiligiyla karsilastirilir.
     below = [b for b in await get_provider_remaining_balances()
-             if b["remaining"] < LOW_BALANCE_THRESHOLD_USD]
+             if b.get("remaining_usd", b["remaining"]) < LOW_BALANCE_THRESHOLD_USD]
     key = "low_balance_alerted"
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     to_alert: list = []

@@ -385,12 +385,19 @@ async def send_retention_warning_email(to_email: str, ref_code: str, days: int) 
 async def send_low_balance_alert_email(to_email: str, providers: list, threshold: float) -> bool:
     """(D) Prepaid sağlayıcı bakiyesi eşiğin altına düşünce admin'e uyarı.
     providers: [{provider, remaining, topups, spend}]."""
-    rows = [
-        f"<strong style=\"color:#EDEFF5\">{p['provider']}</strong>: kalan "
-        f"<strong style=\"color:#F5A97C\">${p['remaining']:.2f}</strong> "
-        f"(yüklenen ${p.get('topups', 0):.2f} − harcanan ${p.get('spend', 0):.2f})"
-        for p in providers
-    ]
+    def _sym(cur):
+        return "₺" if (cur or "USD") == "TRY" else "$"
+    rows = []
+    for p in providers:
+        s = _sym(p.get("currency"))
+        usd_note = ""
+        if p.get("currency") == "TRY" and p.get("remaining_usd") is not None:
+            usd_note = f" (≈${p['remaining_usd']:.2f})"
+        rows.append(
+            f"<strong style=\"color:#EDEFF5\">{p['provider']}</strong>: kalan "
+            f"<strong style=\"color:#F5A97C\">{s}{p['remaining']:.2f}</strong>{usd_note} "
+            f"(yüklenen {s}{p.get('topups', 0):.2f} − harcanan {s}{p.get('spend', 0):.2f})"
+        )
     return await send_ticket_email(
         to_email,
         f"⚠️ Düşük bakiye — {len(providers)} sağlayıcı ${threshold:.0f} altında",
