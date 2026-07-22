@@ -36,12 +36,11 @@ class Settings(BaseSettings):
     CRAWLER_TOTAL_TIMEOUT: int = 300  # 5 minutes
     CRAWLER_DELAY_MS: int = 500  # Respectful crawling delay
     CRAWLER_USER_AGENT: str = "GEONI-Scanner/1.0 (+https://geoni.ai/bot)"
-    
-    # Job queue (Celery)
-    CELERY_BROKER_URL: str = "redis://localhost:6379/1"
-    CELERY_RESULT_BACKEND_URL: str = "redis://localhost:6379/2"
-    CELERY_TASK_TIME_LIMIT: int = 600  # 10 minutes
-    
+
+    # NOT: Celery/DB-pool eski plandi; gercek mimari SQS (scanqueue.py/worker.py).
+    # REDIS_URL rezerve tutuluyor (olceklenince Upstash-free ile paylasimli
+    # rate-limit icin; su an in-memory + App Runner MaxSize=1).
+
     # External APIs
     GOOGLE_API_KEY: Optional[str] = None
     GOOGLE_SEARCH_ENGINE_ID: Optional[str] = None

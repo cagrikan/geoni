@@ -161,7 +161,7 @@ async def _security_headers(request, call_next):
     resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return resp
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO").upper())  # config.LOG_LEVEL artik etkin
 logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
