@@ -30,6 +30,38 @@ SELF_SCAN_DOMAIN = "geoni.ai"
 # Otonom bilgilendirme: haftalik kalite ozeti buraya gider (content_gen ile ayni kutu).
 FOUNDER_EMAIL = os.environ.get("GEONI_CONTENT_EMAIL", "mail@geoni.ai")
 
+# Faz1-1.3: DENEY DEFTERI — app_config'te (key=experiment:<isim>, value=JSON) hafif kayit.
+# Yeni tablo YOK; _claim_daily_job ile ayni KV deposu. Otonom deneylerin (score_shadow,
+# ileride motor-guven kalibrasyonu) hipotez/metrik/karar izini tutar (audit trail + guven).
+import json as _json
+_EXP_PREFIX = "experiment:"
+
+
+async def _load_experiment(client: httpx.AsyncClient, name: str) -> dict:
+    try:
+        r = await client.get(
+            f"{SUPABASE_URL}/rest/v1/app_config?key=eq.{_EXP_PREFIX}{name}&select=value",
+            headers=_headers(), timeout=10)
+        if r.status_code == 200 and r.json():
+            return _json.loads(r.json()[0].get("value") or "{}")
+    except Exception as e:
+        logger.warning(f"_load_experiment({name}) error: {e}")
+    return {}
+
+
+async def _save_experiment(client: httpx.AsyncClient, name: str, data: dict) -> bool:
+    try:
+        r = await client.post(
+            f"{SUPABASE_URL}/rest/v1/app_config?on_conflict=key",
+            headers={**_headers(), "Prefer": "resolution=merge-duplicates"},
+            json={"key": f"{_EXP_PREFIX}{name}", "value": _json.dumps(data),
+                  "updated_at": datetime.now(timezone.utc).isoformat()},
+            timeout=10)
+        return r.status_code in (200, 201, 204)
+    except Exception as e:
+        logger.warning(f"_save_experiment({name}) error: {e}")
+        return False
+
 
 def _quality_digest_lines(digest: dict, m_total, m_recog, m_hallu,
                           shadow_deltas, shadow_tail) -> list:
@@ -364,6 +396,40 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
                 written = len(rows_out) if w.status_code in (200, 201) else 0
     except Exception as e:
         logger.warning(f"signal write error: {e}")
+
+    # Faz1-1.3 + Karar#1: v4->golge skor gecisini FORMAL deney olarak izle. Esik
+    # karsilaninca kurucuya TEK SEFER "hazir, onaylıyor musun" e-postasi (yari-otonom:
+    # tetik otonom, UYGULAMA hep onayli — skor musteri-gorunur ucretli sozlesme, asla
+    # otomatik degismez). score_shadow verisi birikene kadar sessizce "collecting" kalir.
+    if shadow_deltas:
+        try:
+            _n = len(shadow_deltas)
+            _tail = shadow_tail / _n
+            async with httpx.AsyncClient() as _c:
+                exp = await _load_experiment(_c, "v4_to_shadow")
+                was_ready = exp.get("status") == "ready"
+                exp.update({
+                    "hypothesis": "golge skor (B6+B7) v4 mansetini guvenle degistirebilir",
+                    "last_cycle": datetime.now(timezone.utc).date().isoformat(),
+                    "n": _n, "tail_rate": round(_tail, 3),
+                    "mean_delta": round(sum(shadow_deltas) / _n, 1),
+                    "criteria": "n>=50 ve tail_rate<0.10",
+                })
+                is_ready = _n >= 50 and _tail < 0.10
+                exp["status"] = "ready" if is_ready else "collecting"
+                await _save_experiment(_c, "v4_to_shadow", exp)
+                if is_ready and not was_ready:  # yeni HAZIR oldu -> bir kez bildir
+                    from mailer import send_ticket_email
+                    await send_ticket_email(
+                        FOUNDER_EMAIL, "GEONI: v4→gölge skor geçişi HAZIR",
+                        "Skorlama faz-2 geçiş kriterleri karşılandı (onay bekliyor)",
+                        [f"Örneklem: {_n} tarama", f"Kuyruk sapma: %{round(_tail * 100)} (<%10 hedef)",
+                         f"Ortalama kayma: {round(sum(shadow_deltas) / _n, 1)}",
+                         "Gölge skor v4 manşetini güvenle değiştirebilir görünüyor. Uygulamamı onaylıyor musun?"],
+                        cta_label="Admin · İzleme", cta_url="https://app.geoni.ai/admin")
+                    logger.info("v4_to_shadow experiment READY — kurucuya bildirildi")
+        except Exception as e:
+            logger.warning(f"experiment ledger error: {e}")
 
     digest = {
         "ok": True,
