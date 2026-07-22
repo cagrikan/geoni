@@ -97,6 +97,9 @@ def _quality_digest_lines(digest: dict, m_total, m_recog, m_hallu,
     tq = (digest.get("top_questions") or [])[:3]
     if tq:
         lines.append("En sık sorular: " + " · ".join(tq))
+    decay = digest.get("decay_domains") or []
+    if decay:
+        lines.append("⚠️ İçeriği bayatlayan hedefler (freshness düştü): " + ", ".join(decay))
     return lines
 
 
@@ -137,6 +140,52 @@ async def improvement_loop():
         except Exception as e:
             logger.warning(f"improvement_loop error: {e}")
         await asyncio.sleep(24 * 3600)  # gunluk
+
+
+async def _content_decay_signals(days: int = 30) -> list:
+    """Faz2-2.3: content_decay — WEB hedeflerinin freshness'i son taramada DUSUYOR mu
+    (icerik bayatliyor). Ayri fetch (web audits, sayfali); salt-olcum, otonom-guvenli.
+    domain basina en yeni iki taramayi kiyaslar; anlamli dusus (>=5 puan) -> sinyal."""
+    out = []
+    if not SUPABASE_URL:
+        return out
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
+    rows = []
+    try:
+        async with httpx.AsyncClient() as client:
+            offset = 0
+            while True:
+                r = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/audits?select=domain,result_json,created_at"
+                    f"&type=eq.web&status=eq.complete&created_at=gte.{since}"
+                    f"&order=created_at.desc&limit=1000&offset={offset}",
+                    headers=_headers(), timeout=40)
+                batch = r.json() if r.status_code == 200 else []
+                rows.extend(batch)
+                if len(batch) < 1000 or offset >= 20000:
+                    break
+                offset += 1000
+    except Exception as e:
+        logger.warning(f"content_decay fetch error: {e}")
+        return out
+    by_dom = defaultdict(list)  # domain -> [freshness] (created_at.desc sirali)
+    for a in rows:
+        rj = a.get("result_json") or {}
+        if not isinstance(rj, dict):
+            continue
+        fr = (rj.get("score_breakdown") or {}).get("freshness")
+        dom = a.get("domain")
+        if dom and isinstance(fr, (int, float)):
+            by_dom[dom].append(float(fr))
+    for dom, fresh in by_dom.items():
+        if len(fresh) < 2:
+            continue
+        latest, prev = fresh[0], fresh[1]  # desc: [0] en yeni
+        delta = round(latest - prev, 1)
+        if delta <= -5:  # anlamli freshness dususu -> icerik bayatliyor
+            out.append({"kind": "content_decay", "subject": dom[:200], "metric": delta,
+                        "detail": {"latest": latest, "previous": prev, "scans": len(fresh)}})
+    return out
 
 
 async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = False) -> dict:
@@ -374,6 +423,9 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
                                    "tail_rate": round(shadow_tail / _n, 3),
                                    "max_abs": round(max(abs(d) for d in shadow_deltas), 1)}})
 
+    # Faz2-2.3: content_decay (izlenen web hedeflerinde freshness dususu) — ayri fetch.
+    signals.extend(await _content_decay_signals())
+
     # ---- Yaz (bugun icin idempotent: once bugunku sil) ----
     written = 0
     try:
@@ -444,6 +496,7 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
                     "avg_stability": avg_stab, "answers_no_source": no_source,
                     "dead_query_rate": round(q_dead / q_count, 3) if q_count else 0,
                     "primary_dead_rate": round(q_primary_dead / q_primary, 3) if q_primary else 0},
+        "decay_domains": [s["subject"] for s in signals if s.get("kind") == "content_decay"][:5],
         "model_recognition": {e: round(m_recog[e] / m_total[e], 3) if m_total[e] else 0 for e in m_total},
         "signals_written": written,
     }
