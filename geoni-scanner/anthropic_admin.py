@@ -11,9 +11,33 @@ Docs: https://platform.claude.com/docs/en/build-with-claude/usage-cost-api
 """
 
 import os
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 import httpx
+
+
+async def _cost_get_with_retry(client: httpx.AsyncClient, params: dict, attempts: int = 4):
+    """Anthropic cost_report tek sayfa; 429/5xx'te ustel backoff (+ Retry-After) ile
+    yeniden dener. Kok-neden: sayfalama 60 hizli ardisik istek yapip 429 yiyordu."""
+    delay = 0.5
+    r = None
+    for i in range(attempts):
+        r = await client.get(
+            "https://api.anthropic.com/v1/organizations/cost_report",
+            headers={"anthropic-version": ANTHROPIC_VERSION, "x-api-key": ANTHROPIC_ADMIN_KEY},
+            params=params, timeout=15,
+        )
+        if r.status_code == 200 or i == attempts - 1:
+            return r
+        if r.status_code in (429, 500, 502, 503, 529):
+            ra = r.headers.get("retry-after", "")
+            wait = float(ra) if ra.replace(".", "", 1).isdigit() else delay
+            await asyncio.sleep(min(wait, 8))
+            delay *= 2
+            continue
+        return r  # yeniden-denenemez hata
+    return r
 
 logger = logging.getLogger(__name__)
 
@@ -54,12 +78,7 @@ async def _fetch_daily_cents(start: datetime, end: datetime) -> dict | None:
                 params = {"starting_at": start.strftime(FMT), "ending_at": end.strftime(FMT)}
                 if page:
                     params["page"] = page
-                r = await client.get(
-                    "https://api.anthropic.com/v1/organizations/cost_report",
-                    headers={"anthropic-version": ANTHROPIC_VERSION, "x-api-key": ANTHROPIC_ADMIN_KEY},
-                    params=params,
-                    timeout=15,
-                )
+                r = await _cost_get_with_retry(client, params)
                 if r.status_code != 200:
                     logger.warning(f"Anthropic cost report failed: {r.status_code} {r.text[:200]}")
                     return daily_cents if got_any_page else None
@@ -77,6 +96,7 @@ async def _fetch_daily_cents(start: datetime, end: datetime) -> dict | None:
                 page = body.get("next_page")
                 if not page:
                     break
+                await asyncio.sleep(0.15)  # sayfalar arasi nazik gecikme (429 onlemi)
     except Exception as e:
         logger.warning(f"Anthropic cost report error: {e}")
         return daily_cents if got_any_page else None
