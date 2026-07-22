@@ -53,6 +53,10 @@ def build_brand_payload(result: dict, name, topic, stability, created_at: str, l
         "recognition_count": result.get("recognition_count", 0),
         "score": result.get("score", 0),
         "score_legacy": result.get("score_legacy"),
+        # Grup B faz-1 golge skor (B6+B7) — manset DEGIL. self_improve shadow_compare
+        # sinyali (v4->golge faz-2 gecis karari) bunu result_json'dan okur; eskiden
+        # payload'a tasinmadigi icin sinyal HIC uretilmiyordu (olu).
+        "score_shadow": result.get("score_shadow"),
         "scoring_version": result.get("scoring_version"),
         "score_breakdown": result.get("score_breakdown", {}),
         "model_results": result.get("model_results", {}),

@@ -19,7 +19,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone, timedelta
 
 import httpx
-from db import SUPABASE_URL, SUPABASE_SERVICE_KEY, _headers
+from db import SUPABASE_URL, SUPABASE_SERVICE_KEY, _headers, _claim_daily_job
 
 logger = logging.getLogger("self_improve")
 _GEONI = re.compile(r"geoni", re.I)
@@ -48,10 +48,18 @@ async def improvement_loop():
     await asyncio.sleep(300)  # servis otursun
     while True:
         try:
-            d = await run_improvement_cycle(days=7)
-            logger.info(f"improvement_loop ran: {d.get('signals_written')} signals")
-            if datetime.now(timezone.utc).weekday() == 0:  # Pazartesi: haftalik self-scan
-                await self_scan()
+            # Coklu-instance guvenli: yalnizca gunluk kilidi ALAN instance calisir
+            # (autoscale'de cift self_scan maliyeti + improvement_signals delete/insert
+            # yarisi olmaz — retention isindeki _claim_daily_job deseni).
+            if await _claim_daily_job("improvement"):
+                # Pazartesi self-scan'i cycle'dan ONCE calissin ki taze geoni.ai
+                # own_recognition AYNI gun sinyaline girsin (eskiden 1 gun gecikiyordu).
+                if datetime.now(timezone.utc).weekday() == 0:
+                    await self_scan()
+                d = await run_improvement_cycle(days=7)
+                logger.info(f"improvement_loop ran: {d.get('signals_written')} signals")
+            else:
+                logger.info("improvement_loop: bugun baska instance calisti, atlandi")
         except Exception as e:
             logger.warning(f"improvement_loop error: {e}")
         await asyncio.sleep(24 * 3600)  # gunluk
@@ -66,17 +74,31 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25) -> dict:
     geoni_mr = {}
     try:
         async with httpx.AsyncClient() as client:
-            r = await client.get(
-                f"{SUPABASE_URL}/rest/v1/audits?select=type,result_json,created_at"
-                f"&status=eq.complete&created_at=gte.{since}"
-                f"&type=in.(brand,person,social)&order=created_at.desc&limit=1500",
-                headers=_headers(), timeout=40,
-            )
-            rows = r.json() if r.status_code == 200 else []
-            # geoni.ai self-scan (varsa): 4-motor kendi taninma (own_recognition)
+            # Sayfalama: PostgREST ~1000 satir cap'ine takilmadan 7 gunluk pencerenin
+            # TAMAMINI cek (buyumede en eski kayitlarin sessizce dusmesini onler).
+            rows = []
+            offset, PAGE = 0, 1000
+            while True:
+                r = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/audits?select=type,result_json,created_at"
+                    f"&status=eq.complete&created_at=gte.{since}"
+                    f"&type=in.(brand,person,social)&order=created_at.desc"
+                    f"&limit={PAGE}&offset={offset}",
+                    headers=_headers(), timeout=40,
+                )
+                batch = r.json() if r.status_code == 200 else []
+                rows.extend(batch)
+                if len(batch) < PAGE or offset >= 50000:  # tavan: patolojik durumda sonsuz donmesin
+                    break
+                offset += PAGE
+            # geoni.ai self-scan (own_recognition): SADECE haftalik self_scan kaydini al
+            # (auto_monitor=true). Aksi halde araya giren normal kullanici web-taramasi
+            # "en son" gelir; onun model_results'i brand_recall altinda ic-ice oldugundan
+            # top-level okuma bosalir ve sinyal SESSIZCE yanlis/bos uretilir.
             gm = await client.get(
                 f"{SUPABASE_URL}/rest/v1/audits?type=eq.web&domain=eq.geoni.ai"
-                f"&status=eq.complete&select=result_json&order=created_at.desc&limit=1",
+                f"&status=eq.complete&result_json->>auto_monitor=eq.true"
+                f"&select=result_json&order=created_at.desc&limit=1",
                 headers=_headers(), timeout=15,
             )
             g = gm.json() if gm.status_code == 200 else []

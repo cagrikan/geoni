@@ -144,6 +144,10 @@ async def _scan_brand_item(item: dict) -> int | None:
         "recognition_count": result.get("recognition_count", 0),
         "score": result.get("score", 0),
         "score_legacy": result.get("score_legacy"),
+        # shadow_compare sinyali icin (bkz. result_contract.build_brand_payload notu):
+        # izleme yeniden-taramasi da golge skoru tasisin, yoksa bu yoldan gelen
+        # taramalar shadow_deltas'a katilmaz.
+        "score_shadow": result.get("score_shadow"),
         "scoring_version": result.get("scoring_version"),
         "score_breakdown": result.get("score_breakdown", {}),
         "model_results": result.get("model_results", {}),
