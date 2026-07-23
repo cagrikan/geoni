@@ -46,6 +46,7 @@ from db import log_provider_call, get_pinned_sov_queries
 from perplexity_admin import record_perplexity_call
 from sov import check_share_of_voice, has_usable_topic, infer_topic
 from ssrf_guard import assert_public_host, BlockedHostError
+from result_contract import SHADOW_ENGINES  # golge-mod motorlar (skora katkisiz; recognition_count'tan haric)
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,15 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY    = os.environ.get("OPENAI_API_KEY", "")
 PERPLEXITY_API_KEY = os.environ.get("PERPLEXITY_API_KEY", "")
 GOOGLE_API_KEY     = os.environ.get("GOOGLE_API_KEY", "")
+# Grok (xAI) SHADOW recall motoru. xAI /chat/completions OpenAI-uyumlu.
+# Model id anahtar eklenirken XAI_MODEL ile teyit edilir (varsayilan hizli/ucuz
+# sinif). Golge-modda WEIGHTS['grok']=0 -> yanlis default bile canli skoru
+# ETKILEMEZ; yalniz shadow olcumu bos kalir, bir sonraki deploy'da duzelir.
+GROK_API_KEY = os.environ.get("XAI_API_KEY", "")
+# Recall = yapisal JSON tanima gorevi -> non-reasoning varyant (hizli/ucuz, reasoning_tokens=0).
+# 2026-07-23 canli teyit: bu hesapta gecerli model id'ler grok-4.20-0309-*/grok-4.3/4.5;
+# "grok-4-fast" YOK. XAI_MODEL ile ezilebilir (snapshot yaslanirsa).
+GROK_MODEL   = os.environ.get("XAI_MODEL", "grok-4.20-0309-non-reasoning")
 
 
 # ── A4-1: Saglayici saglik/kredi alarmi ──────────────────────────────────────
@@ -173,6 +183,7 @@ WEIGHTS = {
     "openai":           0.28,
     "gemini":           0.12,
     "perplexity":       0.20,
+    "grok":             0.0,    # SHADOW (2026-07-23): golge-mod, manseti DEGISTIRMEZ; backtest sonrasi acilir
     "response_quality": 0.10,
     "topic_relevance":  0.10,
 }
@@ -185,6 +196,7 @@ WEIGHTS_SOV = {
     "openai":           0.20,
     "gemini":           0.10,     # v5: golge moddan cikti (bkz. WEIGHTS notu)
     "perplexity":       0.15,
+    "grok":             0.0,    # SHADOW
     "response_quality": 0.05,
     "topic_relevance":  0.05,
     "share_of_voice":   0.30,
@@ -198,6 +210,7 @@ WEIGHTS_SOCIAL = {
     "openai":           0.07,
     "gemini":           0.04,     # v5: golge moddan cikti
     "perplexity":       0.07,
+    "grok":             0.0,    # SHADOW
     "response_quality": 0.15,
     "topic_relevance":  0.05,
     "share_of_voice":   0.55,
@@ -211,6 +224,7 @@ OLD_WEIGHTS = {
     "openai":           0.24,
     "gemini":           0.24,
     "perplexity":       0.16,
+    "grok":             0.0,    # SHADOW (legacy referansi; grok legacy skora da katilmaz)
     "response_quality": 0.10,
     "topic_relevance":  0.10,
 }
@@ -492,6 +506,40 @@ async def _ask_openai(prompt: str, temperature: float = RECALL_TEMPERATURE, max_
             logger.warning(f"OpenAI {r.status_code}: {r.text[:200]}")
     except Exception as e:
         logger.warning(f"OpenAI query failed: {e}")
+    return None
+
+
+async def _ask_grok(prompt: str, temperature: float = RECALL_TEMPERATURE, max_tokens: int = 500, json_mode: bool = True) -> str | None:
+    """Grok (xAI) recall motoru — SHADOW (brand_recall WEIGHTS['grok']=0, manseti
+    DEGISTIRMEZ; yalniz offline backtest icin per-engine skoru toplanir). xAI
+    /chat/completions OpenAI-uyumlu oldugundan _ask_openai ile ayni sozlesme:
+    ayni prompt, ayni json_object modu, ayni parse. Anahtar yoksa None -> motor
+    sessizce olculmez (gather'da measured=False gibi ele alinir)."""
+    if not GROK_API_KEY:
+        return None
+    try:
+        body = {
+            "model": GROK_MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if json_mode:
+            body["response_format"] = {"type": "json_object"}
+        async with httpx.AsyncClient() as c:
+            r = await _post_retry(c,
+                "https://api.x.ai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {GROK_API_KEY}", "Content-Type": "application/json"},
+                json=body,
+                timeout=30,
+            )
+            if r.status_code == 200:
+                asyncio.create_task(log_provider_call("grok"))
+                return r.json()["choices"][0]["message"]["content"].strip()
+            asyncio.create_task(_provider_health_alert("grok", r.status_code, r.text))
+            logger.warning(f"Grok {r.status_code}: {r.text[:200]}")
+    except Exception as e:
+        logger.warning(f"Grok query failed: {e}")
     return None
 
 
@@ -1499,11 +1547,16 @@ async def check_brand_recall(
             raise
 
     emit(msgs["querying_models"])
-    claude_data, openai_data, gemini_data, perplexity_data = await asyncio.gather(
+    # Grok SHADOW: 5. motor olarak paralel sorgulanir; skoru model_results'e girer
+    # (self_improve guvenilirlik verisi toplar) AMA WEIGHTS['grok']=0 -> manseti
+    # ETKILEMEZ ve recognition_count/score_breakdown'a KATILMAZ. Anahtar yoksa
+    # _ask_grok None -> measured=False -> tamamen gorunmez.
+    claude_data, openai_data, gemini_data, perplexity_data, grok_data = await asyncio.gather(
         _tracked(_check_model_two_phase(name, topic, web_results, _ask_claude, lang), "Claude"),
         _tracked(_check_model_two_phase(name, topic, web_results, _ask_openai, lang), "ChatGPT"),
         _tracked(_check_model_two_phase(name, topic, web_results, _ask_gemini, lang), "Gemini"),
         _tracked(_check_model_two_phase(name, topic, web_results, _ask_perplexity, lang), "Perplexity"),
+        _tracked(_check_model_two_phase(name, topic, web_results, _ask_grok, lang), "Grok"),
         return_exceptions=True,
     )
 
@@ -1523,6 +1576,7 @@ async def check_brand_recall(
         "openai": safe(openai_data),
         "gemini": safe(gemini_data),
         "perplexity": safe(perplexity_data),
+        "grok": safe(grok_data),   # SHADOW — WEIGHTS['grok']=0, manseti degistirmez
     }
 
     # Step 3: Tek toplu judge cagrisi (Madde 2.1)
@@ -1538,7 +1592,7 @@ async def check_brand_recall(
     per_model_shadow_score = {}   # Grup B faz-1 golge skor (B6+B7)
     dogruluk_values = []
 
-    display_names = {"claude": "Claude", "openai": "ChatGPT", "gemini": "Gemini", "perplexity": "Perplexity"}
+    display_names = {"claude": "Claude", "openai": "ChatGPT", "gemini": "Gemini", "perplexity": "Perplexity", "grok": "Grok"}
 
     for key, data in model_raw.items():
         judge = judge_results.get(key)
@@ -1663,7 +1717,9 @@ async def check_brand_recall(
 
     # Step 4: Genel skor
     model_keys = list(model_raw.keys())
-    recognition_count = sum(1 for v in model_results.values() if v.get("recognized"))
+    # SHADOW motorlar (grok) recognition_count'a KATILMAZ — yoksa "3/4" -> "3/5"
+    # olur ve F-O3 quality gate (recognition_count==0) kayar = canli skor etkisi.
+    recognition_count = sum(1 for k, v in model_results.items() if v.get("recognized") and k not in SHADOW_ENGINES)
 
     if recognition_count == 0:
         # F-O3 (Fable 2026-07-19): HICBIR motor tanimıyorsa "bilmiyorum" yanitlarinin
@@ -1750,6 +1806,8 @@ async def check_brand_recall(
     # recognition_count yukarida (F-O3 skor tabani) hesaplandi — tek kaynak.
     raw_parts = []
     for key in model_keys:
+        if key in SHADOW_ENGINES:
+            continue  # golge motor ham yaniti raw_list'e girmez
         resp = model_raw[key]["representative_text"]
         if resp:
             via = " (web verisiyle)" if model_raw[key]["via_web"] else ""

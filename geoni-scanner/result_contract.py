@@ -27,7 +27,7 @@ BRAND_CLIENT_KEYS = {
 # NOT (v5, 2026-07-19): gemini golge moddan CIKTI (backtest gecti; bkz. brand_recall
 # WEIGHTS notu). Artik agirliga katiliyor -> golge listesi BOS. Ileride yeni bir deney
 # motoru eklenirse buraya yazilir; etiketleme altyapisi (client shadow_engines okur) durur.
-SHADOW_ENGINES = []
+SHADOW_ENGINES = ["grok"]  # 2026-07-23: Grok (xAI) golge-modda eklendi (WEIGHTS['grok']=0)
 
 # sov alt-sozlesmesi: SovSection (web) + mobil brand sonucu bu alanlari okur.
 SOV_CLIENT_KEYS = {

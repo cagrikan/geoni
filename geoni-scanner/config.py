@@ -47,7 +47,11 @@ class Settings(BaseSettings):
     BING_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
-    
+    # Grok (xAI) — SHADOW recall motoru (brand_recall WEIGHTS['grok']=0, manseti
+    # degistirmez). XAI_MODEL anahtar eklenirken dogru model id ile teyit edilir.
+    XAI_API_KEY: Optional[str] = None
+    XAI_MODEL: Optional[str] = None
+
     # CORS
     CORS_ORIGINS: list = ["http://localhost:3000", "https://geoni.ai"]
 
