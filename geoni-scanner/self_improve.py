@@ -556,6 +556,44 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
         except Exception as e:
             logger.warning(f"regression alert error: {e}")
 
+    # Fable #4 (2026-07-23): own_recognition "ANI DUSUS alarmi" — ACTION_POLICY (satir 52)
+    # bu davranisi vaadediyordu ama KOD YOKTU (olculuyor, DB'ye yaziliyor, kimseye gitmiyordu).
+    # Bir AI motoru GEONI'yi onceki cycle TANIYORDU ama ARTIK tanimiyorsa (1->0) kurucuya HEMEN
+    # uyar — kendi gorunurlugumuz en kritik buyume sinyali. Salt-bildirim.
+    cur_own = {e: (1 if (mv or {}).get("recognized") else 0)
+               for e, mv in (geoni_mr or {}).items()
+               if isinstance(mv, dict) and e not in SHADOW_ENGINES}
+    if cur_own:
+        try:
+            async with httpx.AsyncClient() as _rc:
+                today_s = datetime.now(timezone.utc).date().isoformat()
+                pr = await _rc.get(
+                    f"{SUPABASE_URL}/rest/v1/improvement_signals?kind=eq.own_recognition"
+                    f"&cycle_date=lt.{today_s}&select=subject,metric,cycle_date"
+                    f"&order=cycle_date.desc&limit=20",
+                    headers=_headers(), timeout=10)
+                rows = pr.json() if pr.status_code == 200 else []
+                prev_own = {}
+                if rows:
+                    latest = rows[0]["cycle_date"]
+                    for r in rows:
+                        if r.get("cycle_date") == latest and r.get("subject") not in prev_own:
+                            prev_own[r["subject"]] = float(r.get("metric") or 0)
+                drops = [e for e, v in cur_own.items() if v == 0 and prev_own.get(e, 0) >= 1]
+                if drops:
+                    from mailer import send_ticket_email
+                    still = [e for e, v in cur_own.items() if v >= 1]
+                    await send_ticket_email(
+                        FOUNDER_EMAIL, "⚠️ GEONI: bir AI motoru bizi tanımayı bıraktı",
+                        "Kendi görünürlük düşüşü (own_recognition, otonom alarm)",
+                        [f"Artık GEONI'yi tanımayan motor(lar): {', '.join(drops)}",
+                         f"Hâlâ tanıyanlar: {', '.join(still) or 'yok'}",
+                         "AI görünürlüğümüz düştü — schema/otorite/lansman kanıtı gözden geçirilmeli."],
+                        cta_label="Admin · İzleme", cta_url="https://app.geoni.ai/admin")
+                    logger.warning(f"OWN_RECOGNITION DUSUS: {drops} artik tanimiyor, kurucuya bildirildi")
+        except Exception as e:
+            logger.warning(f"own_recognition alert error: {e}")
+
     # Faz1-1.3 + Karar#1: v4->golge skor gecisini FORMAL deney olarak izle. Esik
     # karsilaninca kurucuya TEK SEFER "hazir, onaylıyor musun" e-postasi (yari-otonom:
     # tetik otonom, UYGULAMA hep onayli — skor musteri-gorunur ucretli sozlesme, asla

@@ -348,9 +348,13 @@ async def _google_kg_presence(name: str) -> dict | None:
             )
             if resp.status_code == 200:
                 return _parse_kg_response(resp.json(), name)
-            logger.info(f"Google KG check HTTP {resp.status_code} for '{name}'")
+            # Fable #4 (2026-07-23): KG bacagi 188/188 olu — anahtar VAR (Gemini'de calisiyor)
+            # ama KG Search API GCP'de ayri etkinlestirilmeli. Anahtar varken hata = GORUNUR
+            # olmali (warning), yoksa sessizce olur; 403 tipik "API kapali" isaretidir.
+            logger.warning(f"Google KG check HTTP {resp.status_code} for '{name}' "
+                           f"(anahtar var; 403 ise GCP'de Knowledge Graph Search API'yi etkinlestir): {resp.text[:120]}")
     except Exception as e:
-        logger.info(f"Google KG check failed for '{name}': {e}")
+        logger.warning(f"Google KG check failed for '{name}': {e}")
     return None
 
 
