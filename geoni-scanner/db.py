@@ -1485,6 +1485,28 @@ async def get_perplexity_cost_daily(start: datetime, end: datetime) -> dict:
     return daily
 
 
+async def count_provider_calls_today(provider: str) -> int:
+    """Bugun (UTC 00:00'dan beri) provider_usage'da <provider> cagri sayisi. grok-web
+    GUNLUK MALIYET TAVANI icin (tek istek, Prefer count=exact -> Content-Range)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return 0
+    try:
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%dT00:00:00Z")
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/provider_usage",
+                params={"provider": f"eq.{provider}", "created_at": f"gte.{today}", "select": "id"},
+                headers={**_headers(), "Prefer": "count=exact", "Range": "0-0"},
+                timeout=8,
+            )
+            cr = r.headers.get("content-range", "")  # "0-0/<total>" veya "*/<total>"
+            total = cr.split("/")[-1] if "/" in cr else ""
+            return int(total) if total.isdigit() else 0
+    except Exception as e:
+        logger.warning(f"count_provider_calls_today({provider}) error: {e}")
+    return 0
+
+
 async def get_grok_usage_daily(start: datetime, end: datetime) -> dict:
     """provider_usage'daki grok + grok_web cagri sayilarini gune gore bucketler:
     {YYYY-MM-DD: {"grok": n, "grok_web": m}}. Maliyet grok_admin'de cagri-basi

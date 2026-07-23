@@ -52,9 +52,12 @@ class Settings(BaseSettings):
     XAI_API_KEY: Optional[str] = None
     XAI_MODEL: Optional[str] = None
     # grok-web SOV motoru (Agent Tools API, web+x search). SHADOW + env-kapili
-    # (GROK_WEB_SHADOW=1 ile acilir; varsayilan KAPALI — pahali/yavas).
+    # (GROK_WEB_SHADOW=1 ile acilir; varsayilan KAPALI — pahali/yavas). TUM arama
+    # tiplerinde SOV'da golge kosar. GROK_WEB_DAILY_CAP: gunluk grok_web cagri tavani
+    # (para kacmasin; ~$0.10/cagri, cap=5 ≈ ~$0.50/gun). Kod default 5.
     XAI_WEB_MODEL: Optional[str] = None
     GROK_WEB_SHADOW: Optional[str] = None
+    GROK_WEB_DAILY_CAP: Optional[str] = None
 
     # CORS
     CORS_ORIGINS: list = ["http://localhost:3000", "https://geoni.ai"]

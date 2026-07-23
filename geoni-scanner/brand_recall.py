@@ -42,7 +42,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from db import log_provider_call, get_pinned_sov_queries
+from db import log_provider_call, get_pinned_sov_queries, count_provider_calls_today
 from perplexity_admin import record_perplexity_call
 from sov import check_share_of_voice, has_usable_topic, infer_topic
 from ssrf_guard import assert_public_host, BlockedHostError
@@ -1741,6 +1741,18 @@ async def check_brand_recall(
     # audit'ten PINLE -> ayni hedef ayni sorgulari alir, SOV koşu-arasi savrulmaz.
     # custom_queries verilmisse pinleme yok (kullanici niyeti onceliklidir).
     pinned_q = None if custom_queries else await get_pinned_sov_queries(name, entity_type, lang, topic)
+    # grok-web SHADOW gating + GUNLUK MALIYET TAVANI (para kacmasin). TUM arama tipleri
+    # (social/marka/kisi/web — SOV kosan her tarama), env-kapili (GROK_WEB_SHADOW=1).
+    # GROK_WEB_DAILY_CAP: gunluk grok_web CAGRI tavani; dolunca gunun kalani KAPALI. ~$0.10/cagri
+    # oldugundan cap=5 ≈ ~1 tarama/gun ≈ ~$0.50/gun ($10 -> ~20 gun). Canli skoru DEGISTIRMEZ.
+    grok_web_fn = None
+    if GROK_API_KEY and os.environ.get("GROK_WEB_SHADOW"):
+        try:
+            _cap = int(os.environ.get("GROK_WEB_DAILY_CAP", "5") or "5")
+        except ValueError:
+            _cap = 5
+        if _cap <= 0 or await count_provider_calls_today("grok_web") < _cap:
+            grok_web_fn = _ask_grok_web
     sov_task = check_share_of_voice(
         name, sov_topic, _ask_perplexity_sourced, _ask_aux,
         ask_google=_ask_gemini_grounded if GOOGLE_API_KEY else None,
@@ -1748,10 +1760,7 @@ async def check_brand_recall(
         # SOV'un sorgularinda calisir (recall'da degil). Anahtar yoksa None gecer.
         ask_openai_web=_ask_openai_web if OPENAI_API_KEY else None,
         ask_claude_web=_ask_claude_web if ANTHROPIC_API_KEY else None,
-        # grok-web SHADOW: yalniz sosyal modda + env-kapili (GROK_WEB_SHADOW=1). PAHALI
-        # (~$0.08/cagri × sorgu sayisi) oldugundan varsayilan KAPALI; acilinca X-native
-        # sinyalinin benzersiz katkisini golgede olcer, canli skoru DEGISTIRMEZ.
-        ask_grok_web=(_ask_grok_web if (social and GROK_API_KEY and os.environ.get("GROK_WEB_SHADOW")) else None),
+        ask_grok_web=grok_web_fn,  # gating + gunluk tavan yukarida hesaplandi
         custom_queries=custom_queries,
         own_domain=website or "",
         social=social,
