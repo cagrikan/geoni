@@ -110,3 +110,21 @@ def test_check_hard_mode_valid_token_passes(monkeypatch):
     monkeypatch.setenv("TURNSTILE_ENFORCE", "1")
     monkeypatch.setattr(T.httpx, "AsyncClient", _client(success=True))
     assert _run(T.check_turnstile("tok", "ip", "tr", "e")) == (False, None)
+
+
+def test_check_soft_mode_ip_grace_then_requires_turnstile(monkeypatch):
+    """Akilli-enforce (Fable 2026-07-23): token-siz istek IP-bazli GRACE icinde gecer
+    (mesru kullanici + Turnstile widget-yuklenme hatasi toleransi), grace asilinca
+    turnstile ZORUNLU. Token'li GERCEK kullanici sayaci hic etkilemez, hep gecer."""
+    monkeypatch.setenv("TURNSTILE_SECRET", "s")
+    monkeypatch.delenv("TURNSTILE_ENFORCE", raising=False)
+    monkeypatch.setattr(T, "_NOTOKEN_GRACE", 2)
+    T._notoken_hits.clear()
+    # ayni IP token-siz: ilk 2 gecer, 3.+ bloklanir
+    seq = [_run(T.check_turnstile(None, "5.5.5.5", "tr", "e"))[0] for _ in range(4)]
+    assert seq == [False, False, True, True]
+    # farkli IP ayri grace -> etkilenmez
+    assert _run(T.check_turnstile(None, "6.6.6.6", "tr", "e"))[0] is False
+    # TOKEN'li gecerli (gercek kullanici) sayaci ARTTIRMAZ + hep gecer
+    monkeypatch.setattr(T.httpx, "AsyncClient", _client(success=True))
+    assert all(_run(T.check_turnstile("tok", "5.5.5.5", "tr", "e"))[0] is False for _ in range(5))

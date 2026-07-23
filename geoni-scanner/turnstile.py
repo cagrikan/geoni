@@ -8,11 +8,37 @@ Ag/parse hatasi -> soft-allow (abuse korumasi tarama pipeline'ini ASLA dusurmez)
 """
 import logging
 import os
+import time
+from collections import defaultdict
 
 import httpx
 
 logger = logging.getLogger(__name__)
 TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+
+# AKILLI ENFORCE (Fable 2026-07-23): token-siz istek YUMUSAK gecerse (eski davranis)
+# script abuse sinirsiz ucretsiz tarama yaptirabiliyordu. Sert enforce ise widget
+# yuklenemeyen/mobil GERCEK kullaniciyi da engeller. Denge: IP-bazli GRACE — bir IP
+# kisa surede ILK birkac token-siz istege izin (mesru kullanici + widget-hatasi
+# toleransi), grace asilinca turnstile ZORUNLU (token'li gercek kullanici HIC etkilenmez;
+# yalniz token-siz tekrar-istek zincirleri = abuse imzasi bloklanir).
+_NOTOKEN_GRACE = int(os.environ.get("TURNSTILE_NOTOKEN_GRACE", "2"))
+_NOTOKEN_WINDOW = int(os.environ.get("TURNSTILE_NOTOKEN_WINDOW", "3600"))  # 1 saat
+_notoken_hits: dict[str, list[float]] = defaultdict(list)
+
+
+def _notoken_over_grace(ip: str) -> bool:
+    """Bu IP token-siz GRACE'ini astiysa True (artik turnstile zorunlu). Sliding-window,
+    yalniz token-SIZ isteklerde artar; token'li istekler bu sayaca HIC dokunmaz."""
+    if not ip:
+        return False
+    now = time.monotonic()
+    hits = [t for t in _notoken_hits.get(ip, []) if t > now - _NOTOKEN_WINDOW]
+    hits.append(now)
+    _notoken_hits[ip] = hits
+    if len(_notoken_hits) > 20000:      # kaba bellek korumasi (unbounded buyume onle)
+        _notoken_hits.clear()
+    return len(hits) > _NOTOKEN_GRACE
 
 
 def turnstile_secret() -> str:
@@ -66,8 +92,12 @@ async def check_turnstile(token: str | None, ip: str, lang: str, endpoint: str) 
             logger.info(f"turnstile: token gecersiz, blok (endpoint={endpoint}, ip={ip})")
             return True, turnstile_fail_message(lang)
         return False, None
-    if turnstile_enforce() and turnstile_secret():
-        logger.info(f"turnstile: token yok + ENFORCE, blok (endpoint={endpoint}, ip={ip})")
-        return True, turnstile_fail_message(lang)
-    logger.info(f"turnstile: token yok, soft-allow (endpoint={endpoint}, ip={ip})")
+    # Token YOK. Secret varsa akilli-enforce: ENFORCE=1 -> hep blok; degilse IP-bazli GRACE
+    # (ilk birkac token-siz istek gecer, sonra turnstile ZORUNLU). Secret yoksa (dev) gecer.
+    if turnstile_secret():
+        if turnstile_enforce() or _notoken_over_grace(ip):
+            logger.info(f"turnstile: token yok + (enforce/grace-asildi), blok (endpoint={endpoint}, ip={ip})")
+            return True, turnstile_fail_message(lang)
+        logger.info(f"turnstile: token yok, grace-ici soft-allow (endpoint={endpoint}, ip={ip})")
+        return False, None
     return False, None
