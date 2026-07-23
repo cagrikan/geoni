@@ -268,6 +268,34 @@ def _norm_label(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", s)
 
 
+def _norm_label_kw(s: str) -> str:
+    """_norm_label gibi ama BOSLUKLARI KORUR (kelime-siniri eslesmesi icin)."""
+    import unicodedata
+    s = (s or "").lower().translate(_TR_TRANSLIT)
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]+", " ", s)).strip()
+
+
+def _label_matches(name: str, label: str) -> bool:
+    """Wikidata/KG ad eslesmesi — kelime-sinirli + uzunluk-oranli (Fable 2026-07-23).
+    Eski saf-substring 'Nova'~'Nova Scotia', 'Ata'~'Ataturk', 'Ada'~'Adana' gibi kisa
+    adlarda YANLIS-POZITIF verip haketmeyen +8 otorite bonusu tanıyordu. 'Geoni'~'Geoni.ai'
+    gibi mesru uzanti-eslesmeleri korunur (kisa ad, uzun adin BUTUN KELIMESI + >=%50'si ise)."""
+    a, b = _norm_label_kw(name), _norm_label_kw(label)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    short, long = (a, b) if len(a) <= len(b) else (b, a)
+    # kisa ad, uzun adin icinde BUTUN KELIME (kelime-siniri) + yeterince uzun (>=5 char) olmali.
+    # 'Nova'(4)/'Ata'(3)/'Ada'(3) reddedilir (yanlis-pozitif); 'Parasut'/'Geoni' gibi 5+ char
+    # gercek markalar aciklamali entity adlarinda ('Parasut - on muhasebe') KORUNUR.
+    if len(short) < 5:
+        return False
+    return re.search(rf"(?<!\w){re.escape(short)}(?!\w)", long) is not None
+
+
 async def _wikidata_presence(name: str) -> bool:
     """
     Wikidata'da varlik (entity) kontrolu. Wikipedia sayfasi olmayan ama
@@ -293,8 +321,7 @@ async def _wikidata_presence(name: str) -> bool:
                 if resp.status_code != 200:
                     continue
                 for item in resp.json().get("search", []):
-                    norm_label = _norm_label(item.get("label", ""))
-                    if norm_label and (norm_name in norm_label or norm_label in norm_name):
+                    if _label_matches(name, item.get("label", "")):  # Fable: kelime-sinirli (yanlis-pozitif fix)
                         return True
         except Exception as e:
             logger.info(f"Wikidata check failed ({lang}) for '{name}': {e}")
@@ -309,18 +336,16 @@ def _parse_kg_response(data: dict, name: str) -> dict:
     'GEONI' ~ 'Geoni.ai'). Eslesme yoksa present=False, score=0.
     Donus: {"present": bool, "score": float}.
     """
-    norm_name = _norm_label(name)
-    if not norm_name:
+    if not _norm_label(name):
         return {"present": False, "score": 0.0}
     elements = (data or {}).get("itemListElement", []) or []
     for el in elements:
         result = (el or {}).get("result", {}) or {}
-        label = _norm_label(result.get("name", ""))
         try:
             rscore = float(el.get("resultScore", 0) or 0)
         except (TypeError, ValueError):
             rscore = 0.0
-        if label and (norm_name in label or label in norm_name):
+        if _label_matches(name, result.get("name", "")):  # Fable: kelime-sinirli (yanlis-pozitif fix)
             return {"present": rscore >= _KG_MIN_SCORE, "score": rscore}
     return {"present": False, "score": 0.0}
 
@@ -453,8 +478,11 @@ def compute_freshness_score(pages: list[dict], sitemap_lastmods: list[str] | Non
                 dates.append(d)
 
     if dates:
-        recent = sum(1 for d in dates if (now - d).days <= 365)
-        very_recent = sum(1 for d in dates if (now - d).days <= 90)
+        # Fable 2026-07-23: GELECEK tarih (JSON-LD hatasi/oyun) `now-d` NEGATIF -> `neg<=90`
+        # her zaman True -> sayfa "en taze" (freshness 100) sayiliyordu. Alt sinir (0<=) eklendi:
+        # gelecek-tarih taze SAYILMAZ (paydada kalir, skoru sismez).
+        recent = sum(1 for d in dates if 0 <= (now - d).days <= 365)
+        very_recent = sum(1 for d in dates if 0 <= (now - d).days <= 90)
         ratio = recent / len(dates)          # 365-gun: genis taban
         p90 = very_recent / len(dates)       # 90-gun: atif olasiliginin ANA sinyali
         score = min(100.0, 20 + p90 * 50 + ratio * 30)

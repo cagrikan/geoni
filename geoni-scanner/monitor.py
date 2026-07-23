@@ -57,7 +57,11 @@ async def _scan_web_item(item: dict) -> int | None:
         return None
 
     crawl_result = await crawl_domain(domain, MONITOR_PAGE_LIMIT)
-    indexing_status = await check_indexing_status(crawl_result["pages"])
+    # Fable 2026-07-23: domain= GECILMEZSE crawl 0 sayfa dondugunde (bot-korumali/JS-agir)
+    # indexing.py erken-donus dali robots/llms/brave/google kontrollerini ATLAR ve ai_access
+    # sahte-yuksek/bot_protection sahte-False kalir (main.py bunu domain gecerek zaten cozmustu,
+    # monitor/self-scan yolu atlanmisti). Domain gecirildi -> izleme + geoni.ai self-scan duzelir.
+    indexing_status = await check_indexing_status(crawl_result["pages"], domain=domain)
     identity = await infer_brand_identity(domain, crawl_result.get("pages", []))
     brand_recall_result = await check_brand_recall(
         identity["name"], identity["topic"],

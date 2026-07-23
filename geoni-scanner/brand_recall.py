@@ -1833,7 +1833,9 @@ async def check_brand_recall(
         # SIFIR-ETKI: judge tamamen dustugunde quality fallback CANLI skoru etkiler -> grok haric.
         quality_score = sum(_length_band_score(t) for t in live_texts.values()) / max(len(live_texts), 1)
 
-    relevance_score = _topic_relevance_score(web_results, name, topic)
+    # Fable #8: cikarilmis sov_topic kullan (kullanici konu girmediyse ham topic bostu ->
+    # relevance zayif isim-varligi yoluna dusuyordu; sov_topic zaten LLM ile cikarildi).
+    relevance_score = _topic_relevance_score(web_results, name, sov_topic or topic)
 
     sov_checked = bool(sov_result.get("checked")) and sov_result.get("score") is not None
     # F-O2 (Fable 2026-07-19): sosyal skorda SOV %55 agirlikli. Nis KULLANICI tarafindan

@@ -305,6 +305,22 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
             user_agent="GeoniBot/1.0 (+https://geoni.ai/bot)"
         )
 
+        # Fable 2026-07-23 (SSRF): page.goto redirect'leri Chromium ic-ele takip eder;
+        # kullanicinin domaini 302 ile 169.254.170.2 (ECS credential ucu) / private IP'ye
+        # yonlendirebilir. assert_public_host yalniz basta bir kez cagriliyordu -> yetersiz.
+        # HER BELGE (navigasyon+redirect) istegini SSRF guard'dan gecir; ic host -> ISTEGI KES.
+        async def _ssrf_guard_route(route):
+            req = route.request
+            if req.resource_type == "document":
+                host = (urlparse(req.url).hostname or "")
+                try:
+                    await asyncio.to_thread(assert_public_host, host)
+                except Exception:
+                    await route.abort()
+                    return
+            await route.continue_()
+        await context.route("**/*", _ssrf_guard_route)
+
         site_assets_holder: dict = {}  # P1: ana sayfadan logo/sameAs/arama ucu
 
         async def visit(url: str, depth: int):
@@ -336,6 +352,16 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
                     await page.goto(
                         url, timeout=DEFAULT_TIMEOUT_PER_PAGE * 1000, wait_until="domcontentloaded"
                     )
+                    # SSRF 2. katman: redirect SONRASI gercek adres (page.url) hala public +
+                    # on-domain mi? Degilse ic-servis icerigi YAKALANMASIN (route kacsa bile).
+                    final = urlparse(page.url)
+                    fhost = (final.netloc or "").split(":")[0].lower()
+                    if fhost and not (fhost == dom or fhost.endswith("." + dom)):
+                        return []  # off-domain/ic adrese yonlendi -> icerigi atla
+                    try:
+                        await asyncio.to_thread(assert_public_host, fhost)
+                    except Exception:
+                        return []  # ic/engelli host -> icerigi atla
                     metadata = await extract_page_metadata(page, is_home=(depth == 0))
                     sa = metadata.pop("site_assets", None)
                     if depth == 0 and sa:
