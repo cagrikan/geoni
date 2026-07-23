@@ -21,6 +21,7 @@ from datetime import datetime, timezone, timedelta
 
 import httpx
 from db import SUPABASE_URL, SUPABASE_SERVICE_KEY, _headers, _claim_daily_job
+from result_contract import SHADOW_ENGINES  # golge motorlar (grok) canli-motor sinyallerine girmez
 
 logger = logging.getLogger("self_improve")
 _GEONI = re.compile(r"geoni", re.I)
@@ -352,9 +353,12 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
                 q_dead += 1
                 if not _is_adj:     # birincil sorgu cevapsiz -> gercek uretim kalite sinyali
                     q_primary_dead += 1
-        # 4-MOTOR kalite (model_results): taninma + dogruluk + halusinasyon + celiski
+        # 4-MOTOR kalite (model_results): taninma + dogruluk + halusinasyon + celiski.
+        # Golge motorlar (grok) HARIC: self_improve CANLI skorlamayi iyilestirir; agirlik-0
+        # grok canli motor degil, sinyalleri (quality_model/own_recognition) kirletmemeli.
+        # Grok golge-degerlendirmesi ayri (audits.model_results.grok + haftalik hook).
         for meng, mv in (rj.get("model_results") or {}).items():
-            if not isinstance(mv, dict):
+            if not isinstance(mv, dict) or meng in SHADOW_ENGINES:
                 continue
             m_total[meng] += 1
             if mv.get("recognized"):
@@ -368,9 +372,9 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
                 m_hallu[meng] += 1
             if j.get("celiski_var"):
                 m_contra[meng] += 1
-        # Faz1-1.4: bu audit'in per-engine skorlari (reweight backtest icin)
+        # Faz1-1.4: bu audit'in per-engine skorlari (reweight backtest icin) — golge haric
         esc = {k: mv.get("score") for k, mv in (rj.get("model_results") or {}).items()
-               if isinstance(mv, dict) and isinstance(mv.get("score"), (int, float))}
+               if isinstance(mv, dict) and k not in SHADOW_ENGINES and isinstance(mv.get("score"), (int, float))}
         if esc:
             audit_engine_scores.append(esc)
 
@@ -424,7 +428,7 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
                                    "contradiction_rate": round(m_contra[meng] / tot, 3) if tot else 0}})
     # A: geoni.ai self-scan'den 4-motor kendi taninma
     for meng, mv in (geoni_mr or {}).items():
-        if isinstance(mv, dict):
+        if isinstance(mv, dict) and meng not in SHADOW_ENGINES:  # golge motor (grok) own_recognition'a girmez
             signals.append({"kind": "own_recognition", "subject": meng,
                             "metric": 1 if mv.get("recognized") else 0,
                             "detail": {"score": mv.get("score")}})

@@ -1887,7 +1887,7 @@ async def check_brand_recall(
 
     logger.info(
         f"Brand recall for '{name}': score={overall_score} (legacy={legacy_overall_score}), "
-        f"{recognition_count}/{len(model_keys)} models, {len(web_results)} web results, "
+        f"{recognition_count}/{len([k for k in model_keys if k not in SHADOW_ENGINES])} models, {len(web_results)} web results, "
         f"judged_models={len(dogruluk_values)}/{len(model_keys)}, "
         f"sov={'%s/%s' % (sov_result.get('mention_count'), sov_result.get('query_count')) if sov_checked else 'n/a'}"
     )
