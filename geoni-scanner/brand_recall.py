@@ -1162,6 +1162,11 @@ async def judge_batch_accuracy(model_texts: dict, web_results: list, person_info
         "Her model için: iddiaların web verisiyle uyuşup uyuşmadığını, kaç spesifik doğru olgu "
         "(unvan, şirket, şehir, proje vb.) içerdiğini, çelişki olup olmadığını, uydurma (halüsinasyon) "
         "şüphesi olup olmadığını ve yanıtın markaya/kişiye dair genel tonunu (duygu) değerlendir.\n"
+        # Fable 2026-07-23: sosyal @handle taramalarinda judge, "hesap" sorusuna "ayni adli
+        # kurum" cevabini CELISKI/UYDURMA saniyordu -> dogru yanitlar 30 tavanina eziliyordu.
+        "KURAL (yanlış-pozitif önleme): Soru bir sosyal medya hesabı (@handle) hakkında olsa bile, "
+        "yanıt aynı adı taşıyan kurumu/şirketi/kişiyi DOĞRU anlatıyorsa bu ÇELİŞKİ ya da UYDURMA "
+        "DEĞİLDİR — hesap↔kurum çerçeve farkını gerçek bir olgu çelişkisi sayma.\n"
         "duygu tanımı: yanıt kişiyi/markayı övüyorsa 'pozitif'; eleştiriyor, skandal/olumsuzlukla "
         "anıyorsa 'negatif'; bilgilendirici, kararsız ya da UYDURMA/yanlış-kişi ise 'notr' "
         "(yanlış bilgi olumsuz ton DEĞİLDİR).\n"

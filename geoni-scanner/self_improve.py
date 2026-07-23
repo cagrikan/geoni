@@ -97,7 +97,7 @@ async def _save_experiment(client: httpx.AsyncClient, name: str, data: dict) -> 
 
 
 def _quality_digest_lines(digest: dict, m_total, m_recog, m_hallu,
-                          shadow_deltas, shadow_tail) -> list:
+                          shadow_deltas, shadow_tail, engine_rel=None) -> list:
     """Kurucuya gidecek KALITE ozeti (amac: arama motoru kalitesini yukseltmek —
     kalite sinyalleri gozle gorunur olsun). run_improvement_cycle'in locallerinden
     beslenir; salt-okuma, hicbir sey degistirmez."""
@@ -117,6 +117,14 @@ def _quality_digest_lines(digest: dict, m_total, m_recog, m_hallu,
         worst = max(((e, (m_hallu.get(e, 0) / m_total[e]) if m_total[e] else 0) for e in m_total),
                     key=lambda x: x[1])
         lines.append(f"En yüksek halüsinasyon: {worst[0]} %{round(worst[1] * 100)}")
+    # Fable 2026-07-23: reweight_compare (motor guvenilirligi) ARTIK maile giriyor —
+    # eskiden sadece DB'ye yazilip kimseye ulasmiyordu (gemini reliability 0.27 gorunmezdi).
+    if engine_rel:
+        lines.append("Motor güvenilirliği (reweight): " + ", ".join(
+            f"{e} {v}" for e, v in sorted(engine_rel.items(), key=lambda x: x[1])))
+        we, wv = min(engine_rel.items(), key=lambda x: x[1])
+        if wv < 0.4:
+            lines.append(f"⚠️ En güvenilmez motor: {we} ({wv}) — ağırlığı gözden geçirilmeli (reweight_compare).")
     if shadow_deltas:
         n = len(shadow_deltas)
         tr = shadow_tail / n
@@ -606,7 +614,7 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
     # elle panele bakmadan gorur. Haftalik (notify=True) gonderilir; hata gonderimi kirmasin.
     if notify:
         try:
-            lines = _quality_digest_lines(digest, m_total, m_recog, m_hallu, shadow_deltas, shadow_tail)
+            lines = _quality_digest_lines(digest, m_total, m_recog, m_hallu, shadow_deltas, shadow_tail, engine_rel)
             if lines:
                 from mailer import send_ticket_email
                 subject = f"GEONI arama-kalite özeti · {datetime.now(timezone.utc).date().isoformat()}"
