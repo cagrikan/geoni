@@ -726,9 +726,12 @@ async def _ask_openai_web(prompt: str, temperature: float = 0.0, max_tokens: int
                     "model": OPENAI_WEB_MODEL,
                     "input": prompt,
                     "tools": [{"type": "web_search"}],
-                    "max_output_tokens": max(max_tokens, 1500),
+                    # Fable #2: gpt-5 REASONING modeli; web_search + akil yurutme 1500 token'i
+                    # tuketip status=incomplete (bos metin) donuyordu -> ChatGPT SOV motoru %15
+                    # yanit. Butce artirildi ki metin uretecek yer kalsin.
+                    "max_output_tokens": max(max_tokens, 4000),
                 },
-                timeout=45,
+                timeout=60,
             )
             if r.status_code == 200:
                 asyncio.create_task(log_provider_call("openai"))
@@ -745,7 +748,15 @@ async def _ask_openai_web(prompt: str, temperature: float = 0.0, max_tokens: int
                             for ann in block.get("annotations") or []:
                                 if ann.get("type") == "url_citation" and ann.get("url"):
                                     citations.append(ann["url"])
-                return {"text": " ".join(texts).strip(), "citations": citations}
+                joined = " ".join(texts).strip()
+                if not joined:
+                    # Fable #2 teshis: 200 ama BOS -> nedenini logla (status/incomplete/tip'ler).
+                    logger.warning(
+                        f"OpenAI web 200-BOS: status={body.get('status')} "
+                        f"incomplete={body.get('incomplete_details')} "
+                        f"output_types={[i.get('type') for i in (body.get('output') or [])]}"
+                    )
+                return {"text": joined, "citations": citations}
             logger.warning(f"OpenAI web {r.status_code}: {r.text[:200]}")
     except Exception as e:
         logger.warning(f"OpenAI web query failed: {e}")
@@ -1692,6 +1703,13 @@ async def check_brand_recall(
                     eff_uydurma, judge["celiski_var"],
                 ))
             raw_median = statistics.median(formulation_scores) if formulation_scores else 0.0
+            # Fable #8 (2026-07-23): 3 formulasyonun AZINLIGI taniyorsa medyan YAPISAL 0
+            # cikiyor ([0,0,85]->0) -> recognized=True AMA score=0 tutarsizligi; zayif/tutarsiz
+            # taninan hedefleri HER taramada haksiz sifirliyordu. CERRAHI cozum: taniniyor ama
+            # medyan 0 ise ORTALAMAYA dus (kismi kredi; tutarsiz tanima -> orta skor). Medyan
+            # zaten >0 ise ya da hic tanimiyorsa DEGISMEZ (varyans korumasi + siki-kesme korunur).
+            if raw_median == 0 and formulation_scores and any(p.get("taniyor") for p in data["formulation_parses"]):
+                raw_median = round(sum(formulation_scores) / len(formulation_scores), 1)
             shadow_median = statistics.median(shadow_scores) if shadow_scores else 0.0
             # v4: via_web asimetrik tavani KALDIRILDI. Eski kod web-destekli
             # (GEONI-failover) cevabi 10-20 banda kilitliyordu; native-web

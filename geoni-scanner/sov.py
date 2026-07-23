@@ -798,6 +798,11 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
         for c in pq["engines"].values():
             if c.get("mentioned"):
                 weighted_cells += cite_w * pos_w
+            elif c.get("answered") and own and own in (c.get("sources") or []):
+                # Fable #5: anilmadi AMA kendi domainini KAYNAK gosterdi -> KISMI kredi.
+                # AI seni okuyor/kaynak gosteriyor ama adini metinde soylemiyor (or.
+                # turkiye.gov.tr 'e-Devlet' diye anilir). "gorunmuyor" ile esitlemek yanlis.
+                weighted_cells += 0.3 * pos_w
     score = round(min(100.0, (weighted_cells / answered_cells) * 100), 1)
     competitors = await _extract_competitors(answers, name, ask_llm, social=social)
 

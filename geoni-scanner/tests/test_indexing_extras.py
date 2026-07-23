@@ -13,20 +13,22 @@ def _crawl(n=4):
     return {"domain": "x.com", "pages": pages}
 
 
-def test_index_coverage_brave_absent_keeps_legacy_weights():
+def test_index_coverage_brave_absent_is_indexability():
     crawl = _crawl()
     status = {"indexed_count": 4}  # brave_indexed yok -> None
     res = scoring.compute_index_coverage(crawl, status)
-    # google_coverage=100, indexability=100 -> 0.5/0.5 = 100
+    # Fable #6: google_coverage skordan cikti (188/188 olu). brave None -> score = indexability = 100
     assert res["brave_indexed"] is None
     assert res["score"] == 100.0
+    # google_coverage teshis icin raporda hala var (skora girmiyor)
+    assert res["google_coverage"] == 100.0
 
 
 def test_index_coverage_brave_indexed_blend():
     crawl = _crawl()
     status = {"indexed_count": 4, "brave_indexed": True}
     res = scoring.compute_index_coverage(crawl, status)
-    # 100*0.4 + 100*0.4 + 100*0.2 = 100
+    # indexability*0.75 + brave*0.25 = 100*0.75 + 100*0.25 = 100
     assert res["brave_indexed"] is True
     assert res["score"] == 100.0
 
@@ -35,8 +37,8 @@ def test_index_coverage_brave_not_indexed_lowers_score():
     crawl = _crawl()
     status = {"indexed_count": 4, "brave_indexed": False}
     res = scoring.compute_index_coverage(crawl, status)
-    # 100*0.4 + 100*0.4 + 0*0.2 = 80
-    assert res["score"] == 80.0
+    # Fable #6: indexability*0.75 + 0*0.25 = 75 (google artik skora girmiyor)
+    assert res["score"] == 75.0
 
 
 def test_bot_challenge_403():

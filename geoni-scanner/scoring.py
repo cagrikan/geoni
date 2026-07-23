@@ -117,11 +117,15 @@ def compute_index_coverage(crawl_result: dict, indexing_status: dict) -> dict:
     indexability = _indexability_score(pages)
 
     brave = indexing_status.get("brave_indexed")  # None: Brave devrede degil
+    # Fable #6 (2026-07-23): google_coverage 188/188 EVRENSEL-0 (datacenter IP -> Google
+    # consent sayfasi, indexed_count hep 0; indexing.py Y8). Olu bacak her sitenin
+    # index_coverage'ini ~yariya haksiz cezalandiriyordu -> SKORDAN CIKARILDI, agirligi
+    # indexability(+brave)'e devredildi. google_coverage yalniz TESHIS icin raporda kalir.
     if brave is None:
-        score = google_coverage * 0.5 + indexability * 0.5
+        score = indexability
     else:
         brave_score = 100.0 if brave else 0.0
-        score = google_coverage * 0.4 + indexability * 0.4 + brave_score * 0.2
+        score = indexability * 0.75 + brave_score * 0.25
     return {
         "score": score,
         "google_coverage": round(google_coverage, 1),
@@ -543,24 +547,45 @@ def compute_schema_score(pages: list[dict], domain: str = "") -> dict:
 
 # ── Etkilesim: sosyal/dizin + haber (v3) ────────────────────────────────────
 
-def compute_engagement_score(web_results: list | None, own_domain: str = "") -> float:
+_SAMEAS_SOCIAL = ("linkedin.com", "instagram.com", "facebook.com", "youtube.com",
+                  "twitter.com", "x.com", "tiktok.com", "pinterest.com")
+
+
+def compute_engagement_score(web_results: list | None, own_domain: str = "",
+                             same_as: list | None = None) -> float:
     """
     v3: Etkilesim, otorite boyutuyla ayni sinyali (domain cesitliligi) cifte
-    saymayi birakti. Yeni sinyaller:
+    saymayi birakti. Sinyaller:
       - Sosyal ag / is dizini varligi (LinkedIn, Instagram, G2, Trustpilot,
         şikayetvar...): her farkli platform 20 puan, en cok 60.
+      - Fable #6 (2026-07-23): sitenin KENDI beyan ettigi sosyal linkler (schema
+        JSON-LD sameAs, crawl'da zaten var) — Tavily'nin gurultulu/rastgele dis
+        aramasindan cok daha guvenilir "sosyal varlik" kaniti. Iki sinyalin GUCLU
+        olani alinir (max), cifte-sayim yok. Eskiden sameAs HIC kullanilmiyordu.
       - Haber/medya orani: %40.
     Kendi domain sonuclari sayilmaz.
     """
-    if not web_results:
-        return 20.0  # notr-dusuk baseline, veri yoksa fallback
-
-    external = _external_domains(web_results, own_domain)
+    external = _external_domains(web_results or [], own_domain)
     social_hits = {
         d for d in external
         if any(d == sd or d.endswith("." + sd) for sd in SOCIAL_DIRECTORY_DOMAINS)
     }
-    social_score = min(60.0, len(social_hits) * 20.0)
+    tavily_social = min(60.0, len(social_hits) * 20.0)
+
+    declared = set()
+    for u in (same_as or []):
+        lo = (u or "").lower()
+        for sd in _SAMEAS_SOCIAL:
+            if sd in lo:
+                declared.add(sd)
+                break
+    self_declared = min(60.0, len(declared) * 20.0)
+
+    social_score = max(tavily_social, self_declared)  # guclu/guvenilir sinyal
+
+    if not web_results:
+        # Veri yok: yalniz kendi-beyan varsa onu ver, yoksa notr-dusuk baseline.
+        return max(20.0, self_declared)
 
     news_hits = sum(
         1 for r in web_results
@@ -602,7 +627,9 @@ async def compute_ai_visibility_score(crawl_result: dict, indexing_status: dict,
     ai_access = compute_ai_access_score(indexing_status, crawl_result)
     ai_access_score = ai_access["score"]
     meta_health_score = compute_meta_health_score(pages)
-    engagement_score = compute_engagement_score(web_results, own_domain=domain)
+    engagement_score = compute_engagement_score(
+        web_results, own_domain=domain,
+        same_as=(crawl_result.get("site_assets") or {}).get("sameAs"))  # Fable #6: kendi-beyan sosyal
 
     brand_recall_checked = bool(brand_recall_result and brand_recall_result.get("checked"))
     brand_recall_score = brand_recall_result.get("score") if brand_recall_checked else None
