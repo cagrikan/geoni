@@ -1485,6 +1485,52 @@ async def get_perplexity_cost_daily(start: datetime, end: datetime) -> dict:
     return daily
 
 
+async def get_grok_usage_daily(start: datetime, end: datetime) -> dict:
+    """provider_usage'daki grok + grok_web cagri sayilarini gune gore bucketler:
+    {YYYY-MM-DD: {"grok": n, "grok_web": m}}. Maliyet grok_admin'de cagri-basi
+    fiyatla hesaplanir. Grok yeni bir SEMA gerektirmesin diye mevcut provider_usage
+    satirlarindan turetilir. PostgREST 1000-satir limitine karsi sayfalanir (perplexity
+    kok-neden dersi: limit harcamayi yariya dusurmustu)."""
+    out: dict = {}
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return out
+    page = 1000
+    offset = 0
+    try:
+        async with httpx.AsyncClient() as client:
+            while True:
+                r = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/provider_usage",
+                    params={
+                        "provider": "in.(grok,grok_web)",
+                        "created_at": [f"gte.{start.strftime('%Y-%m-%dT%H:%M:%SZ')}",
+                                       f"lt.{end.strftime('%Y-%m-%dT%H:%M:%SZ')}"],
+                        "select": "provider,created_at",
+                        "order": "created_at.asc",
+                        "limit": str(page),
+                        "offset": str(offset),
+                    },
+                    headers=_headers(), timeout=15,
+                )
+                if r.status_code != 200:
+                    logger.info(f"grok provider_usage query failed ({r.status_code})")
+                    break
+                rows = r.json()
+                for row in rows:
+                    dk = str(row.get("created_at") or "")[:10]
+                    prov = row.get("provider")
+                    if not dk or prov not in ("grok", "grok_web"):
+                        continue
+                    day = out.setdefault(dk, {"grok": 0, "grok_web": 0})
+                    day[prov] += 1
+                if len(rows) < page:
+                    break
+                offset += page
+    except Exception as e:
+        logger.warning(f"get_grok_usage_daily error: {e}")
+    return out
+
+
 async def get_manual_topups_total(provider: str) -> float:
     """Sum of all logged top-ups for a provider (e.g. openai) - paired with
     the provider's real Costs API spend to estimate remaining balance,
@@ -3623,6 +3669,7 @@ async def get_provider_remaining_balances() -> list:
         from anthropic_admin import get_anthropic_cost_summary
         from gemini_admin import get_gemini_cost_summary
         from perplexity_admin import get_perplexity_cost_summary
+        from grok_admin import get_grok_cost_summary
     except Exception as e:
         logger.warning(f"remaining balance import error: {e}")
         return []
@@ -3631,6 +3678,7 @@ async def get_provider_remaining_balances() -> list:
         "anthropic": get_anthropic_cost_summary,
         "gemini": get_gemini_cost_summary,
         "perplexity": get_perplexity_cost_summary,
+        "grok": get_grok_cost_summary,  # xAI prepaid; topup loglanmissa dusuk-bakiye uyarisina girer
     }
     fx = await _get_usd_try_rate()   # canli USD/TRY (gunde bir cekilir, cache'li)
     out = []

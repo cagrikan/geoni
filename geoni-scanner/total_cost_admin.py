@@ -25,6 +25,7 @@ from openai_admin import get_openai_monthly_breakdown
 from aws_cost import get_aws_monthly_breakdown
 from gemini_admin import get_gemini_monthly_breakdown
 from perplexity_admin import get_perplexity_monthly_breakdown
+from grok_admin import get_grok_monthly_breakdown
 from db import get_manual_cost
 
 logger = logging.getLogger(__name__)
@@ -74,11 +75,12 @@ async def get_admin_total_cost_summary() -> dict:
     months = _last_n_calendar_months(3, now)  # [this, prev1, prev2]
     this_key = months[0]
 
-    anthropic_m, openai_m, perplexity_m, gemini_m, supabase_row, usd_try = await asyncio.gather(
+    anthropic_m, openai_m, perplexity_m, gemini_m, grok_m, supabase_row, usd_try = await asyncio.gather(
         get_anthropic_monthly_breakdown(),
         get_openai_monthly_breakdown(),
         get_perplexity_monthly_breakdown(),
         get_gemini_monthly_breakdown(),
+        get_grok_monthly_breakdown(),
         get_manual_cost("supabase"),
         _get_usd_try_rate(),
     )
@@ -89,6 +91,7 @@ async def get_admin_total_cost_summary() -> dict:
         "openai": openai_m or {},
         "aws": aws_m or {},
         "perplexity": perplexity_m or {},
+        "grok": grok_m or {},
     }
     gemini_try_by_month = gemini_m or {}
     gemini_usd_by_month = {k: v / usd_try for k, v in gemini_try_by_month.items()} if usd_try else {}
