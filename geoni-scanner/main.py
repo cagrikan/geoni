@@ -717,7 +717,19 @@ async def prewarm():
 
 
 @app.get("/api/audit/{job_id}")
+def _valid_job_id(job_id: str) -> str:
+    """Public job uclarinda job_id UUID olmali. Fable (guvenlik): ham job_id PostgREST
+    filtresine f-string ile giriyordu; kolon uuid oldugu icin kaza eseri korunuyordu ama
+    kod-seviyesi savunma degildi. Gecersiz -> 404 (bilgi sizdirmadan)."""
+    try:
+        uuid.UUID(str(job_id))
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(status_code=404, detail="Not found")
+    return job_id
+
+
 async def get_audit_status(job_id: str):
+    _valid_job_id(job_id)
     if job_id not in jobs_store:
         # SQS modu: is baska process'te (worker) kosuyor — durum DB'den okunur.
         # Bu ayni zamanda API yeniden baslasa bile eski islerin sonucunu verir.
@@ -788,6 +800,7 @@ async def stream_audit(job_id: str, lang: str = "tr"):
 
 @app.get("/api/audit/{job_id}/results")
 async def get_audit_results(job_id: str):
+    _valid_job_id(job_id)
     return await get_audit_status(job_id)
 
 @app.post("/api/brand-check", response_model=BrandCheckResponse)
@@ -927,6 +940,7 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
 
 @app.get("/api/brand-check/{job_id}")
 async def get_brand_check_status(job_id: str):
+    _valid_job_id(job_id)
     if job_id not in brand_checks_store:
         # T1: bellek miss (API restart / coklu-instance ALB) -> DB fallback.
         # brand/person/social sonucu save_brand_check ile audits'e yaziliyor;
@@ -1690,6 +1704,7 @@ async def ai_friendly_leaderboard():
 async def share_card(job_id: str):
     """Viral paylasim sayfasi (geoni.ai/s/<id>) icin public, minimal skor
     verisi. DB'den okur - surec yeniden baslasa da paylasim linkleri yasar."""
+    _valid_job_id(job_id)
     data = await get_share_result(job_id)
     if not data:
         raise HTTPException(status_code=404, detail="Sonuç bulunamadı")
