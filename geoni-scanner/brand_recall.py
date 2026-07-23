@@ -1316,16 +1316,27 @@ def _model_score_from_components(taniyor: bool, guven: float, dogruluk_skoru: fl
     # v3: uzunluk %15 -> %5. Yanit uzunlugu gorunurlukle ilgili zayif bir
     # sinyaldi; agirlik dogruluga kaydirildi.
     score = dogruluk * 0.70 + guven * 0.25 + uzunluk * 0.05
-    if uydurma_suphesi or celiski_var:
-        score = min(score, 30.0)
+    # v4 (Fable backtest 2026-07-23, B7 canliya alindi): sert 30 tavani yerine
+    # KADEMELI ceza. Gerekce: gercek veride "yalniz celiski_var" grubu (n=8) medyan
+    # dogruluk 72 iken 30'a eziliyordu (judge yanlis-pozitifi @Arcelik/@naval); tek-bit
+    # yargi skoru gercek dogrulugu %70 tirasliyordu. Kademeli: celiski agir (×0.55),
+    # uydurma orta (×0.70), ikisi birden ×0.385. Katsayilar backtest'le kalibre.
+    # Mansete etki olculdu: medyan |Δ|=1, max=2 (dusuk risk). Kalite kanali/agirliklar
+    # DOKUNULMADI (B6 golgede kaldi). _model_score_shadow ile ozdes mantik.
+    if celiski_var:
+        score *= 0.55
+    if uydurma_suphesi:
+        score *= 0.70
     return round(score, 1)
 
 
 def _model_score_shadow(taniyor: bool, guven: float, dogruluk_skoru: float,
                         uzunluk_skoru: float, uydurma_suphesi: bool, celiski_var: bool) -> float:
-    """Grup B faz-1 GOLGE skoru: B7 = sert 30 tavani yerine KADEMELI ceza
-    (celiski agir ×0.55, uydurma orta ×0.70). Manseti DEGISTIRMEZ; yalniz
-    score_shadow karsilastirmasi icin. Tek bit'lik yargi skoru %70 tirasliyordu."""
+    """Grup B GOLGE skoru — per-model ceza mantigi. NOT (2026-07-23): B7 (kademeli
+    ceza ×0.55/×0.70) backtest sonrasi CANLIYA alindi (_model_score_from_components
+    ile ozdes). Bu fonksiyon artik yalniz B6 (audit-duzeyi quality-kanali yeniden
+    dagitimi, eff_shadow) golge karsilastirmasini beslemek icin duruyor; per-model
+    skoru canliyla ayni cikar. B6 ayri backtest/karar bekliyor."""
     if not taniyor:
         return 0.0
     guven = max(0.0, min(100.0, guven or 0))
@@ -1687,12 +1698,20 @@ async def check_brand_recall(
                 dogruluk_values.append(dogruluk)
             formulation_scores = []
             shadow_scores = []
+            # Fable backtest adim-4 (2026-07-23): ham bilesenleri (guven/uzunluk) topla
+            # ki model_results'a yazilip GELECEK backtest tahmine degil gercek sayiya
+            # dayansin (bu tur analiz simdiye dek dogruluk-agirlikli yaklasiklama yapiyordu).
+            guven_vals = []
+            uzunluk_vals = []
             # K1: web araması servis hatasıyla düştüyse uydurma_suphesi cap'ini
             # (30 tavanı) uygulama — bu şüphe doğrulama verisinin YOKLUĞUNDAN
             # doğar, uydurmanın kanıtından değil. celiski_var korunur.
             eff_uydurma = judge["uydurma_suphesi"] and not web_search_failed
             for p in data["formulation_parses"]:
                 uzunluk = _length_band_score(p.get("yanit", "")) if p.get("taniyor") else 0.0
+                if p.get("taniyor"):
+                    guven_vals.append(max(0.0, min(100.0, p.get("guven", 0) or 0)))
+                    uzunluk_vals.append(uzunluk)
                 s = _model_score_from_components(
                     p.get("taniyor", False), p.get("guven", 0), dogruluk, uzunluk,
                     eff_uydurma, judge["celiski_var"],
@@ -1740,6 +1759,16 @@ async def check_brand_recall(
         }
         if judge is not None:
             model_results[key]["judge"] = judge
+            # Fable adim-4: ham skor bilesenlerini kalici yaz (gelecek backtest icin
+            # KESIN veri; eff_uydurma = web-hata telafisi sonrasi fiilen uygulanan flag).
+            # dogruluk zaten judge["dogruluk_skoru"]'nda; guven/uzunluk burada saklanir.
+            if guven_vals:
+                model_results[key]["score_components"] = {
+                    "guven_median": round(statistics.median(guven_vals), 1),
+                    "uzunluk_median": round(statistics.median(uzunluk_vals), 1),
+                    "eff_uydurma": bool(eff_uydurma),
+                    "celiski_var": bool(judge.get("celiski_var")),
+                }
             if data["recognized"]:
                 if judge.get("uydurma_suphesi") or judge.get("celiski_var"):
                     # "Taniyor" ama muhtemelen yanlis kisiyi: ton rozeti yerine
