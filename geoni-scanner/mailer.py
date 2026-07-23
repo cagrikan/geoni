@@ -8,7 +8,7 @@ so email delivery issues never block or fail the audit job itself.
 import os
 import html
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -106,7 +106,14 @@ def _format_datetime(iso_str: str | None, lang: str = "tr") -> str:
         dt = datetime.now(timezone.utc)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    dt = dt.astimezone(ZoneInfo("Europe/Istanbul"))
+    # 2026-07-23: container'da IANA tzdata YOKSA ZoneInfo firlatir ve bu, e-posta
+    # gonderen tamamlanma-adimini -> TUM tarama'yi "failed" yapiyordu (skor hesaplanip
+    # kaydedilmis olsa BILE). E-posta bir yan etki; ASLA taramayi dusurmemeli.
+    # tzdata paketi eklendi (requirements) ama yine de +03:00 sabit fallback ile korunur.
+    try:
+        dt = dt.astimezone(ZoneInfo("Europe/Istanbul"))
+    except Exception:
+        dt = dt.astimezone(timezone(timedelta(hours=3)))  # TR sabit UTC+3
     if lang == "en":
         return f"{_EN_MONTHS[dt.month - 1]} {dt.day}, {dt.year}, {dt.strftime('%H:%M')}"
     return f"{dt.day} {_TR_MONTHS[dt.month - 1]} {dt.year}, {dt.strftime('%H:%M')}"
