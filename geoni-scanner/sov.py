@@ -583,6 +583,7 @@ def _filter_competitors(comps: list, own_name: str, full_answers: list[str]) -> 
 
 async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
                                ask_google=None, ask_openai_web=None, ask_claude_web=None,
+                               ask_grok_web=None,
                                custom_queries: list | None = None,
                                own_domain: str = "", social: bool = False, lang: str = "tr",
                                location: str = "", pinned_queries: list | None = None) -> dict:
@@ -802,6 +803,44 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
         f"competitors={len(competitors)}, sources={len(sources)}, own_cited={own_cited_answers}, "
         f"citation_gap={len(citation_gap)}"
     )
+
+    # ── grok-web SHADOW (env-kapili, social-only) ──────────────────────────────
+    # grok-web ayni sorgularda AYRICA kosulur ama CANLI SKORU/engines'i ETKILEMEZ.
+    # Amac: xAI'nin X-native erisiminin, mevcut web motorlarinin (perplexity/gemini/
+    # openai-web/claude-web) KACIRDIGI benzersiz atif/bahis sinyali katip katmadigini
+    # olcmek. Pahali (~$0.08/cagri) oldugundan yalniz cagiran ask_grok_web GECIRDIGINDE
+    # kosar (brand_recall: GROK_WEB_SHADOW=1 + social). Sonuc sov.grok_web_shadow'a yazilir.
+    grok_web_shadow = None
+    if ask_grok_web is not None:
+        try:
+            gw_raw = await asyncio.gather(*[_safe_ask(ask_grok_web, q["query"]) for q in queries])
+            gw_answered = gw_mentions = 0
+            gw_sources: Counter = Counter()
+            gw_per_query = []
+            for qi, ans in enumerate(gw_raw):
+                answer = str(ans.get("text") if isinstance(ans, dict) else (ans or ""))
+                cits = ans.get("citations") if isinstance(ans, dict) else []
+                doms = sorted({d for d in (_source_domain(c) for c in (cits or [])) if d})
+                m = _brand_mentioned(answer, name)
+                if answer:
+                    gw_answered += 1
+                if m:
+                    gw_mentions += 1
+                gw_sources.update(doms)
+                gw_per_query.append({"query": queries[qi]["query"], "answered": bool(answer),
+                                     "mentioned": m, "sources": doms})
+            live_domains = set(source_counter.keys())
+            # benzersiz katki: grok-web'in bulup canli motorlarin KACIRDIGI kaynaklar (ozellikle X)
+            gw_unique = [d for d in gw_sources if d not in live_domains]
+            grok_web_shadow = {
+                "answered": gw_answered, "mention_count": gw_mentions, "query_count": len(queries),
+                "sources": [{"domain": d, "mentions": c} for d, c in gw_sources.most_common(10)],
+                "unique_sources": gw_unique[:10],
+                "per_query": gw_per_query,
+            }
+        except Exception as e:
+            logger.warning(f"grok_web shadow SOV error: {e}")
+
     return {
         "checked": True,
         "score": score,
@@ -815,4 +854,5 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
         "own_cited_count": own_cited_answers,
         "citation_gap": citation_gap,
         "diagnostics": diagnostics,
+        **({"grok_web_shadow": grok_web_shadow} if grok_web_shadow is not None else {}),
     }

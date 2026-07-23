@@ -808,6 +808,54 @@ async def _ask_claude_web(prompt: str, temperature: float = 0.0, max_tokens: int
     return None
 
 
+GROK_WEB_MODEL = os.environ.get("XAI_WEB_MODEL", "grok-4.5")
+
+
+async def _ask_grok_web(prompt: str, temperature: float = 0.0, max_tokens: int = 500) -> dict | None:
+    """Grok-web SOV motoru — xAI Agent Tools API (/v1/responses + web_search/x_search).
+    Parametrik _ask_grok'tan FARKLI: canli web + X araması yapar (xAI'nin benzersiz X
+    erişimi — TR influencer/hesaplarini parametrik grok'un bilmedigi yerde bulur).
+    SHADOW + social-only + env-kapili: PAHALI (~20k token/cagri, 10-30sn) oldugundan yalniz
+    GROK_WEB_SHADOW=1 iken ve sosyal SOV'da cagrilir; canli skoru DEGISTIRMEZ. Donus
+    {"text", "citations"} — _ask_openai_web/_ask_claude_web ile ayni sozlesme. Atiflar
+    output_text.annotations[url_citation].url'de. (Eski Live Search deprecated -> Agent Tools.)"""
+    if not GROK_API_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient() as c:
+            r = await _post_retry(c,
+                "https://api.x.ai/v1/responses",
+                headers={"Authorization": f"Bearer {GROK_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "model": GROK_WEB_MODEL,
+                    "input": [{"role": "user", "content": prompt}],
+                    "tools": [{"type": "web_search"}, {"type": "x_search"}],
+                    "max_output_tokens": max(max_tokens, 1024),
+                    "temperature": temperature,
+                },
+                timeout=90,
+            )
+            if r.status_code == 200:
+                asyncio.create_task(log_provider_call("grok_web"))
+                texts, citations = [], []
+                for o in r.json().get("output", []):
+                    if o.get("type") != "message":
+                        continue
+                    for blk in o.get("content", []):
+                        if blk.get("type") in ("output_text", "text"):
+                            if blk.get("text"):
+                                texts.append(blk["text"])
+                            for ann in blk.get("annotations") or []:
+                                if isinstance(ann, dict) and ann.get("type") == "url_citation" and ann.get("url"):
+                                    citations.append(ann["url"])
+                return {"text": " ".join(texts).strip(), "citations": citations}
+            asyncio.create_task(_provider_health_alert("grok_web", r.status_code, r.text))
+            logger.warning(f"Grok web {r.status_code}: {r.text[:200]}")
+    except Exception as e:
+        logger.warning(f"Grok web query failed: {e}")
+    return None
+
+
 async def _ask_aux(prompt: str, temperature: float = RECALL_TEMPERATURE, max_tokens: int = 500) -> str | None:
     """Yardimci (olcum-disi) LLM gorevleri icin dayanikli cagri: rakip cikarimi,
     konu cikarimi, sosyal kimlik cozumu. ONCE claude (haiku); None donerse (kredi
@@ -1685,6 +1733,10 @@ async def check_brand_recall(
         # SOV'un sorgularinda calisir (recall'da degil). Anahtar yoksa None gecer.
         ask_openai_web=_ask_openai_web if OPENAI_API_KEY else None,
         ask_claude_web=_ask_claude_web if ANTHROPIC_API_KEY else None,
+        # grok-web SHADOW: yalniz sosyal modda + env-kapili (GROK_WEB_SHADOW=1). PAHALI
+        # (~$0.08/cagri × sorgu sayisi) oldugundan varsayilan KAPALI; acilinca X-native
+        # sinyalinin benzersiz katkisini golgede olcer, canli skoru DEGISTIRMEZ.
+        ask_grok_web=(_ask_grok_web if (social and GROK_API_KEY and os.environ.get("GROK_WEB_SHADOW")) else None),
         custom_queries=custom_queries,
         own_domain=website or "",
         social=social,

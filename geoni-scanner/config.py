@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     # degistirmez). XAI_MODEL anahtar eklenirken dogru model id ile teyit edilir.
     XAI_API_KEY: Optional[str] = None
     XAI_MODEL: Optional[str] = None
+    # grok-web SOV motoru (Agent Tools API, web+x search). SHADOW + env-kapili
+    # (GROK_WEB_SHADOW=1 ile acilir; varsayilan KAPALI — pahali/yavas).
+    XAI_WEB_MODEL: Optional[str] = None
+    GROK_WEB_SHADOW: Optional[str] = None
 
     # CORS
     CORS_ORIGINS: list = ["http://localhost:3000", "https://geoni.ai"]
