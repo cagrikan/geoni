@@ -24,7 +24,10 @@ from db import get_grok_usage_daily
 # Parametrik grok (31 cagri) ihmal edilebilir kaldi. Flat oran; token/arama bazli degil
 # (provider_usage yalniz cagri sayisi tutuyor, sema degistirmeden en iyi tahmin).
 GROK_CALL_COST = 0.0007      # parametrik recall (ucuz, hizli; konsolda ihmal edilebilir cikti)
-GROK_WEB_CALL_COST = 0.08    # web+x search (gercek: ~$0.08/cagri, ~5 web + ~3 X arama + ~16k token)
+# grok-web GERCEK ~$0.08/cagri ama degisken (model kac arama turu yapacagina kendi karar verir,
+# gercek kullanim loglanmiyor). Fable notu: dusuk tahmin -> bakiye uyarisi GEC tetiklenir.
+# Bu yuzden ~%25 GUVENLIK PAYI ile ust-tahmin: harcama biraz yuksek gorunur -> alarm ERKEN (guvenli).
+GROK_WEB_CALL_COST = 0.10    # web+x search, guvenlik payli (gercek ~$0.08; geç-alarm riskine karsi)
 
 ALL_TIME_LOOKBACK_DAYS = 365  # perplexity_admin ile ayni pencere (dusuk-bakiye false-negative daraltmasi)
 
@@ -50,8 +53,10 @@ async def get_grok_cost_summary() -> dict:
 
     today_key = now.strftime("%Y-%m-%d")
     week_start_key = (now - timedelta(days=7)).strftime("%Y-%m-%d")
-    usd_today = month_daily.get(today_key, 0)
-    usd_week = sum(v for k, v in month_daily.items() if k >= week_start_key)
+    # Fable notu: today/week penceresi ay-sinirindan ETKILENMEMELI (ayin 1-2'sinde
+    # son 7 gun onceki aya taşar). all_time_daily tam pencereyi kapsar -> kullan.
+    usd_today = all_time_daily.get(today_key, 0)
+    usd_week = sum(v for k, v in all_time_daily.items() if k >= week_start_key)
     usd_month = sum(month_daily.values())
 
     return {

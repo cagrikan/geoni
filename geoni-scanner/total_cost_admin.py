@@ -117,6 +117,7 @@ async def get_admin_total_cost_summary() -> dict:
         "openai": round((openai_m or {}).get(this_key, 0), 2),
         "aws": round((aws_m or {}).get(this_key, 0), 2),
         "perplexity": round((perplexity_m or {}).get(this_key, 0), 2),
+        "grok": round((grok_m or {}).get(this_key, 0), 2),  # Fable: usd_sources'ta vardi ama kirilimda eksikti
         "gemini_usd": round(gemini_usd_by_month.get(this_key, 0), 2),
         "supabase": round(supabase_current, 2),
     }

@@ -64,3 +64,25 @@ def test_grok_http_error_returns_none(monkeypatch):
 
     monkeypatch.setattr(b, "_post_retry", _fake_post_retry)
     assert asyncio.run(b._ask_grok("selam")) is None
+
+
+# ── Sifir-etki: SHADOW_ENGINES filtresi (Fable 2026-07-23 bulgusu) ──────────
+def test_shadow_engines_filter_excludes_grok():
+    """brand_recall'in canli-motor izolasyon deseni: SHADOW_ENGINES (grok) live_texts'ten
+    dislanir, judge/topic/legacy CANLI 4 motorda kosar. Bu desen bozulursa score_legacy +
+    musteriye gorunur topic'ler grok metniyle kirlenir (regresyon bekcisi)."""
+    from result_contract import SHADOW_ENGINES
+    rep = {"claude": "a", "openai": "b", "gemini": "c", "perplexity": "d", "grok": "GROK-METNI"}
+    live = {k: v for k, v in rep.items() if k not in SHADOW_ENGINES}
+    shadow = {k: v for k, v in rep.items() if k in SHADOW_ENGINES}
+    assert set(live) == {"claude", "openai", "gemini", "perplexity"}
+    assert set(shadow) == {"grok"} and shadow["grok"] == "GROK-METNI"
+
+
+# ── grok_admin maliyet matematigi (Fable: yeni kod icin test yoktu) ─────────
+def test_grok_cost_math_and_margin():
+    import grok_admin as ga
+    assert ga._day_cost({"grok": 31, "grok_web": 0}) == round(31 * ga.GROK_CALL_COST, 10)
+    # grok-web guvenlik payli ($0.10 > gercek ~$0.08) -> harcama ust-tahmin -> alarm erken
+    assert ga.GROK_WEB_CALL_COST >= 0.08
+    assert ga._day_cost({"grok": 0, "grok_web": 10}) == round(10 * ga.GROK_WEB_CALL_COST, 10)

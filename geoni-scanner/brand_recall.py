@@ -1631,7 +1631,22 @@ async def check_brand_recall(
     emit(msgs["comparing"])
     person_info = {"isim": name, "unvan": role, "sirket": company, "sehir": location, "alan": topic}
     representative_texts = {k: v["representative_text"] for k, v in model_raw.items() if v["representative_text"]}
-    judge_results = await judge_batch_accuracy_stable(representative_texts, web_results, person_info)
+    # SIFIR-ETKI (Fable 2026-07-23): golge motorlar (grok) CANLI motorlarin
+    # judge/topic/legacy/quality hesabina KARISMAMALI. Judge promptuna 5. metin
+    # girerse 4 motorun dogruluk verdisi -> quality_score -> canli score kayabilir;
+    # topic-gen (musteriye gorunur) + legacy_quality ortalamasi da kirlenir. Bu
+    # yuzden judge CANLI 4 motorda (live_texts) bit-bit eskisi gibi kosar; grok
+    # AYRI judge cagrisiyla yargilanir (shadow verisi -> model_results["grok"].judge).
+    live_texts = {k: v for k, v in representative_texts.items() if k not in SHADOW_ENGINES}
+    shadow_texts = {k: v for k, v in representative_texts.items() if k in SHADOW_ENGINES}
+    judge_results = await judge_batch_accuracy_stable(live_texts, web_results, person_info)
+    if shadow_texts:
+        try:
+            # Golge judge TEK ornek (judge_batch_accuracy) — _stable'in 3x medyani gerekmez;
+            # golge verisi ic analiz icin, canli skoru etkilemiyor -> judge maliyetini 3x->1x kis.
+            judge_results = {**judge_results, **await judge_batch_accuracy(shadow_texts, web_results, person_info)}
+        except Exception as e:
+            logger.warning(f"shadow judge (grok) error: {e}")
     emit(msgs["scoring"])
 
     model_results = {}
@@ -1744,7 +1759,9 @@ async def check_brand_recall(
         location=location,  # O6: yerel SOV sorgusu ("<sehir>'de en iyi X")
         pinned_queries=pinned_q,
     )
-    topics_task = _generate_brand_topics(name, topic, web_results, representative_texts,
+    # SIFIR-ETKI: topic-gen musteriye gorunur (performing/opportunity_topics) -> golge
+    # motor metni bağlama girmesin (live_texts, grok haric).
+    topics_task = _generate_brand_topics(name, topic, web_results, live_texts,
                                          lang=lang, social=social)
     sov_result, topics = await asyncio.gather(sov_task, topics_task)
 
@@ -1781,7 +1798,8 @@ async def check_brand_recall(
     elif dogruluk_values:
         quality_score = sum(dogruluk_values) / len(dogruluk_values)
     else:
-        quality_score = sum(_length_band_score(t) for t in representative_texts.values()) / max(len(representative_texts), 1)
+        # SIFIR-ETKI: judge tamamen dustugunde quality fallback CANLI skoru etkiler -> grok haric.
+        quality_score = sum(_length_band_score(t) for t in live_texts.values()) / max(len(live_texts), 1)
 
     relevance_score = _topic_relevance_score(web_results, name, topic)
 
@@ -1837,8 +1855,9 @@ async def check_brand_recall(
         _shadow += sov_result["score"] * sov_weight
     score_shadow = int(round(_shadow))
 
-    # Karsilastirma icin eski (legacy) skor da hesaplanir
-    legacy_quality_score = sum(_length_band_score(t) for t in representative_texts.values()) / max(len(representative_texts), 1)
+    # Karsilastirma icin eski (legacy) skor da hesaplanir. SIFIR-ETKI: score_legacy
+    # DONDURULMUS v3 referansi -> golge motor ortalamayi kaydirmasin (grok haric).
+    legacy_quality_score = sum(_length_band_score(t) for t in live_texts.values()) / max(len(live_texts), 1)
     legacy_overall_score = int(round(
         sum(per_model_legacy_score[k] * OLD_WEIGHTS[k] for k in model_keys) +
         legacy_quality_score * OLD_WEIGHTS["response_quality"] +
