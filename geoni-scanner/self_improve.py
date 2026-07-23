@@ -594,6 +594,30 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
         except Exception as e:
             logger.warning(f"own_recognition alert error: {e}")
 
+    # Fable #4: own_visibility "ILK DIS ATIF" milestone — GEONI ilk kez bir AI cevabinda
+    # kaynak/atif olarak gecince (7 gundur 0'di) kurucuya TEK SEFER kutlama. En kritik buyume sinyali.
+    if sum(own_mention.values()) > 0:
+        try:
+            async with httpx.AsyncClient() as _rc:
+                pr = await _rc.get(
+                    f"{SUPABASE_URL}/rest/v1/improvement_signals?kind=eq.own_visibility"
+                    f"&metric=gt.0&cycle_date=lt.{datetime.now(timezone.utc).date().isoformat()}"
+                    f"&select=cycle_date&limit=1",
+                    headers=_headers(), timeout=10)
+                had_before = (not (pr.status_code == 200 and not pr.json()))  # emin degilsek gonderME
+                if not had_before:
+                    from mailer import send_ticket_email
+                    top = [f"{e}: {c}" for e, c in sorted(own_mention.items(), key=lambda x: -x[1]) if c > 0]
+                    await send_ticket_email(
+                        FOUNDER_EMAIL, "🎉 GEONI: ilk kez bir AI bizi kaynak gösterdi!",
+                        "own_visibility ilk dış atıf (milestone)",
+                        ["GEONI artık AI cevaplarında geçiyor — motor bazlı: " + ", ".join(top),
+                         "En kritik büyüme sinyali. İlk atıf yakalandı."],
+                        cta_label="Admin · İzleme", cta_url="https://app.geoni.ai/admin")
+                    logger.warning(f"OWN_VISIBILITY ILK ATIF: {dict(own_mention)}, kurucuya bildirildi")
+        except Exception as e:
+            logger.warning(f"own_visibility milestone error: {e}")
+
     # Faz1-1.3 + Karar#1: v4->golge skor gecisini FORMAL deney olarak izle. Esik
     # karsilaninca kurucuya TEK SEFER "hazir, onaylıyor musun" e-postasi (yari-otonom:
     # tetik otonom, UYGULAMA hep onayli — skor musteri-gorunur ucretli sozlesme, asla

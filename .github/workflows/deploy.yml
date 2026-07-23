@@ -63,7 +63,18 @@ jobs:
       # kendi health-check rollback'i zaten var). Idempotent — her deploy'da uygulanir.
       - name: Deploy API (App Runner) + worker (ECS)
         run: |
-          aws apprunner start-deployment --region eu-central-1 --service-arn arn:aws:apprunner:eu-central-1:016031489497:service/geoni-scanner-api/61139b9ae7114ea88304c93458af9ff9
+          # App Runner AutoDeployments zaten yeni ECR :latest'i OTOMATIK deploy eder; asagidaki
+          # explicit start-deployment yalniz RUNNING iken denenir. Hizli ardisik push'larda
+          # servis MESGULSE (onceki auto-deploy suruyor) "isn't in RUNNING state" hatasi
+          # CI'yi kirmasin -> atla (auto-deploy yeni imaji zaten alacak). Worker deploy'u
+          # HER durumda kosar (eskiden apprunner hatasi -e ile worker'i da bloklardi).
+          AR="arn:aws:apprunner:eu-central-1:016031489497:service/geoni-scanner-api/61139b9ae7114ea88304c93458af9ff9"
+          ST=$(aws apprunner describe-service --region eu-central-1 --service-arn "$AR" --query "Service.Status" --output text 2>/dev/null || echo UNKNOWN)
+          if [ "$ST" = "RUNNING" ]; then
+            aws apprunner start-deployment --region eu-central-1 --service-arn "$AR" || echo "start-deployment atlandi (auto-deploy devrede)"
+          else
+            echo "App Runner durumu=$ST -> explicit start-deployment atlandi; AutoDeployments yeni imaji alacak."
+          fi
           aws ecs update-service --cluster geoni-cluster --service geoni-scan-worker --force-new-deployment --region eu-central-1 \
             --deployment-configuration "deploymentCircuitBreaker={enable=true,rollback=true}"
 
