@@ -121,18 +121,54 @@ def _bounded_match(needle: str, haystack: str) -> bool:
     return re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", haystack) is not None
 
 
+_HANDLE_SUFFIX_RE = re.compile(r"^(.*?)\s*\(@?[\w.]+\)\s*$")
+
+
+def _brand_name_candidates(name: str) -> list[str]:
+    """Sosyal kimlik cozumu (brand_recall._resolve_social_identity) 'Gorunen Ad
+    (@handle)' bilesik adi uretir; bu TAM string AI yanitinda ASLA tekrarlanmaz
+    (AI ya 'Arcelik' ya '@Arcelik' der). SONUC: @handle taramalarinda %68 sahte-
+    sifir SOV (Fable 2026-07-23, canli: @Arcelik cevap 'Arcelik' diyor ama
+    mentioned=false, sov=0). Burada eslesme ADAYLARI cikarilir; cagiran herhangi
+    biriyle eslesirse anilmis sayar. KISA handle (1-2 char) jenerik-kelime yanlis-
+    pozitif riski tasidigindan (@ev, @su) haric tutulur."""
+    name = (name or "").strip()
+    if not name:
+        return []
+    cands = [name]
+    m = _HANDLE_SUFFIX_RE.match(name)
+    if m:
+        base = m.group(1).strip()
+        handle = re.sub(r"^.*\(@?([\w.]+)\)\s*$", r"\1", name).strip()
+        if base:
+            cands.append(base)          # "Arcelik (@Arcelik)" -> "Arcelik"
+        if len(handle) >= 3:
+            cands.append(handle)        # -> "Arcelik" (handle bicimi)
+    elif name.startswith("@") and len(name) >= 4:
+        cands.append(name[1:])          # cozumsuz "@Trendyol" -> "Trendyol"
+    seen, out = set(), []
+    for c in cands:
+        if c and c not in seen:
+            seen.add(c)
+            out.append(c)
+    return out
+
+
 def _brand_mentioned(answer: str, name: str) -> bool:
-    """Marka adinin (aksan/buyukluk toleransli) yanit icinde gecip gecmedigi."""
+    """Marka adinin (aksan/buyukluk toleransli, @handle-toleransli) yanitta gecip gecmedigi."""
     if not answer or not name:
         return False
     norm_answer = _normalize(answer)
-    norm_name = _normalize(name)
-    if _bounded_match(norm_name, norm_answer):
-        return True
-    # Cok kelimeli adlarda ilk iki kelime de sayilir ("Acme Yazilim A.S." -> "acme yazilim")
-    words = norm_name.split()
-    if len(words) >= 2 and _bounded_match(" ".join(words[:2]), norm_answer):
-        return True
+    for cand in _brand_name_candidates(name):
+        norm_name = _normalize(cand)
+        if not norm_name:
+            continue
+        if _bounded_match(norm_name, norm_answer):
+            return True
+        # Cok kelimeli adlarda ilk iki kelime de sayilir ("Acme Yazilim A.S." -> "acme yazilim")
+        words = norm_name.split()
+        if len(words) >= 2 and _bounded_match(" ".join(words[:2]), norm_answer):
+            return True
     return False
 
 
@@ -140,15 +176,20 @@ _LIST_ITEM_RE = re.compile(r"^\s*(?:(\d{1,2})[\.\)]|[-*•])\s+(.*)$")
 
 
 def _has_brand_segment(seg: str, name: str) -> bool:
-    """Bir metin parcasi markayi iceriyor mu (kelime-siniri korumali)."""
-    norm_name = _normalize(name)
-    if not norm_name:
-        return False
+    """Bir metin parcasi markayi iceriyor mu (kelime-siniri + @handle-toleransli)."""
     norm_seg = _normalize(seg)
-    if _bounded_match(norm_name, norm_seg):
-        return True
-    words = norm_name.split()
-    return len(words) >= 2 and _bounded_match(" ".join(words[:2]), norm_seg)
+    if not norm_seg:
+        return False
+    for cand in _brand_name_candidates(name):
+        norm_name = _normalize(cand)
+        if not norm_name:
+            continue
+        if _bounded_match(norm_name, norm_seg):
+            return True
+        words = norm_name.split()
+        if len(words) >= 2 and _bounded_match(" ".join(words[:2]), norm_seg):
+            return True
+    return False
 
 
 def _extract_position(answer: str, name: str) -> int | None:
