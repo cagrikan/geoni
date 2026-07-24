@@ -215,9 +215,24 @@ AUDIT_PROGRESS_MESSAGES = {
 
 
 def _rate_limit_message(lang: str, seconds: int) -> str:
+    s = max(int(seconds or 0), 0)
+    m, sec = divmod(s, 60)
     if lang == "en":
-        return f"Too many requests. Please try again in {seconds} seconds."
-    return f"Çok fazla istek gönderdiniz. Lütfen {seconds} saniye sonra tekrar deneyin."
+        if m and sec:
+            t = f"{m} min {sec} sec"
+        elif m:
+            t = f"{m} min"
+        else:
+            t = f"{sec} sec"
+        return f"Too many requests. Please try again in {t}."
+    # TR: dakika + saniye (yalniz saniye degil)
+    if m and sec:
+        t = f"{m} dakika {sec} saniye"
+    elif m:
+        t = f"{m} dakika"
+    else:
+        t = f"{sec} saniye"
+    return f"Çok fazla istek gönderdiniz. Lütfen {t} sonra tekrar deneyin."
 
 
 def _login_required_message(lang: str) -> str:
