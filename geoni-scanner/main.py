@@ -775,7 +775,6 @@ async def prewarm():
     return {"ok": True, "warmed": warmed}
 
 
-@app.get("/api/audit/{job_id}")
 def _valid_job_id(job_id: str) -> str:
     """Public job uclarinda job_id UUID olmali. Fable (guvenlik): ham job_id PostgREST
     filtresine f-string ile giriyordu; kolon uuid oldugu icin kaza eseri korunuyordu ama
@@ -787,6 +786,7 @@ def _valid_job_id(job_id: str) -> str:
     return job_id
 
 
+@app.get("/api/audit/{job_id}")
 async def get_audit_status(job_id: str):
     _valid_job_id(job_id)
     if job_id not in jobs_store:
