@@ -612,6 +612,21 @@ def _is_internal_scan(http_request) -> bool:
     return bool(token) and bool(header) and secrets.compare_digest(header, token)
 
 
+def _is_mobile_client(http_request) -> bool:
+    """Native iOS/RN uygulamasi. iOS URLSession/CFNetwork User-Agent'i 'CFNetwork'
+    + 'Darwin' (ya da app adi 'GEONI') tasir; web tarayicilari bunu ASLA gondermez.
+    Mobil kendi anti-abuse'unu kullanir (Apple DeviceCheck cihaz-tavani + IP/hesap
+    rate-limit + ucretsiz-tarama capi); Turnstile bir WEB bot-widget'i, mobilde token
+    URETILEMEZ ve anlamsiz -> muaf. curl/script UA'lari ('curl/..', 'python-requests')
+    bu desene UYMAZ, Turnstile'a tabi kalir. NOT: rate-limit + DeviceCheck korumasi
+    mobil icin AYNEN devam eder; yalniz Turnstile atlanir."""
+    ua = (http_request.headers.get("user-agent", "") or "")
+    # iOS native (URLSession): 'GEONI/<build> CFNetwork/<v> Darwin/<v>'. Herhangi biri
+    # yeterli; web tarayicilari 'CFNetwork'/'Darwin'/'GEONI' ASLA gondermez. 'Expo' de
+    # dahil (dev/Expo Go). curl/python-requests bu isaretlerin HICBIRINI tasimaz.
+    return any(m in ua for m in ("GEONI", "CFNetwork", "Darwin", "Expo"))
+
+
 @app.post("/api/audit/quick", response_model=AuditResponse)
 async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, http_request: Request):
     client_ip = get_client_ip(http_request)
@@ -632,7 +647,7 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
         )
 
     # Anti-abuse (Turnstile): rate-limit'i tamamlar. Ic tarama muaf.
-    if not _is_internal_scan(http_request):
+    if not _is_internal_scan(http_request) and not _is_mobile_client(http_request):
         await enforce_turnstile(request.turnstile_token, client_ip, request.lang or "tr", "audit")
 
     # F-Y4 (Fable 2026-07-19): geçersiz domain (boşluk/@/bozuk yapı) submit'te reddedilir.
@@ -838,7 +853,7 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
         )
 
     # Anti-abuse (Turnstile): rate-limit'i tamamlar. Ic tarama muaf.
-    if not _is_internal_scan(http_request):
+    if not _is_internal_scan(http_request) and not _is_mobile_client(http_request):
         await enforce_turnstile(request.turnstile_token, client_ip, request.lang or "tr", "brand-check")
 
     # Ucretsiz-tarama tavani (cihaz + hesap). private zaten 10 kredi, premium muaf.
