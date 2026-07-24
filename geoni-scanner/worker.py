@@ -35,7 +35,7 @@ init_sentry("worker")
 
 QUEUE_URL = os.environ["SCAN_QUEUE_URL"]
 WORKER_CONCURRENCY = int(os.environ.get("WORKER_CONCURRENCY", "2"))
-VISIBILITY_SECONDS = int(os.environ.get("SCAN_VISIBILITY_SECONDS", "900"))
+VISIBILITY_SECONDS = int(os.environ.get("SCAN_VISIBILITY_SECONDS", "180"))
 _region = QUEUE_URL.split(".")[1] if "sqs." in QUEUE_URL else None
 sqs = boto3.client("sqs", region_name=_region)
 
