@@ -17,6 +17,7 @@ import asyncio
 import os
 import secrets
 import json
+import time
 import uuid
 from datetime import datetime
 import logging
@@ -328,16 +329,22 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
             emit(msgs["queue_wait"].format(mins=max(1, round(wait_s / 60))))
         await acquire_scan_slot()
         slot_acquired = True
+        # Faz-faz sure olcumu (Fable 2026-07-24): "tarama neden yavas" sorusunu
+        # gelecekte VARSAYIM degil GERCEK log verisiyle cevaplamak icin. Yalniz
+        # logger.info — musteri gormez, skoru etkilemez, maliyeti sifir.
+        _t0 = time.perf_counter()
         await set_job_status(job_id, "crawling")
         emit(msgs["crawling"].format(domain=request.domain))
         crawl_result = await crawl_domain(request.domain, request.page_limit)
         emit(msgs["pages_scanned"].format(count=crawl_result['total_pages']))
+        _t_crawl = time.perf_counter()
 
         await set_job_status(job_id, "indexing")
         emit(msgs["checking_bots"])
         indexing_status = await check_indexing_status(
             crawl_result["pages"], domain=crawl_result.get("domain") or request.domain)
         emit(msgs["index_checked"])
+        _t_index = time.perf_counter()
 
         await set_job_status(job_id, "scoring")
 
@@ -347,12 +354,33 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
         # Zengin sinyal (baslik + H1 + meta desc) beslenir; siirsel/metaforik
         # marka adlarinda kategori yanlis cikmasin (bkz. infer_brand_identity).
         identity = await infer_brand_identity(request.domain, crawl_result.get("pages", []))
+        # Perf (Fable 2026-07-24): topics.py'nin LLM cagrisi yalniz domain+pages'e
+        # bagli (crawl_result), brand_recall SONUCUNA degil — eskiden brand_recall
+        # (crawl+recall+judge+SOV, dakikalarca surebilen zincir) TAMAMEN bitene
+        # kadar SERI baslamiyordu; kritik yola bosuna +birkac saniye ekliyordu.
+        # Simdi recall ile AYNI ANDA baslar, recall'in zaten uzun suren I/O'sunun
+        # golgesinde biter. Ikisi de crawl_result["pages"]'i yalniz OKUR (mutasyon
+        # yok) -> paylasimli okuma guvenli.
+        topics_task = asyncio.create_task(
+            generate_topics_and_opportunities(request.domain, crawl_result["pages"], request.lang or "tr")
+        )
+        _t_identity = time.perf_counter()
         brand_recall_result = await check_brand_recall(identity["name"], identity["topic"], on_progress=emit, lang=request.lang, custom_queries=request.custom_queries, website=request.domain)
         emit(msgs["scoring"])
+        _t_recall = time.perf_counter()
 
         score_result = await compute_ai_visibility_score(crawl_result, indexing_status, brand_recall_result)
+        _t_score = time.perf_counter()
 
-        topics = await generate_topics_and_opportunities(request.domain, crawl_result["pages"], request.lang or "tr")
+        topics = await topics_task
+        _t_topics = time.perf_counter()
+        logger.info(
+            f"PHASE_TIMING job={job_id} domain={request.domain} "
+            f"crawl={_t_crawl - _t0:.1f}s indexing={_t_index - _t_crawl:.1f}s "
+            f"identity={_t_identity - _t_index:.1f}s recall+sov={_t_recall - _t_identity:.1f}s "
+            f"score={_t_score - _t_recall:.1f}s topics_wait={_t_topics - _t_score:.1f}s "
+            f"total={_t_topics - _t0:.1f}s"
+        )
 
         result_payload = {
             "domain": request.domain,

@@ -1611,6 +1611,57 @@ async def check_brand_recall(
         except Exception as e:
             logger.warning(f"Identity verification failed: {e}")
 
+    # Step 1d (Fable 2026-07-24 perf): SOV'u burada ERKEN baslat — arka planda
+    # Step 2 (5 model) + Step 3 (judge) ile PARALEL kossun. SOV yalniz name/topic/
+    # web_results'a bagli, judge SONUCUNA bagli DEGIL; eskiden judge tamamen
+    # bitene kadar (Step 3.5'e gelene dek) hic baslamiyordu -> SOV'un TUM suresi
+    # (ozellikle ChatGPT/Claude web-arama motorlari: cagri basina 10-60sn, retry'li
+    # worst-case cok daha uzun) kritik yola dumduz SERI ekleniyordu. Bu, olcumde
+    # (2026-07-24) 2-6dk tipik tarama suresinin en buyuk tek kalemiydi. Simdi arka
+    # planda kosuyor; Step 3.5'te yalniz SONUC beklenir (cogu zaman zaten hazir
+    # olur, ya da kalan fark judge suresine gomulur). Skor/mantik DEGISMEDI —
+    # yalniz NE ZAMAN baslatildigi degisti.
+    async def _run_sov():
+        sov_topic_ = topic
+        if not has_usable_topic(name, sov_topic_) and not custom_queries:
+            sov_topic_ = await infer_topic(name, _sanitize_web_results(web_results), _ask_aux)
+        # F-Y1 determinizm: SOV sorgu setini (name, type, lang, topic) anahtarli son
+        # audit'ten PINLE -> ayni hedef ayni sorgulari alir, SOV koşu-arasi savrulmaz.
+        # custom_queries verilmisse pinleme yok (kullanici niyeti onceliklidir).
+        pinned_q_ = None if custom_queries else await get_pinned_sov_queries(name, entity_type, lang, topic)
+        # grok-web SHADOW gating + GUNLUK MALIYET TAVANI (para kacmasin). TUM arama
+        # tipleri (social/marka/kisi/web — SOV kosan her tarama), env-kapili
+        # (GROK_WEB_SHADOW=1). GROK_WEB_DAILY_CAP: gunluk grok_web CAGRI tavani;
+        # dolunca gunun kalani KAPALI. ~$0.10/cagri oldugundan cap=5 ≈ ~1
+        # tarama/gun ≈ ~$0.50/gun ($10 -> ~20 gun). Canli skoru DEGISTIRMEZ.
+        grok_web_fn_ = None
+        if GROK_API_KEY and os.environ.get("GROK_WEB_SHADOW"):
+            try:
+                _cap = int(os.environ.get("GROK_WEB_DAILY_CAP", "5") or "5")
+            except ValueError:
+                _cap = 5
+            if _cap <= 0 or await count_provider_calls_today("grok_web") < _cap:
+                grok_web_fn_ = _ask_grok_web
+        result_ = await check_share_of_voice(
+            name, sov_topic_, _ask_perplexity_sourced, _ask_aux,
+            ask_google=_ask_gemini_grounded if GOOGLE_API_KEY else None,
+            # T2: ChatGPT + Claude web-arama motorlari. Pahali olduklarindan YALNIZ
+            # SOV'un sorgularinda calisir (recall'da degil). Anahtar yoksa None gecer.
+            ask_openai_web=_ask_openai_web if OPENAI_API_KEY else None,
+            ask_claude_web=_ask_claude_web if ANTHROPIC_API_KEY else None,
+            ask_grok_web=grok_web_fn_,  # gating + gunluk tavan yukarida hesaplandi
+            custom_queries=custom_queries,
+            own_domain=website or "",
+            social=social,
+            lang=lang,
+            location=location,  # O6: yerel SOV sorgusu ("<sehir>'de en iyi X")
+            pinned_queries=pinned_q_,
+        )
+        return sov_topic_, result_
+
+    emit(msgs.get("sov", msgs["scoring"]))
+    sov_task = asyncio.create_task(_run_sov())
+
     # Step 2: Her model icin 3-formulasyonlu iki asamali tanima (paralel)
     async def _tracked(coro, label):
         try:
@@ -1781,50 +1832,13 @@ async def check_brand_recall(
                 # Karistiriyor (hallucination) olsa bile kaynak-turu bilgisi tasinir.
                 model_results[key]["bilgi_izi"] = judge.get("bilgi_izi", "belirsiz")
 
-    # Step 3.5: Share of Voice — kategori sorgularinda gorunurluk (v3).
-    # Topic uretimiyle paralel calisir; her ikisi de temsili yanitlara bagli.
-    emit(msgs.get("sov", msgs["scoring"]))
-    # Kullanici alan girmediyse web sonuclarindan cikarmayi dene ("bu alan"
-    # gibi anlamsiz sorgular uretilmesin); cikarilamazsa SOV puanlanmaz.
-    sov_topic = topic
-    if not has_usable_topic(name, sov_topic) and not custom_queries:
-        sov_topic = await infer_topic(name, _sanitize_web_results(web_results), _ask_aux)
-    # F-Y1 determinizm: SOV sorgu setini (name, type, lang, topic) anahtarli son
-    # audit'ten PINLE -> ayni hedef ayni sorgulari alir, SOV koşu-arasi savrulmaz.
-    # custom_queries verilmisse pinleme yok (kullanici niyeti onceliklidir).
-    pinned_q = None if custom_queries else await get_pinned_sov_queries(name, entity_type, lang, topic)
-    # grok-web SHADOW gating + GUNLUK MALIYET TAVANI (para kacmasin). TUM arama tipleri
-    # (social/marka/kisi/web — SOV kosan her tarama), env-kapili (GROK_WEB_SHADOW=1).
-    # GROK_WEB_DAILY_CAP: gunluk grok_web CAGRI tavani; dolunca gunun kalani KAPALI. ~$0.10/cagri
-    # oldugundan cap=5 ≈ ~1 tarama/gun ≈ ~$0.50/gun ($10 -> ~20 gun). Canli skoru DEGISTIRMEZ.
-    grok_web_fn = None
-    if GROK_API_KEY and os.environ.get("GROK_WEB_SHADOW"):
-        try:
-            _cap = int(os.environ.get("GROK_WEB_DAILY_CAP", "5") or "5")
-        except ValueError:
-            _cap = 5
-        if _cap <= 0 or await count_provider_calls_today("grok_web") < _cap:
-            grok_web_fn = _ask_grok_web
-    sov_task = check_share_of_voice(
-        name, sov_topic, _ask_perplexity_sourced, _ask_aux,
-        ask_google=_ask_gemini_grounded if GOOGLE_API_KEY else None,
-        # T2: ChatGPT + Claude web-arama motorlari. Pahali olduklarindan YALNIZ
-        # SOV'un sorgularinda calisir (recall'da degil). Anahtar yoksa None gecer.
-        ask_openai_web=_ask_openai_web if OPENAI_API_KEY else None,
-        ask_claude_web=_ask_claude_web if ANTHROPIC_API_KEY else None,
-        ask_grok_web=grok_web_fn,  # gating + gunluk tavan yukarida hesaplandi
-        custom_queries=custom_queries,
-        own_domain=website or "",
-        social=social,
-        lang=lang,
-        location=location,  # O6: yerel SOV sorgusu ("<sehir>'de en iyi X")
-        pinned_queries=pinned_q,
-    )
-    # SIFIR-ETKI: topic-gen musteriye gorunur (performing/opportunity_topics) -> golge
-    # motor metni bağlama girmesin (live_texts, grok haric).
+    # Step 3.5: Share of Voice — sov_task Step 1d'de ERKEN baslatildi (5-model
+    # recall + judge ile PARALEL kosuyor); burada yalnizca SONUCU beklenir.
+    # Topic-gen (musteriye gorunur performing/opportunity_topics) SOV ile paralel
+    # calisir; golge motor metni bağlama girmesin (live_texts, grok haric).
     topics_task = _generate_brand_topics(name, topic, web_results, live_texts,
                                          lang=lang, social=social)
-    sov_result, topics = await asyncio.gather(sov_task, topics_task)
+    (sov_topic, sov_result), topics = await asyncio.gather(sov_task, topics_task)
 
     # A1-4 (QA 2026-07-19): rakip TEK KAYNAK. Iki liste vardi — sov.competitors
     # (kategori hesaplari) ve opportunity_topics[].competitors (konu-bazli domainler);
