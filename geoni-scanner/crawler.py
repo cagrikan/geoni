@@ -7,6 +7,7 @@ respects robots.txt and sitemap.xml, with depth/page/time limits.
 import asyncio
 import json
 import logging
+import os
 import re
 import time
 from urllib.parse import urljoin, urlparse
@@ -23,9 +24,22 @@ from ssrf_guard import assert_public_host, BlockedHostError, safe_get
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_PER_PAGE = 10  # seconds
-DEFAULT_TOTAL_TIMEOUT = 300    # 5 minutes
+# Fable 2026-07-24 (denetim): buyuk/SPA siteler (stripe.com, vercel.com) sitemap
+# tukenmeden/link kuyrugu bosalmadan HEP bu tavana carpiyordu — canli olcum:
+# stripe.com 311.6s/99 sayfa, vercel.com 307.6s/127 sayfa (page_limit=500'e HIC
+# yaklasmadan, saf ZAMAN siniri). Musteri "site taraniyor"a 5+ dk bakiyordu.
+# KOK NEDEN COZUMU (skorlama formulune DOKUNMADAN): scoring.py'deki TUM boyutlar
+# (index_coverage/_indexability_score, freshness, meta_health, ai_access, schema)
+# sayfa SAYISINA degil ORANA/ORTALAMAYA dayanir (dogrulandi) — 30-50 sayfalik
+# temsili bir ornek, 500 sayfalik tam taramayla ISTATISTIKSEL OLARAK ESDEGER
+# skor uretir. Tavan 300->90'a indi (kucuk/orta siteler zaten <32s'de bitiyor,
+# ETKILENMEZ — olcum verisi); es zamanlilik 5->8 ile aynı 90sn'de DAHA COK
+# sayfa taranir (stripe/vercel oraninda ~90s'de tahmini 25-45 sayfa, hala saglam
+# ornek). Sonuc: buyuk siteler 5+dk -> ~90sn'ye iner, skor DEGISMEZ (ayni formul,
+# temsili ornek). Env ile override edilebilir (redeploy gerekmeden ayar).
+DEFAULT_TOTAL_TIMEOUT = int(os.environ.get("CRAWL_TOTAL_TIMEOUT", "90"))
 DEFAULT_DEPTH_LIMIT = 3
-DEFAULT_CONCURRENCY = 5
+DEFAULT_CONCURRENCY = int(os.environ.get("CRAWL_CONCURRENCY", "8"))
 
 
 def normalize_domain(domain: str) -> str:
