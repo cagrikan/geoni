@@ -41,6 +41,7 @@ from db import (
     get_credit_packages, record_purchase, get_admin_sales_stats, get_pricing_tiers, add_pricing_tier, delete_pricing_tier,
     get_credit_transaction, transaction_exists, record_refund, get_package_by_apple_product_id, delete_user_account,
     update_user_social, get_share_result, get_ai_friendly_list,
+    get_or_create_referral_code, count_referred, set_referred_by,
     get_ticket_type_by_apple_product_id, create_iap_intent, consume_iap_intent, create_paid_ticket,
     missing_service_prerequisites, normalize_domain as normalize_service_domain, DOMAIN_ONLY_SERVICE_KEYS,
     get_manual_cost, set_manual_cost, list_campaigns, create_campaign, delete_campaign,
@@ -1735,6 +1736,31 @@ async def share_card_image(job_id: str, lang: str = "tr"):
     except Exception as e:
         logger.warning(f"share card render failed for {job_id}: {e}")
         return RedirectResponse("https://geoni.ai/og-share.png", status_code=302)
+
+
+@app.get("/api/me/referral")
+async def my_referral(http_request: Request):
+    """Viral cekirdek: kullanicinin referral kodu + getirdigi kisi sayisi.
+    Paylasim kartlari bu kodu ?ref= olarak tasir; davet edilen ilk taramasini
+    yapinca iki tarafa +1 tarama (odul asamasi ayri)."""
+    user_id = await _require_user(http_request)
+    code = await get_or_create_referral_code(user_id)
+    if not code:
+        raise HTTPException(status_code=500, detail="Referans kodu oluşturulamadı, lütfen tekrar deneyin.")
+    return {"code": code, "referred_count": await count_referred(user_id)}
+
+
+class ReferredByRequest(BaseModel):
+    ref_code: str
+
+@app.post("/api/me/referred-by")
+async def set_my_referred_by(body: ReferredByRequest, http_request: Request):
+    """Signup sonrasi cagrilir: ?ref kodunu SERVER-AUTHORITATIVE dogrular ve
+    referred_by'i yazar (self-ref + tek-atim korumali). Client dogrudan
+    referred_by yazamaz (spoof engeli). Idempotent: zaten atanmissa no-op."""
+    user_id = await _require_user(http_request)
+    res = await set_referred_by(user_id, body.ref_code or "")
+    return {"success": bool(res.get("ok")), "reason": res.get("reason")}
 
 
 class SocialProfileRequest(BaseModel):

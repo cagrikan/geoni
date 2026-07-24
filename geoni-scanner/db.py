@@ -5,6 +5,7 @@ Uses service role key to bypass RLS.
 """
 
 import asyncio
+import base64
 import json
 import os
 import re
@@ -1741,6 +1742,108 @@ async def admin_adjust_credits(user_id: str, delta: int, reason: str = "") -> bo
     except Exception as e:
         logger.warning(f"admin_adjust_credits error: {e}")
     return False
+
+
+# ---- Peer referral (viral cekirdek) --------------------------------------
+# Sema HAZIR (migration YOK): profiles.referral_code (text), profiles.referred_by
+# (uuid), total_credits_gifted (int). Kod DETERMINISTIK uuid'den turetilir ->
+# carpisma/race yok, idempotent. Bu blok yalniz ATTRIBUTION -> PARA VERMEZ; +1/+1
+# odul ayri asama (ilk-tarama tetigi, apply_credit_change idempotent RPC).
+
+def _ref_code_for(user_id: str) -> str:
+    """uuid'den deterministik 8-karakter kod (base32, kucuk harf). Deterministik
+    oldugundan ayni kullanici hep ayni kodu alir (race/carpisma yok); 40 bit uuid."""
+    try:
+        raw = uuid.UUID(str(user_id)).bytes
+    except Exception:
+        raw = str(user_id).encode()
+    return base64.b32encode(raw).decode("ascii")[:8].lower()
+
+
+async def get_or_create_referral_code(user_id: str) -> str | None:
+    """Referral kodunu dondurur; yoksa deterministik uretip profiles'a yazar."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=referral_code",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code == 200 and r.json():
+                existing = (r.json()[0] or {}).get("referral_code")
+                if existing:
+                    return existing
+            code = _ref_code_for(user_id)
+            pr = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}",
+                headers=_headers(), json={"referral_code": code}, timeout=10,
+            )
+            if pr.status_code in (200, 204):
+                return code
+            logger.warning(f"get_or_create_referral_code patch {pr.status_code}: {pr.text[:150]}")
+    except Exception as e:
+        logger.warning(f"get_or_create_referral_code error: {e}")
+    return None
+
+
+async def count_referred(user_id: str) -> int:
+    """Bu kullanicinin getirdigi (referred_by=user_id) kayit sayisi."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
+        return 0
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles?referred_by=eq.{user_id}&select=id",
+                headers={**_headers(), "Prefer": "count=exact"}, timeout=10,
+            )
+            cr = r.headers.get("content-range", "")
+            if "/" in cr and cr.split("/")[-1].isdigit():
+                return int(cr.split("/")[-1])
+    except Exception as e:
+        logger.warning(f"count_referred error: {e}")
+    return 0
+
+
+async def set_referred_by(user_id: str, ref_code: str) -> dict:
+    """SERVER-AUTHORITATIVE referral attribution (client asla referred_by yazamaz).
+    Guardlar: kod->referrer cozulur; self-referral engeli; YALNIZ referred_by BOS
+    olan kullaniciya yazilir (tek-atim, sonradan degistirilemez). PARA VERMEZ.
+    Doner {ok, reason[, referrer]}."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id or not ref_code:
+        return {"ok": False, "reason": "eksik parametre"}
+    code = str(ref_code).strip().lower()[:16]
+    if not re.fullmatch(r"[a-z0-9]{4,16}", code):
+        return {"ok": False, "reason": "gecersiz kod"}
+    try:
+        async with httpx.AsyncClient() as client:
+            rr = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles?referral_code=eq.{code}&select=id",
+                headers=_headers(), timeout=10,
+            )
+            rows = rr.json() if rr.status_code == 200 else []
+            if not rows:
+                return {"ok": False, "reason": "kod bulunamadi"}
+            referrer_id = rows[0]["id"]
+            if referrer_id == user_id:
+                return {"ok": False, "reason": "self-referral"}
+            # Kosullu patch: yalniz referred_by IS NULL iken yaz (yaris/tekrar korumasi).
+            pr = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&referred_by=is.null",
+                headers={**_headers(), "Prefer": "return=representation"},
+                json={"referred_by": referrer_id}, timeout=10,
+            )
+            if pr.status_code == 200:
+                updated = pr.json() if pr.text else []
+                if updated:
+                    return {"ok": True, "reason": "attributed", "referrer": referrer_id}
+                return {"ok": False, "reason": "zaten atanmis"}
+            if pr.status_code == 204:
+                return {"ok": True, "reason": "attributed", "referrer": referrer_id}
+            logger.warning(f"set_referred_by patch {pr.status_code}: {pr.text[:150]}")
+    except Exception as e:
+        logger.warning(f"set_referred_by error: {e}")
+    return {"ok": False, "reason": "hata"}
 
 
 async def admin_set_is_admin(user_id: str, is_admin_flag: bool) -> bool:
