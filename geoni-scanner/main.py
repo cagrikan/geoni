@@ -638,7 +638,7 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
         user_id_rl = await get_user_id_from_token(token_rl) if token_rl else None
         is_premium = await check_is_premium(user_id_rl) if user_id_rl else False
         if not is_premium and not _is_internal_scan(http_request):
-            enforce_audit_rate_limits(client_ip, request.email, request.domain)
+            enforce_audit_rate_limits(client_ip, request.email, request.domain, skip_ip=_is_mobile_client(http_request))
     except RateLimitExceeded as e:
         raise HTTPException(
             status_code=429,
@@ -844,7 +844,7 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
         if not is_premium2 and not _is_internal_scan(http_request):
             # T3: kimlik kovasi user_id olsun (email varsayilani anonymous@geoni.ai
             # -> tum premium-olmayanlar ayni kovayi paylasip birbirine 429 yediriyordu).
-            enforce_audit_rate_limits(client_ip, user_id_rl2, request.name)
+            enforce_audit_rate_limits(client_ip, user_id_rl2, request.name, skip_ip=_is_mobile_client(http_request))
     except RateLimitExceeded as e:
         raise HTTPException(
             status_code=429,
@@ -903,7 +903,7 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
     client_ip = get_client_ip(http_request)
     try:
         if not _is_internal_scan(http_request):
-            enforce_audit_rate_limits(client_ip, request.email, request.handle)
+            enforce_audit_rate_limits(client_ip, request.email, request.handle, skip_ip=_is_mobile_client(http_request))
     except RateLimitExceeded as e:
         raise HTTPException(
             status_code=429,

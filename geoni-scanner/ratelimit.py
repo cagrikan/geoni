@@ -131,7 +131,7 @@ def _check(key: str, limit: int, window_seconds: int) -> None:
     RATE_LIMIT_STORE.check_and_record(key, limit, window_seconds)
 
 
-def enforce_audit_rate_limits(client_ip: str, email: str, domain: str) -> None:
+def enforce_audit_rate_limits(client_ip: str, email: str, domain: str, skip_ip: bool = False) -> None:
     """
     Enforce all three rate limit dimensions for an incoming audit request.
     Call this before enqueueing the background job. Raises RateLimitExceeded
@@ -143,7 +143,12 @@ def enforce_audit_rate_limits(client_ip: str, email: str, domain: str) -> None:
     normalized_domain = domain.strip().lower()
 
     try:
-        _check(f"ip:{client_ip}", IP_LIMIT, IP_WINDOW_SECONDS)
+        # skip_ip: mobil (native) istemciler icin per-IP atlanir. Sebep: carrier-grade
+        # NAT ( or. Turkcell) BINLERCE mobil kullaniciyi TEK IP'de toplar -> per-IP 5/10dk
+        # gercek kullanicilari toplu bloklar. Mobilde asil anti-abuse DeviceCheck (cihaz-basi)
+        # + kredi + ASAGIDAKI email/domain backstop'u; per-IP zararli, cikarilir. Web'de KALIR.
+        if not skip_ip:
+            _check(f"ip:{client_ip}", IP_LIMIT, IP_WINDOW_SECONDS)
         _check(f"email:{normalized_email}", EMAIL_LIMIT, EMAIL_WINDOW_SECONDS)
         _check(f"domain:{normalized_domain}", DOMAIN_LIMIT, DOMAIN_WINDOW_SECONDS)
     except RateLimitExceeded as e:
