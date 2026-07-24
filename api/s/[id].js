@@ -36,6 +36,10 @@ export default async function handler(req, res) {
   const q = String(req.query.lang || '').toLowerCase();
   const accept = String(req.headers['accept-language'] || '').toLowerCase();
   const lang = q === 'tr' || q === 'en' ? q : (accept.startsWith('tr') || accept.includes(',tr') ? 'tr' : 'en');
+  // Viral cekirdek: paylasan kullanicinin ?ref kodunu app CTA'sina TASI ki
+  // app.geoni.ai signup'inda attribution yapilabilsin (server-authoritative).
+  const ref = String(req.query.ref || '').toLowerCase().slice(0, 16);
+  const refQS = /^[a-z0-9]{4,16}$/.test(ref) ? `&ref=${ref}` : '';
   const L = lang === 'tr' ? {
     title: `AI Görünürlük Skoru: ${score}/100 — ${label}`,
     desc: "Senin skorun kaç? Markanın, adının veya sitenin ChatGPT, Gemini ve Perplexity'deki görünürlüğünü 60 saniyede ücretsiz ölç.",
@@ -110,7 +114,7 @@ body{min-height:100vh;display:grid;place-items:center;background:#0A0B10;color:#
   <div class="bar"><i></i></div>
   <div class="q">${L.hook}</div>
   <p class="sub">${L.sub}</p>
-  <a class="cta" href="https://app.geoni.ai?utm_source=share&utm_medium=scorecard">${L.cta}</a>
+  <a class="cta" href="https://app.geoni.ai?utm_source=share&utm_medium=scorecard${refQS}">${L.cta}</a>
   <div class="free">${L.free}</div>
 </main>
 </body>

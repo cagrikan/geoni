@@ -156,6 +156,8 @@ async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str
                 # (C) Ayni hedefin ESKI tam raporunu hemen sadelestir (skor kalir).
                 if user_id:
                     asyncio.create_task(run_audit_retention(user_id))
+                    # Viral cekirdek Faz 2: davetli tarama tamamlayinca +1/+1 (idempotent, tek sefer).
+                    asyncio.create_task(grant_referral_reward(user_id))
                 return True
             logger.warning(f"Supabase audit save failed: {r.status_code} {r.text[:200]}")
     except Exception as e:
@@ -205,6 +207,8 @@ async def save_brand_check(job_id: str, request_data: dict, result: dict, user_i
                 # (C) Ayni kisi/marka'nin ESKI tam raporunu hemen sadelestir.
                 if user_id:
                     asyncio.create_task(run_audit_retention(user_id))
+                    # Viral cekirdek Faz 2: davetli tarama tamamlayinca +1/+1 (idempotent, tek sefer).
+                    asyncio.create_task(grant_referral_reward(user_id))
                 return True
             logger.warning(f"Supabase brand check save failed: {r.status_code} {r.text[:200]}")
     except Exception as e:
@@ -1844,6 +1848,48 @@ async def set_referred_by(user_id: str, ref_code: str) -> dict:
     except Exception as e:
         logger.warning(f"set_referred_by error: {e}")
     return {"ok": False, "reason": "hata"}
+
+
+async def grant_referral_reward(user_id: str) -> None:
+    """Faz 2 ODUL: davet edilen kullanici bir tarama TAMAMLAYINCA davetli +1 ve
+    davet eden +1 (hediye tarama). Idempotent — apply_credit_change p_external_id
+    UNIQUE, davetli basina TEK sefer; her tarama tamamlanmasinda cagrilabilir ama
+    yalniz bir kez oder. Referral yoksa no-op. Taramayi ASLA dusurmez (sessiz).
+    Fraud: referred_by tek-atim + self-ref set asamasinda engelli; burada da (savunma)
+    referrer==user ise no-op."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
+        return
+    try:
+        async with httpx.AsyncClient() as client:
+            pr = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{user_id}&select=referred_by",
+                headers=_headers(), timeout=10,
+            )
+            rows = pr.json() if pr.status_code == 200 else []
+            referrer_id = rows[0].get("referred_by") if rows else None
+            if not referrer_id or referrer_id == user_id:
+                return  # referral yok ya da (savunma) self -> odul yok
+            grants = (
+                (user_id,     f"ref_reward_invitee:{user_id}", "Referral: davetli bonusu (+1 tarama)"),
+                (referrer_id, f"ref_reward_inviter:{user_id}", "Referral: davet bonusu (+1 tarama)"),
+            )
+            for uid, ext, desc in grants:
+                try:
+                    rpc = await client.post(
+                        f"{SUPABASE_URL}/rest/v1/rpc/apply_credit_change",
+                        headers=_headers(),
+                        json={
+                            "p_user_id": uid, "p_amount": 1, "p_type": "referral_reward",
+                            "p_description": desc, "p_channel": "referral",
+                            "p_external_id": ext, "p_gifted_delta": 1, "p_idempotent": True,
+                        }, timeout=10,
+                    )
+                    if rpc.status_code != 200:
+                        logger.warning(f"grant_referral_reward rpc {rpc.status_code} uid={uid}: {rpc.text[:150]}")
+                except Exception as e:
+                    logger.warning(f"grant_referral_reward grant error uid={uid}: {e}")
+    except Exception as e:
+        logger.warning(f"grant_referral_reward error: {e}")
 
 
 async def admin_set_is_admin(user_id: str, is_admin_flag: bool) -> bool:
