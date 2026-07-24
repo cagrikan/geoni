@@ -1483,6 +1483,17 @@ async def check_brand_recall(
     lang: str = "tr",
     custom_queries: list | None = None,  # kullanici tanimli SOV sorgulari (izleme listesi)
     social: bool = False,  # sosyal mod: SOV rakipleri firma degil @handle/hesap olarak cikar
+    on_partial=None,  # Fable 2026-07-24 (progressive result): optional async callable(dict)
+    # -> None. SOV (ChatGPT/Claude web-arama motorlari) tek basina 10-60sn+ surebiliyor
+    # ve musteriye HISSETTIRILEN bekleme suresinin buyuk kismini olusturuyor. SOV zaten
+    # Step 1d'de erken/paralel baslatiliyor (bkz. yukarida); burada EK olarak, 4-model
+    # recall + judge biter bitmez (SOV DAHA BITMEDEN) verilen varsa cagirilir — SOV'suz
+    # (checked=False, mevcut "SOV olculemedi" yolu -> agirliklar otomatik renormalize
+    # olur, YENI formul YOK) TAM SEKILLI bir ara sonuc uretilip iletilir. Cagiran
+    # (main.py) bunu musteriye HIZLI goster + SOV bitince GUNCELLE icin kullanir.
+    # SKOR FORMULU DEGISMEDI: partial de final de AYNI _finalize() fonksiyonunu kullanir,
+    # yalniz sov_result farkli (bos vs dolu) -> partial SADECE "SOV mevcut degilken" hali,
+    # zaten var olan bir kod yolu (bkz. sov_checked kontrolu asagida).
 ) -> dict:
     """
     Full brand recall pipeline (v2-judge):
@@ -1833,7 +1844,184 @@ async def check_brand_recall(
                 model_results[key]["bilgi_izi"] = judge.get("bilgi_izi", "belirsiz")
 
     # Step 3.5: Share of Voice — sov_task Step 1d'de ERKEN baslatildi (5-model
-    # recall + judge ile PARALEL kosuyor); burada yalnizca SONUCU beklenir.
+    # recall + judge ile PARALEL kosuyor). Progressive result (Fable 2026-07-24):
+    # on_partial verildiyse SOV'u BEKLEMEDEN, judge SONUCUYLA HEMEN tam sekilli bir
+    # ara sonuc uretilir (sov_result bos/checked=False — asagidaki _finalize zaten
+    # bu durumu DESTEKLIYOR, ayri bir kod yolu degil). Musteri boylece ~SOV suresi
+    # kadar (olcumde 2026-07-24: ~60-70sn) daha erken skor gorur; SOV bitince final
+    # (SOV dahil) sonuc ayni fonksiyonla yeniden uretilip cagirana iletilir.
+    def _finalize(sov_topic, sov_result, topics):
+        # Step 4: Genel skor
+        model_keys = list(model_raw.keys())
+        # SHADOW motorlar (grok) recognition_count'a KATILMAZ — yoksa "3/4" -> "3/5"
+        # olur ve F-O3 quality gate (recognition_count==0) kayar = canli skor etkisi.
+        recognition_count = sum(1 for k, v in model_results.items() if v.get("recognized") and k not in SHADOW_ENGINES)
+
+        if recognition_count == 0:
+            # F-O3 (Fable 2026-07-19): HICBIR motor tanimıyorsa "bilmiyorum" yanitlarinin
+            # uzunluk/dogruluk kalitesi SKOR URETMEMELI. Eskiden uydurma/taninmayan hesap
+            # quality bileseninden (0.10-0.15 agirlik) 10-13/100 taban skoru aliyordu.
+            quality_score = 0.0
+        elif dogruluk_values:
+            quality_score = sum(dogruluk_values) / len(dogruluk_values)
+        else:
+            # SIFIR-ETKI: judge tamamen dustugunde quality fallback CANLI skoru etkiler -> grok haric.
+            quality_score = sum(_length_band_score(t) for t in live_texts.values()) / max(len(live_texts), 1)
+
+        # Fable #8: cikarilmis sov_topic kullan (kullanici konu girmediyse ham topic bostu ->
+        # relevance zayif isim-varligi yoluna dusuyordu; sov_topic zaten LLM ile cikarildi).
+        relevance_score = _topic_relevance_score(web_results, name, sov_topic or topic)
+
+        sov_checked = bool(sov_result.get("checked")) and sov_result.get("score") is not None
+        # F-O2 (Fable 2026-07-19): sosyal skorda SOV %55 agirlikli. Nis KULLANICI tarafindan
+        # verilmediyse SOV, oto-tahmin nisle kosuluyor -> guvenilmez (or. Cristiano nissiz 37,
+        # legacy 77 + 4/4 taniniyor). Cozum: nis yoksa (a) needs_niche isareti + (b) guvenilmez
+        # oto-SOV'u manşete 0.55 agirlikla KATMA -> recall-agirlikli skor. Kullanici nis girince
+        # tam SOV-agirlikli skor gelir. has_usable_topic'e gore degil, nis SAGLANDI MI'ya bakilir.
+        niche_provided = bool((topic or "").strip()) or bool(custom_queries)
+        needs_niche = bool(social and not niche_provided)
+        if social and sov_checked and not needs_niche:
+            base_weights = WEIGHTS_SOCIAL
+        elif sov_checked and not needs_niche:
+            base_weights = WEIGHTS_SOV
+        else:
+            base_weights = WEIGHTS
+        # A5+Q2: olculemeyen (API hatasi) motorun payini SADECE olculen motorlar
+        # arasinda dagit; model grubu toplam payi (M) sabit kalir. quality/topic/sov
+        # agirliklari DOKUNULMAZ — dusen bir motor SOV'u/kaliteyi daha onemli yapmaz.
+        # "olculemedi" != "gorunmuyor" (kesintide skor sebepsiz dusmesin).
+        model_w = {k: base_weights[k] for k in model_keys}
+        measured = [k for k in model_keys if model_raw[k].get("measured", True)]
+        M = sum(model_w.values())
+        avail = sum(model_w[k] for k in measured)
+        eff_model = {k: model_w[k] * (M / avail) for k in measured} if avail > 0 else {}
+        # F-O2 REGRESYON FIX (Fable re-test 2026-07-19): needs_niche dalinda base_weights=WEIGHTS
+        # secilir ve WEIGHTS'te 'share_of_voice' YOKTUR; sov_checked=true iken kosulsuz
+        # base_weights["share_of_voice"] KeyError -> 500 (nissiz+taninan sosyal tarama coker).
+        # sov_weight, share_of_voice YOKSA 0 olur: hem KeyError imkansiz hem SOV manşete
+        # katilmaz (F-O2 niyeti: nis yoksa recall-agirlikli skor).
+        sov_weight = base_weights.get("share_of_voice", 0.0)
+        _overall = (
+            sum(per_model_final_score[k] * eff_model.get(k, 0.0) for k in model_keys)
+            + quality_score * base_weights["response_quality"]
+            + relevance_score * base_weights["topic_relevance"]
+        )
+        if sov_checked and sov_weight:
+            _overall += sov_result["score"] * sov_weight
+        overall_score = int(round(_overall))
+
+        # ---- GOLGE SKOR (Grup B faz-1) — manseti DEGISTIRMEZ, score_shadow olarak
+        # saklanir. B7: per_model_shadow_score kademeli tavan tasir. B6: quality
+        # (dogruluk ort.) cift-sayim payi modellere verilir (quality kanalindan
+        # cikarilir). v4 ile dagilim karsilastirilip stabil olunca faz-2'de gecirilir.
+        _qw = base_weights.get("response_quality", 0.0)
+        eff_shadow = {k: model_w[k] * ((M + _qw) / avail) for k in measured} if avail > 0 else {}
+        _shadow = (
+            sum(per_model_shadow_score[k] * eff_shadow.get(k, 0.0) for k in model_keys)
+            + relevance_score * base_weights["topic_relevance"]
+        )
+        if sov_checked and sov_weight:
+            _shadow += sov_result["score"] * sov_weight
+        score_shadow = int(round(_shadow))
+
+        # Karsilastirma icin eski (legacy) skor da hesaplanir. SIFIR-ETKI: score_legacy
+        # DONDURULMUS v3 referansi -> golge motor ortalamayi kaydirmasin (grok haric).
+        legacy_quality_score = sum(_length_band_score(t) for t in live_texts.values()) / max(len(live_texts), 1)
+        legacy_overall_score = int(round(
+            sum(per_model_legacy_score[k] * OLD_WEIGHTS[k] for k in model_keys) +
+            legacy_quality_score * OLD_WEIGHTS["response_quality"] +
+            relevance_score * OLD_WEIGHTS["topic_relevance"]
+        ))
+
+        score_breakdown = {
+            "claude":         round(per_model_final_score["claude"], 1),
+            "chatgpt":        round(per_model_final_score["openai"], 1),
+            "gemini":         round(per_model_final_score["gemini"], 1),
+            "perplexity":     round(per_model_final_score["perplexity"], 1),
+            "yanit_kalitesi": round(quality_score, 1),
+            "konu_uyumu":     round(relevance_score, 1),
+            **({"kategori_gorunurlugu": round(sov_result["score"], 1)} if sov_checked and sov_weight else {}),
+        }
+
+        # recognition_count yukarida (F-O3 skor tabani) hesaplandi — tek kaynak.
+        raw_parts = []
+        for key in model_keys:
+            if key in SHADOW_ENGINES:
+                continue  # golge motor ham yaniti raw_list'e girmez
+            resp = model_raw[key]["representative_text"]
+            if resp:
+                via = " (web verisiyle)" if model_raw[key]["via_web"] else ""
+                raw_parts.append(f"[{display_names[key]}{via}]\n{resp}")
+        raw_list = "\n\n".join(raw_parts) if raw_parts else None
+
+        logger.info(
+            f"Brand recall for '{name}': score={overall_score} (legacy={legacy_overall_score}), "
+            f"{recognition_count}/{len([k for k in model_keys if k not in SHADOW_ENGINES])} models, {len(web_results)} web results, "
+            f"judged_models={len(dogruluk_values)}/{len(model_keys)}, "
+            f"sov={'%s/%s' % (sov_result.get('mention_count'), sov_result.get('query_count')) if sov_checked else 'n/a'}"
+        )
+
+        return {
+            "name": name,  # scoring.py otorite kontrolu (Wikipedia/Wikidata) icin
+            "recognized": recognition_count > 0,
+            "recognition_count": recognition_count,
+            "score": overall_score,
+            "score_legacy": legacy_overall_score,
+            "score_shadow": score_shadow,  # Grup B faz-1 golge skor (B6+B7); manset degil
+            "scoring_version": SCORING_VERSION,
+            "score_breakdown": score_breakdown,
+            "sov": sov_result,
+            # T2: cikarilan topic'i (sov_topic) DONDUR ki kayda islensin. Eskiden
+            # orijinal (cogu kez bos) topic donuyordu -> DB'de bos kaliyor, izleme
+            # her seferinde sifirdan cikarip oynaklik+maliyet uretiyordu (12/61 bilmecesi).
+            "topic": sov_topic or topic,
+            "raw_list": raw_list,
+            "model_results": model_results,
+            "google_result_count": len(web_results),
+            "web_results": web_results,
+            "performing_topics": topics["performing_topics"],
+            "opportunity_topics": topics["opportunity_topics"],
+            # Report 18 (sosyal): cozulen kimlik ("AI seni soyle taniyor" + viral) ve
+            # nis-eksik bayragi (UI "nis gir, olcelim" akisi). Web/marka modunda None/False.
+            "resolved_identity": resolved_identity,
+            "needs_niche": needs_niche,
+            # A4-6 (QA 2026-07-19): tarama telemetrisi — result_json'a gomulur ki
+            # "sessiz bozulma" SQL'le izlenebilsin (migration yok). competitors_empty /
+            # engines_measured=0 gibi sinyaller determinizm/saglayici-kesinti tartismalarini
+            # "yeniden kos ve gozle" yerine veriyle cevaplar (canary bunlari kontrol eder).
+            "telemetry": {
+                "engines_measured": sum(1 for m in model_results.values()
+                                        if isinstance(m, dict) and m.get("recognized") is not None),
+                "sov_checked": sov_checked,
+                "competitors_count": len(sov_result.get("competitors") or []),
+                "competitors_source": sov_result.get("competitors_source", "sov"),
+                "competitors_empty": not bool(sov_result.get("competitors")),
+                "resolved_identity_ok": bool(resolved_identity),
+                "web_results": len(web_results),
+                "web_search_failed": bool(web_search_failed),
+            },
+            # F-YUKSEK-4: hicbir motor olculemedi (tumu API hatasi) VE SOV de yoksa
+            # bu tarama guvenilir degil. Eskiden kosulsuz True doner, ~0 skor
+            # kaliciya (izleme/paylasim karti dahil) yazilirdi. checked=False ile
+            # scoring.py 5-boyutlu fallback'e duser ("olculemedi" != "gorunmuyor").
+            "checked": bool(measured) or sov_checked,
+        }
+
+    if on_partial is not None:
+        try:
+            _partial_sov = {"checked": False, "score": None, "mention_count": 0, "query_count": 0,
+                            "queries": [], "competitors": [], "engines_used": [], "custom_queries_used": False,
+                            "sources": [], "own_cited_count": 0, "citation_gap": [],
+                            "diagnostics": {"citation_gap_domains": 0, "citation_gap_examples": [],
+                                           "citation_weighting": False, "avg_position": None,
+                                           "position_measured": False}}
+            _partial_result = _finalize(topic, _partial_sov, {"performing_topics": [], "opportunity_topics": []})
+            _partial_result["sov_pending"] = True  # client'a: SOV arka planda hala hesaplaniyor
+            await on_partial(_partial_result)
+        except Exception as e:
+            # Ara sonuc en kotu ihtimalle GEC gelir, hic gelmemesi taramayi BOZMAMALI.
+            logger.warning(f"on_partial callback basarisiz (yok sayildi, tarama devam ediyor): {e}")
+
     # Topic-gen (musteriye gorunur performing/opportunity_topics) SOV ile paralel
     # calisir; golge motor metni bağlama girmesin (live_texts, grok haric).
     topics_task = _generate_brand_topics(name, topic, web_results, live_texts,
@@ -1859,161 +2047,9 @@ async def check_brand_recall(
             sov_result["competitors"] = merged[:5]
             sov_result["competitors_source"] = "opportunity_topics"
 
-    # Step 4: Genel skor
-    model_keys = list(model_raw.keys())
-    # SHADOW motorlar (grok) recognition_count'a KATILMAZ — yoksa "3/4" -> "3/5"
-    # olur ve F-O3 quality gate (recognition_count==0) kayar = canli skor etkisi.
-    recognition_count = sum(1 for k, v in model_results.items() if v.get("recognized") and k not in SHADOW_ENGINES)
-
-    if recognition_count == 0:
-        # F-O3 (Fable 2026-07-19): HICBIR motor tanimıyorsa "bilmiyorum" yanitlarinin
-        # uzunluk/dogruluk kalitesi SKOR URETMEMELI. Eskiden uydurma/taninmayan hesap
-        # quality bileseninden (0.10-0.15 agirlik) 10-13/100 taban skoru aliyordu.
-        quality_score = 0.0
-    elif dogruluk_values:
-        quality_score = sum(dogruluk_values) / len(dogruluk_values)
-    else:
-        # SIFIR-ETKI: judge tamamen dustugunde quality fallback CANLI skoru etkiler -> grok haric.
-        quality_score = sum(_length_band_score(t) for t in live_texts.values()) / max(len(live_texts), 1)
-
-    # Fable #8: cikarilmis sov_topic kullan (kullanici konu girmediyse ham topic bostu ->
-    # relevance zayif isim-varligi yoluna dusuyordu; sov_topic zaten LLM ile cikarildi).
-    relevance_score = _topic_relevance_score(web_results, name, sov_topic or topic)
-
-    sov_checked = bool(sov_result.get("checked")) and sov_result.get("score") is not None
-    # F-O2 (Fable 2026-07-19): sosyal skorda SOV %55 agirlikli. Nis KULLANICI tarafindan
-    # verilmediyse SOV, oto-tahmin nisle kosuluyor -> guvenilmez (or. Cristiano nissiz 37,
-    # legacy 77 + 4/4 taniniyor). Cozum: nis yoksa (a) needs_niche isareti + (b) guvenilmez
-    # oto-SOV'u manşete 0.55 agirlikla KATMA -> recall-agirlikli skor. Kullanici nis girince
-    # tam SOV-agirlikli skor gelir. has_usable_topic'e gore degil, nis SAGLANDI MI'ya bakilir.
-    niche_provided = bool((topic or "").strip()) or bool(custom_queries)
-    needs_niche = bool(social and not niche_provided)
-    if social and sov_checked and not needs_niche:
-        base_weights = WEIGHTS_SOCIAL
-    elif sov_checked and not needs_niche:
-        base_weights = WEIGHTS_SOV
-    else:
-        base_weights = WEIGHTS
-    # A5+Q2: olculemeyen (API hatasi) motorun payini SADECE olculen motorlar
-    # arasinda dagit; model grubu toplam payi (M) sabit kalir. quality/topic/sov
-    # agirliklari DOKUNULMAZ — dusen bir motor SOV'u/kaliteyi daha onemli yapmaz.
-    # "olculemedi" != "gorunmuyor" (kesintide skor sebepsiz dusmesin).
-    model_w = {k: base_weights[k] for k in model_keys}
-    measured = [k for k in model_keys if model_raw[k].get("measured", True)]
-    M = sum(model_w.values())
-    avail = sum(model_w[k] for k in measured)
-    eff_model = {k: model_w[k] * (M / avail) for k in measured} if avail > 0 else {}
-    # F-O2 REGRESYON FIX (Fable re-test 2026-07-19): needs_niche dalinda base_weights=WEIGHTS
-    # secilir ve WEIGHTS'te 'share_of_voice' YOKTUR; sov_checked=true iken kosulsuz
-    # base_weights["share_of_voice"] KeyError -> 500 (nissiz+taninan sosyal tarama coker).
-    # sov_weight, share_of_voice YOKSA 0 olur: hem KeyError imkansiz hem SOV manşete
-    # katilmaz (F-O2 niyeti: nis yoksa recall-agirlikli skor).
-    sov_weight = base_weights.get("share_of_voice", 0.0)
-    _overall = (
-        sum(per_model_final_score[k] * eff_model.get(k, 0.0) for k in model_keys)
-        + quality_score * base_weights["response_quality"]
-        + relevance_score * base_weights["topic_relevance"]
-    )
-    if sov_checked and sov_weight:
-        _overall += sov_result["score"] * sov_weight
-    overall_score = int(round(_overall))
-
-    # ---- GOLGE SKOR (Grup B faz-1) — manseti DEGISTIRMEZ, score_shadow olarak
-    # saklanir. B7: per_model_shadow_score kademeli tavan tasir. B6: quality
-    # (dogruluk ort.) cift-sayim payi modellere verilir (quality kanalindan
-    # cikarilir). v4 ile dagilim karsilastirilip stabil olunca faz-2'de gecirilir.
-    _qw = base_weights.get("response_quality", 0.0)
-    eff_shadow = {k: model_w[k] * ((M + _qw) / avail) for k in measured} if avail > 0 else {}
-    _shadow = (
-        sum(per_model_shadow_score[k] * eff_shadow.get(k, 0.0) for k in model_keys)
-        + relevance_score * base_weights["topic_relevance"]
-    )
-    if sov_checked and sov_weight:
-        _shadow += sov_result["score"] * sov_weight
-    score_shadow = int(round(_shadow))
-
-    # Karsilastirma icin eski (legacy) skor da hesaplanir. SIFIR-ETKI: score_legacy
-    # DONDURULMUS v3 referansi -> golge motor ortalamayi kaydirmasin (grok haric).
-    legacy_quality_score = sum(_length_band_score(t) for t in live_texts.values()) / max(len(live_texts), 1)
-    legacy_overall_score = int(round(
-        sum(per_model_legacy_score[k] * OLD_WEIGHTS[k] for k in model_keys) +
-        legacy_quality_score * OLD_WEIGHTS["response_quality"] +
-        relevance_score * OLD_WEIGHTS["topic_relevance"]
-    ))
-
-    score_breakdown = {
-        "claude":         round(per_model_final_score["claude"], 1),
-        "chatgpt":        round(per_model_final_score["openai"], 1),
-        "gemini":         round(per_model_final_score["gemini"], 1),
-        "perplexity":     round(per_model_final_score["perplexity"], 1),
-        "yanit_kalitesi": round(quality_score, 1),
-        "konu_uyumu":     round(relevance_score, 1),
-        **({"kategori_gorunurlugu": round(sov_result["score"], 1)} if sov_checked and sov_weight else {}),
-    }
-
-    # recognition_count yukarida (F-O3 skor tabani) hesaplandi — tek kaynak.
-    raw_parts = []
-    for key in model_keys:
-        if key in SHADOW_ENGINES:
-            continue  # golge motor ham yaniti raw_list'e girmez
-        resp = model_raw[key]["representative_text"]
-        if resp:
-            via = " (web verisiyle)" if model_raw[key]["via_web"] else ""
-            raw_parts.append(f"[{display_names[key]}{via}]\n{resp}")
-    raw_list = "\n\n".join(raw_parts) if raw_parts else None
-
-    logger.info(
-        f"Brand recall for '{name}': score={overall_score} (legacy={legacy_overall_score}), "
-        f"{recognition_count}/{len([k for k in model_keys if k not in SHADOW_ENGINES])} models, {len(web_results)} web results, "
-        f"judged_models={len(dogruluk_values)}/{len(model_keys)}, "
-        f"sov={'%s/%s' % (sov_result.get('mention_count'), sov_result.get('query_count')) if sov_checked else 'n/a'}"
-    )
-
-    return {
-        "name": name,  # scoring.py otorite kontrolu (Wikipedia/Wikidata) icin
-        "recognized": recognition_count > 0,
-        "recognition_count": recognition_count,
-        "score": overall_score,
-        "score_legacy": legacy_overall_score,
-        "score_shadow": score_shadow,  # Grup B faz-1 golge skor (B6+B7); manset degil
-        "scoring_version": SCORING_VERSION,
-        "score_breakdown": score_breakdown,
-        "sov": sov_result,
-        # T2: cikarilan topic'i (sov_topic) DONDUR ki kayda islensin. Eskiden
-        # orijinal (cogu kez bos) topic donuyordu -> DB'de bos kaliyor, izleme
-        # her seferinde sifirdan cikarip oynaklik+maliyet uretiyordu (12/61 bilmecesi).
-        "topic": sov_topic or topic,
-        "raw_list": raw_list,
-        "model_results": model_results,
-        "google_result_count": len(web_results),
-        "web_results": web_results,
-        "performing_topics": topics["performing_topics"],
-        "opportunity_topics": topics["opportunity_topics"],
-        # Report 18 (sosyal): cozulen kimlik ("AI seni soyle taniyor" + viral) ve
-        # nis-eksik bayragi (UI "nis gir, olcelim" akisi). Web/marka modunda None/False.
-        "resolved_identity": resolved_identity,
-        "needs_niche": needs_niche,
-        # A4-6 (QA 2026-07-19): tarama telemetrisi — result_json'a gomulur ki
-        # "sessiz bozulma" SQL'le izlenebilsin (migration yok). competitors_empty /
-        # engines_measured=0 gibi sinyaller determinizm/saglayici-kesinti tartismalarini
-        # "yeniden kos ve gozle" yerine veriyle cevaplar (canary bunlari kontrol eder).
-        "telemetry": {
-            "engines_measured": sum(1 for m in model_results.values()
-                                    if isinstance(m, dict) and m.get("recognized") is not None),
-            "sov_checked": sov_checked,
-            "competitors_count": len(sov_result.get("competitors") or []),
-            "competitors_source": sov_result.get("competitors_source", "sov"),
-            "competitors_empty": not bool(sov_result.get("competitors")),
-            "resolved_identity_ok": bool(resolved_identity),
-            "web_results": len(web_results),
-            "web_search_failed": bool(web_search_failed),
-        },
-        # F-YUKSEK-4: hicbir motor olculemedi (tumu API hatasi) VE SOV de yoksa
-        # bu tarama guvenilir degil. Eskiden kosulsuz True doner, ~0 skor
-        # kaliciya (izleme/paylasim karti dahil) yazilirdi. checked=False ile
-        # scoring.py 5-boyutlu fallback'e duser ("olculemedi" != "gorunmuyor").
-        "checked": bool(measured) or sov_checked,
-    }
+    # Final: ayni _finalize() ile (partial'da kullanilan formul BIREBIR ayni,
+    # yalniz gercek sov_result/topics ile) — score formulunde SIFIR fark.
+    return _finalize(sov_topic, sov_result, topics)
 
 
 async def infer_brand_identity(domain: str, pages: list) -> dict:

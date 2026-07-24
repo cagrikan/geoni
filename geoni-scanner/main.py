@@ -297,6 +297,77 @@ async def set_job_status(job_id: str, status: str):
         await update_audit_status(job_id, status)
 
 
+async def _build_audit_result_payload(request: AuditRequest, crawl_result: dict, indexing_status: dict,
+                                       brand_recall_result: dict, score_result: dict, topics: dict,
+                                       identity: dict) -> dict:
+    """Musteriye donen tarama sonucunun TEK insa noktasi (Fable 2026-07-24).
+    Progressive result oncesi bu inline'di ve TEK YERDE olusuyordu (final); artik
+    hem ARA (partial, SOV bekleniyorken) hem FINAL sonuc AYNI fonksiyonla kurulur
+    -> iki payload asla birbirinden SAPMAZ (kopya-yapistir riski yok)."""
+    return {
+        "domain": request.domain,
+        "lang": request.lang or "tr",  # BUG-5: schema inLanguage doğru dil (hep "tr" değil)
+        "score": score_result["overall_score"],
+        "score_breakdown": score_result["breakdown"],
+        "scoring_version": score_result.get("scoring_version"),
+        "weights_used": score_result.get("weights_used"),
+        "diagnostics": score_result.get("diagnostics"),
+        "total_pages": crawl_result["total_pages"],
+        "sitemap_found": crawl_result.get("sitemap_found"),  # B-4: llms/robots sitemap kanıtı
+        "site_assets": crawl_result.get("site_assets"),  # P1: schema logo/sameAs
+        "indexed_pages": indexing_status["indexed_count"],
+        "platforms": {
+            # Not: bu alanlar artik ARAMA/ALINTILANMA botlarina (OAI-SearchBot,
+            # ChatGPT-User, Claude-SearchBot, PerplexityBot...) gore hesaplaniyor,
+            # yalnizca egitim crawler'larina (GPTBot vb.) gore degil (Madde 2.5).
+            "chatgpt": indexing_status.get("openai", False),
+            "anthropic": indexing_status.get("anthropic", False),
+            "perplexity": indexing_status.get("perplexity", False),
+            "google": indexing_status.get("google", 0),
+        },
+        "bot_access": indexing_status.get("bot_access", {}),
+        "llms_txt": indexing_status.get("llms_txt", False),
+        "top_topics": topics["performing_topics"],
+        "opportunities": topics["opportunity_topics"],
+        # llms.txt otomasyonu (bilet sistemi) icin sayfa ozeti - sadece
+        # baslik+aciklamasi olan sayfalar, ilk 20 - ham crawl_result'un
+        # tamami degil, uzun taramalarda result_json'u sismesin diye.
+        "pages": [
+            {"url": p.get("url"), "title": p.get("title"), "meta_description": p.get("meta_description")}
+            for p in crawl_result.get("pages", []) if p.get("title")
+        ][:20],
+        "brand_recall": {
+            "checked": brand_recall_result.get("checked", False),
+            "recognized": brand_recall_result.get("recognized", False),
+            "score": brand_recall_result.get("score"),
+            "score_legacy": brand_recall_result.get("score_legacy"),
+            "scoring_version": brand_recall_result.get("scoring_version"),
+            "inferred_name": identity["name"],
+            "inferred_topic": identity["topic"],
+            # B3 (derin test 2026-07-22): zengin teshis audits'e yaziliyordu ATILIYORDU
+            # -> "neden bu skor" sorusu kayitlardan cevaplanamiyordu. model_results
+            # (motor bazli dogruluk/celiski/uydurma), score_breakdown ve telemetry
+            # (sessiz bozulmayi SQL'le izlemek icin) artik result_json'a gomulur.
+            # (retention zaten superseded/eski result_json'lari sadelestiriyor.)
+            "model_results": brand_recall_result.get("model_results"),
+            "score_breakdown": brand_recall_result.get("score_breakdown"),
+            "telemetry": brand_recall_result.get("telemetry"),
+        },
+        # v3: Share of Voice — markayi bilmeyen kullanicinin kategori
+        # sorgularinda gorunurluk + ayni yanitlardan cikarilan rakipler.
+        "sov": brand_recall_result.get("sov"),
+        # Progressive result (Fable 2026-07-24): SOV henuz gelmediyse True.
+        # Ara (partial) yazimda True, final yazimda alan hic yoktur/False.
+        "sov_pending": bool(brand_recall_result.get("sov_pending")),
+        # Skor istikrari: yumusatilmis skor + degisim kaynagi (oynaklik notu)
+        "stability": await build_stability("web", request.domain,
+                                           score_result["overall_score"],
+                                           score_result["breakdown"],
+                                           score_result.get("weights_used")),
+        "created_at": datetime.now().isoformat()
+    }
+
+
 async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
     queue = audit_events.get(job_id)
     msgs = AUDIT_PROGRESS_MESSAGES.get(request.lang, AUDIT_PROGRESS_MESSAGES["tr"])
@@ -365,7 +436,35 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
             generate_topics_and_opportunities(request.domain, crawl_result["pages"], request.lang or "tr")
         )
         _t_identity = time.perf_counter()
-        brand_recall_result = await check_brand_recall(identity["name"], identity["topic"], on_progress=emit, lang=request.lang, custom_queries=request.custom_queries, website=request.domain)
+
+        # Progressive result (Fable 2026-07-24): SOV (ChatGPT/Claude web-arama
+        # motorlari) 4-model recall+judge'dan cok daha yavas (olcum: recall+sov
+        # ~77sn'nin buyuk kismi SOV) ve musteri bekleme ekraninda bunu HISSEDIYOR.
+        # check_brand_recall SOV'u zaten arka planda paralel kosturuyor (bkz.
+        # brand_recall.py Step 1d); bu callback SOV DAHA BITMEDEN (recall+judge
+        # biter bitmez) TAM SEKILLI bir ara sonucu DB'ye yazar (status='partial').
+        # Ayni skor formulu (_finalize), yalniz sov_result bos -> agirliklar
+        # otomatik renormalize olur (zaten var olan "SOV olculemedi" yolu, YENI
+        # formul YOK). Client (partial'i tuketmeye hazirsa) skoru saniyeler icinde
+        # gorur; SOV bitince asagidaki normal 'complete' yazimi ustune yazar.
+        # Callback hata verirse (network/DB) TARAMAYI DUSURMEZ — sadece partial
+        # gec/hic gelmez, final akis degismez (bkz. brand_recall.py'deki try/except).
+        async def _on_partial(partial_brand_recall_result: dict):
+            partial_score_result = await compute_ai_visibility_score(
+                crawl_result, indexing_status, partial_brand_recall_result)
+            partial_topics = topics_task.result() if topics_task.done() else {
+                "performing_topics": [], "opportunity_topics": []}
+            partial_payload = await _build_audit_result_payload(
+                request, crawl_result, indexing_status, partial_brand_recall_result,
+                partial_score_result, partial_topics, identity)
+            jobs_store[job_id].update({"status": "partial", "result": partial_payload})
+            if sqs_enabled():
+                await update_audit_status(job_id, "partial", result=partial_payload,
+                                          score=partial_payload.get("score"))
+            logger.info(f"PARTIAL_READY job={job_id} domain={request.domain} "
+                        f"t={time.perf_counter() - _t0:.1f}s score={partial_payload.get('score')}")
+
+        brand_recall_result = await check_brand_recall(identity["name"], identity["topic"], on_progress=emit, lang=request.lang, custom_queries=request.custom_queries, website=request.domain, on_partial=_on_partial)
         emit(msgs["scoring"])
         _t_recall = time.perf_counter()
 
@@ -382,65 +481,9 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
             f"total={_t_topics - _t0:.1f}s"
         )
 
-        result_payload = {
-            "domain": request.domain,
-            "lang": request.lang or "tr",  # BUG-5: schema inLanguage doğru dil (hep "tr" değil)
-            "score": score_result["overall_score"],
-            "score_breakdown": score_result["breakdown"],
-            "scoring_version": score_result.get("scoring_version"),
-            "weights_used": score_result.get("weights_used"),
-            "diagnostics": score_result.get("diagnostics"),
-            "total_pages": crawl_result["total_pages"],
-            "sitemap_found": crawl_result.get("sitemap_found"),  # B-4: llms/robots sitemap kanıtı
-            "site_assets": crawl_result.get("site_assets"),  # P1: schema logo/sameAs
-            "indexed_pages": indexing_status["indexed_count"],
-            "platforms": {
-                # Not: bu alanlar artik ARAMA/ALINTILANMA botlarina (OAI-SearchBot,
-                # ChatGPT-User, Claude-SearchBot, PerplexityBot...) gore hesaplaniyor,
-                # yalnizca egitim crawler'larina (GPTBot vb.) gore degil (Madde 2.5).
-                "chatgpt": indexing_status.get("openai", False),
-                "anthropic": indexing_status.get("anthropic", False),
-                "perplexity": indexing_status.get("perplexity", False),
-                "google": indexing_status.get("google", 0),
-            },
-            "bot_access": indexing_status.get("bot_access", {}),
-            "llms_txt": indexing_status.get("llms_txt", False),
-            "top_topics": topics["performing_topics"],
-            "opportunities": topics["opportunity_topics"],
-            # llms.txt otomasyonu (bilet sistemi) icin sayfa ozeti - sadece
-            # baslik+aciklamasi olan sayfalar, ilk 20 - ham crawl_result'un
-            # tamami degil, uzun taramalarda result_json'u sismesin diye.
-            "pages": [
-                {"url": p.get("url"), "title": p.get("title"), "meta_description": p.get("meta_description")}
-                for p in crawl_result.get("pages", []) if p.get("title")
-            ][:20],
-            "brand_recall": {
-                "checked": brand_recall_result.get("checked", False),
-                "recognized": brand_recall_result.get("recognized", False),
-                "score": brand_recall_result.get("score"),
-                "score_legacy": brand_recall_result.get("score_legacy"),
-                "scoring_version": brand_recall_result.get("scoring_version"),
-                "inferred_name": identity["name"],
-                "inferred_topic": identity["topic"],
-                # B3 (derin test 2026-07-22): zengin teshis audits'e yaziliyordu ATILIYORDU
-                # -> "neden bu skor" sorusu kayitlardan cevaplanamiyordu. model_results
-                # (motor bazli dogruluk/celiski/uydurma), score_breakdown ve telemetry
-                # (sessiz bozulmayi SQL'le izlemek icin) artik result_json'a gomulur.
-                # (retention zaten superseded/eski result_json'lari sadelestiriyor.)
-                "model_results": brand_recall_result.get("model_results"),
-                "score_breakdown": brand_recall_result.get("score_breakdown"),
-                "telemetry": brand_recall_result.get("telemetry"),
-            },
-            # v3: Share of Voice — markayi bilmeyen kullanicinin kategori
-            # sorgularinda gorunurluk + ayni yanitlardan cikarilan rakipler.
-            "sov": brand_recall_result.get("sov"),
-            # Skor istikrari: yumusatilmis skor + degisim kaynagi (oynaklik notu)
-            "stability": await build_stability("web", request.domain,
-                                               score_result["overall_score"],
-                                               score_result["breakdown"],
-                                               score_result.get("weights_used")),
-            "created_at": datetime.now().isoformat()
-        }
+        result_payload = await _build_audit_result_payload(
+            request, crawl_result, indexing_status, brand_recall_result,
+            score_result, topics, identity)
 
         jobs_store[job_id].update({
             "status": "complete",
@@ -799,12 +842,22 @@ async def get_audit_status(job_id: str):
             return {"job_id": job_id, "status": "complete", "result": row.get("result_json"), "email_sent": True}
         if row["status"] == "failed":
             raise HTTPException(status_code=500, detail="Audit failed")
+        if row["status"] == "partial":
+            # Progressive result (Fable 2026-07-24): SOV hala hesaplaniyor ama
+            # crawl+recall+judge'a dayali TAM SEKILLI bir ara skor hazir. Eski
+            # client'lar (yalniz status=="complete" kontrol eden) bu dali
+            # SESSIZCE atlar -> davranislari DEGISMEZ, sadece pollemeye devam
+            # ederler. Yeni client'lar result'u hemen gosterip pollemeyi
+            # surdurebilir (result.sov_pending=true -> "SOV hesaplaniyor" rozeti).
+            return {"job_id": job_id, "status": "partial", "result": row.get("result_json"), "email_sent": False}
         return {"job_id": job_id, "status": row["status"], "created_at": row.get("created_at")}
     job = jobs_store[job_id]
     if job["status"] == "complete":
         return {"job_id": job_id, "status": "complete", "result": job["result"], "email_sent": job.get("email_sent", False)}
     elif job["status"] == "failed":
         raise HTTPException(status_code=500, detail=f"Audit failed: {job['error']}")
+    elif job["status"] == "partial":
+        return {"job_id": job_id, "status": "partial", "result": job.get("result"), "email_sent": False}
     else:
         return {"job_id": job_id, "status": job["status"], "created_at": job["created_at"]}
 
