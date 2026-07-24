@@ -23,10 +23,10 @@ logger = logging.getLogger(__name__)
 IP_LIMIT = int(os.environ.get("RATE_LIMIT_IP_COUNT", "5"))
 IP_WINDOW_SECONDS = int(os.environ.get("RATE_LIMIT_IP_WINDOW", "600"))  # 10 min
 
-EMAIL_LIMIT = int(os.environ.get("RATE_LIMIT_EMAIL_COUNT", "2"))
+EMAIL_LIMIT = int(os.environ.get("RATE_LIMIT_EMAIL_COUNT", "15"))
 EMAIL_WINDOW_SECONDS = int(os.environ.get("RATE_LIMIT_EMAIL_WINDOW", "3600"))  # 60 min
 
-DOMAIN_LIMIT = int(os.environ.get("RATE_LIMIT_DOMAIN_COUNT", "2"))
+DOMAIN_LIMIT = int(os.environ.get("RATE_LIMIT_DOMAIN_COUNT", "15"))
 DOMAIN_WINDOW_SECONDS = int(os.environ.get("RATE_LIMIT_DOMAIN_WINDOW", "3600"))  # 60 min
 
 
