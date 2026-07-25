@@ -1786,7 +1786,19 @@ async def check_brand_recall(
             # Q3: yalniz agirligi >0 olan motorlar quality_score'a (dogruluk ort.)
             # girsin; gemini golge modda (weight 0) oldugundan model kanalinda
             # 0'lansa bile quality kanalindan manseti kirletmesin.
-            if WEIGHTS.get(key, 0) > 0:
+            #
+            # Q4 (2026-07-25, kurucu onayli — backtest n=5 gercek tarama): TANIMAYAN
+            # motor da quality'ye giriyordu ve judge "bu kisiyi bilmiyorum" yanitina
+            # YUKSEK dogruluk veriyor (hakli: uydurmuyor). Sonuc TERS TESVIK: gorunmez
+            # olmak gorunurluk skorunu yukseltiyordu (canli ornek: tanimayanlarin
+            # dogrulugu 85, taniyanlarin 7.5 -> kalite 46.3 yerine 7.5 olmaliydi).
+            # F-O3'te (2026-07-19) "hicbiri tanimiyorsa kalite 0" ilkesi kabul edilmisti;
+            # bu, ayni ilkenin KISMI tanima durumu icin tamamlanmasidir.
+            # Neden CIKARIYORUZ (0 saymiyoruz): taninmama zaten model kanalinda
+            # (agirligin ~%80'i) cezalandiriliyor; 0 saymak ayni basarisizligi iki kez
+            # cezalandirir. Quality kanali "anlattiklarinda ne kadar dogru anlatiyorlar"i
+            # olcer. Olculen manset etkisi: medyan -0.6, en kotu -3.9, biri +0.5.
+            if WEIGHTS.get(key, 0) > 0 and data["recognized"]:
                 dogruluk_values.append(dogruluk)
             formulation_scores = []
             shadow_scores = []
