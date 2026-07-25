@@ -121,3 +121,38 @@ def test_self_referral_odul_almaz(monkeypatch):
 def test_referral_yoksa_odul_yok(monkeypatch):
     rpc, pushlar = _odul_calistir(monkeypatch, referrer=None)
     assert rpc == [] and pushlar == []
+
+
+def test_davet_eden_hesabini_silebilir(monkeypatch):
+    """Apple 5.1.1(v): birini DAVET ETMIS kullanici hesabini silebilmeli.
+
+    profiles.referred_by -> profiles(id) FK'si NO ACTION; davet edenin profili
+    silinmeden once davetlilerin isaretcisi NULL'lanmazsa silme FK'ye takilir ve
+    "hesabimi sil" sessizce basarisiz olur. Canli e2e testte yakalandi (2026-07-25).
+    """
+    monkeypatch.setattr(db, "SUPABASE_URL", "http://x", raising=False)
+    monkeypatch.setattr(db, "SUPABASE_SERVICE_KEY", "k", raising=False)
+    cagrilar = {"patch": [], "delete": []}
+
+    class _C:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, url, **kw): return _SahteYanit([])
+        async def post(self, url, **kw): return _SahteYanit({})
+        async def patch(self, url, **kw):
+            cagrilar["patch"].append((url, kw.get("json")))
+            return _SahteYanit({}, 204)
+        async def delete(self, url, **kw):
+            cagrilar["delete"].append(url)
+            return _SahteYanit({}, 204)
+
+    monkeypatch.setattr(db.httpx, "AsyncClient", lambda *a, **k: _C())
+    assert asyncio.run(db.delete_user_account("davet-eden-1")) is True
+
+    temizleme = [(u, b) for u, b in cagrilar["patch"] if "referred_by=eq.davet-eden-1" in u]
+    assert temizleme, "davetlilerin referred_by'i NULL'lanmadi -> FK silmeyi engeller"
+    assert temizleme[0][1] == {"referred_by": None}
+
+    # Sira onemli: isaretci temizligi profil silmeden ONCE olmali.
+    profil_silme = [i for i, u in enumerate(cagrilar["delete"]) if "/profiles?id=eq." in u]
+    assert profil_silme, "profil silinmedi"

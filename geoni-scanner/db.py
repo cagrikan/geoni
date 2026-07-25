@@ -1106,6 +1106,19 @@ async def delete_user_account(user_id: str) -> bool:
                     headers=_headers(), timeout=10)
             except Exception:
                 pass
+            # profiles.referred_by -> profiles(id) FK'si NO ACTION. Bu kullanici
+            # birilerini DAVET ETTIYSE onlarin referred_by'i ona isaret eder ve
+            # profil silme FK'ye takilir -> hesap silinemez (Apple 5.1.1(v) IHLALI:
+            # "uygulama icinden hesap silme" calismaz). Canli e2e testte yakalandi.
+            # Davet edenin hesabi gidince attribution zaten anlamsizlasir; isaretci
+            # temizlenir (odul kayitlari credit_transactions'ta duruyor, kaybolmaz).
+            try:
+                await client.patch(
+                    f"{SUPABASE_URL}/rest/v1/profiles?referred_by=eq.{user_id}",
+                    headers=_headers(), json={"referred_by": None}, timeout=10,
+                )
+            except Exception:
+                pass
             for tbl, col in [
                 ("tickets", "user_id"), ("audits", "user_id"), ("credit_transactions", "user_id"),
                 ("watchlist", "user_id"), ("push_tokens", "user_id"), ("iap_intents", "user_id"),
