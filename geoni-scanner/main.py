@@ -43,7 +43,8 @@ from db import (
     get_credit_packages, record_purchase, get_admin_sales_stats, get_pricing_tiers, add_pricing_tier, delete_pricing_tier,
     get_credit_transaction, transaction_exists, record_refund, get_package_by_apple_product_id, delete_user_account,
     update_user_social, get_share_result, get_ai_friendly_list,
-    get_or_create_referral_code, count_referred, set_referred_by,
+    get_or_create_referral_code, count_referred, set_referred_by, referral_earned,
+    REFERRAL_REWARD_CREDITS,
     get_ticket_type_by_apple_product_id, create_iap_intent, consume_iap_intent, create_paid_ticket,
     missing_service_prerequisites, normalize_domain as normalize_service_domain, DOMAIN_ONLY_SERVICE_KEYS,
     get_manual_cost, set_manual_cost, list_campaigns, create_campaign, delete_campaign,
@@ -1922,14 +1923,20 @@ async def share_card_image(job_id: str, lang: str = "tr"):
 
 @app.get("/api/me/referral")
 async def my_referral(http_request: Request):
-    """Viral cekirdek: kullanicinin referral kodu + getirdigi kisi sayisi.
-    Paylasim kartlari bu kodu ?ref= olarak tasir; davet edilen ilk taramasini
-    yapinca iki tarafa +1 tarama (odul asamasi ayri)."""
+    """Viral cekirdek: kullanicinin referral kodu, getirdigi kisi sayisi, kazandigi
+    kontor ve hazir davet linki. Paylasim kartlari bu kodu ?ref= olarak tasir;
+    davet edilen ILK TARAMASINI tamamlayinca iki tarafa da reward_credits kontor."""
     user_id = await _require_user(http_request)
     code = await get_or_create_referral_code(user_id)
     if not code:
         raise HTTPException(status_code=500, detail="Referans kodu oluşturulamadı, lütfen tekrar deneyin.")
-    return {"code": code, "referred_count": await count_referred(user_id)}
+    return {
+        "code": code,
+        "referred_count": await count_referred(user_id),
+        "earned_credits": await referral_earned(user_id),
+        "reward_credits": REFERRAL_REWARD_CREDITS,
+        "share_url": f"https://app.geoni.ai?ref={code}",
+    }
 
 
 class ReferredByRequest(BaseModel):

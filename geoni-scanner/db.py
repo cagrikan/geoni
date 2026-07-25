@@ -37,6 +37,12 @@ def _headers():
 # eklenerek buyumeye devam eder (kullanici karari, 2026-07-09).
 SCAN_COUNT_DISPLAY_BASE = int(os.environ.get("SCAN_COUNT_DISPLAY_BASE", "1200"))
 
+# Referral odulu (kontor). NEDEN 10: kontor birimi TARAMA DEGIL — web taramasi 5,
+# kisi/marka taramasi 10 kontor. Onceki deger 1'di ve aciklamasi "+1 tarama" diyordu;
+# yani vaadin 1/10'u odeniyordu ve tesvik pratikte sifirdi (kurucu karari 2026-07-25).
+# 10 = tam bir kisi/marka taramasi: davetli ilk taramasini bedavaya getirmis olur.
+REFERRAL_REWARD_CREDITS = int(os.environ.get("REFERRAL_REWARD_CREDITS", "10"))
+
 
 async def get_total_scan_count() -> int:
     """Public aggregate count for the landing page social-proof counter (Madde 3.1)."""
@@ -1809,6 +1815,25 @@ async def count_referred(user_id: str) -> int:
     return 0
 
 
+async def referral_earned(user_id: str) -> int:
+    """Referral'dan kazanilan toplam kontor. Davet kartinda "su ana kadar X kontor
+    kazandin" diye gosterilir — sayi gorunur olmadan dongu kendini beslemiyor."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
+        return 0
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/credit_transactions"
+                f"?user_id=eq.{user_id}&type=eq.referral_reward&select=amount",
+                headers=_headers(), timeout=10,
+            )
+            if r.status_code == 200:
+                return sum(int(x.get("amount") or 0) for x in r.json())
+    except Exception as e:
+        logger.warning(f"referral_earned error: {e}")
+    return 0
+
+
 async def set_referred_by(user_id: str, ref_code: str) -> dict:
     """SERVER-AUTHORITATIVE referral attribution (client asla referred_by yazamaz).
     Guardlar: kod->referrer cozulur; self-referral engeli; YALNIZ referred_by BOS
@@ -1851,12 +1876,15 @@ async def set_referred_by(user_id: str, ref_code: str) -> dict:
 
 
 async def grant_referral_reward(user_id: str) -> None:
-    """Faz 2 ODUL: davet edilen kullanici bir tarama TAMAMLAYINCA davetli +1 ve
-    davet eden +1 (hediye tarama). Idempotent — apply_credit_change p_external_id
-    UNIQUE, davetli basina TEK sefer; her tarama tamamlanmasinda cagrilabilir ama
-    yalniz bir kez oder. Referral yoksa no-op. Taramayi ASLA dusurmez (sessiz).
-    Fraud: referred_by tek-atim + self-ref set asamasinda engelli; burada da (savunma)
-    referrer==user ise no-op."""
+    """Faz 2 ODUL: davet edilen kullanici bir tarama TAMAMLAYINCA iki tarafa da
+    REFERRAL_REWARD_CREDITS (10 kontor = tam bir kisi/marka taramasi) verilir.
+    Idempotent — apply_credit_change p_external_id UNIQUE, davetli basina TEK sefer;
+    her tarama tamamlanmasinda cagrilabilir ama yalniz bir kez oder. Referral yoksa
+    no-op. Taramayi ASLA dusurmez (sessiz).
+    Fraud: odul KAYITTA degil ILK TARAMADA odenir — sahte hesap acmak tek basina
+    para kazandirmaz, gercek bir tarama tamamlamak gerekir; ayrica referred_by
+    tek-atim + self-ref set asamasinda engelli, burada da (savunma) referrer==user
+    ise no-op."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
         return
     try:
@@ -1869,27 +1897,42 @@ async def grant_referral_reward(user_id: str) -> None:
             referrer_id = rows[0].get("referred_by") if rows else None
             if not referrer_id or referrer_id == user_id:
                 return  # referral yok ya da (savunma) self -> odul yok
+            n = REFERRAL_REWARD_CREDITS
             grants = (
-                (user_id,     f"ref_reward_invitee:{user_id}", "Referral: davetli bonusu (+1 tarama)"),
-                (referrer_id, f"ref_reward_inviter:{user_id}", "Referral: davet bonusu (+1 tarama)"),
+                # Aciklama hesap hareketlerinde GORUNUR: arayuzdeki birim adi "token".
+                (user_id,     f"ref_reward_invitee:{user_id}", f"Davet bonusu: hoş geldin (+{n} token)"),
+                (referrer_id, f"ref_reward_inviter:{user_id}", f"Davet bonusu: getirdiğin kişi tarama yaptı (+{n} token)"),
             )
+            odendi = []
             for uid, ext, desc in grants:
                 try:
                     rpc = await client.post(
                         f"{SUPABASE_URL}/rest/v1/rpc/apply_credit_change",
                         headers=_headers(),
                         json={
-                            "p_user_id": uid, "p_amount": 1, "p_type": "referral_reward",
+                            "p_user_id": uid, "p_amount": n, "p_type": "referral_reward",
                             "p_description": desc, "p_channel": "referral",
-                            "p_external_id": ext, "p_gifted_delta": 1, "p_idempotent": True,
+                            "p_external_id": ext, "p_gifted_delta": n, "p_idempotent": True,
                         }, timeout=10,
                     )
                     if rpc.status_code != 200:
                         logger.warning(f"grant_referral_reward rpc {rpc.status_code} uid={uid}: {rpc.text[:150]}")
+                    else:
+                        odendi.append(uid)
                 except Exception as e:
                     logger.warning(f"grant_referral_reward grant error uid={uid}: {e}")
     except Exception as e:
         logger.warning(f"grant_referral_reward error: {e}")
+        return
+    # Bildirim odemeden SONRA ve HTTP istemcisinin DISINDA: push hatasi odulu
+    # etkilemesin. Yalniz davet EDENe gonderilir — davetli odulu zaten uygulama
+    # icinde aninda gorunur, davet eden ise uygulamada degil (asil viral tetik bu).
+    if referrer_id in odendi:
+        try:
+            from pushnotify import send_referral_reward_push
+            await send_referral_reward_push(referrer_id, REFERRAL_REWARD_CREDITS)
+        except Exception as e:
+            logger.warning(f"grant_referral_reward push error: {e}")
 
 
 async def admin_set_is_admin(user_id: str, is_admin_flag: bool) -> bool:

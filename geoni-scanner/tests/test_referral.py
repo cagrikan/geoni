@@ -38,3 +38,86 @@ def test_set_referred_by_rejects_invalid_code(monkeypatch):
     assert r["ok"] is False and r["reason"] == "gecersiz kod"
     r2 = asyncio.run(db.set_referred_by("user-1", "ab"))   # cok kisa
     assert r2["ok"] is False and r2["reason"] == "gecersiz kod"
+
+
+# ── Faz 2: ODUL ─────────────────────────────────────────────────────────────
+# Kontor birimi TARAMA DEGIL (web 5, kisi/marka 10). Odul 1 kontor kalirsa vaat
+# edilenin 1/10'u odenir ve tesvik olur. Bu testler miktari ve odulun kime/nasil
+# gittigini kilitler.
+
+class _SahteYanit:
+    def __init__(self, data=None, status=200):
+        self.status_code, self._data, self.text, self.headers = status, data, "", {}
+
+    def json(self):
+        return self._data
+
+
+class _SahteIstemci:
+    """httpx.AsyncClient yerine: profiles GET'ine referred_by doner, RPC'leri kaydeder."""
+
+    def __init__(self, referrer):
+        self.referrer, self.rpc = referrer, []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def get(self, url, **kw):
+        return _SahteYanit([{"referred_by": self.referrer}])
+
+    async def post(self, url, **kw):
+        self.rpc.append(kw.get("json") or {})
+        return _SahteYanit({})
+
+
+def _odul_calistir(monkeypatch, referrer, davetli="davetli-1"):
+    monkeypatch.setattr(db, "SUPABASE_URL", "http://x", raising=False)
+    monkeypatch.setattr(db, "SUPABASE_SERVICE_KEY", "k", raising=False)
+    istemci = _SahteIstemci(referrer)
+    monkeypatch.setattr(db.httpx, "AsyncClient", lambda *a, **k: istemci)
+    pushlar = []
+
+    async def _sahte_push(uid, credits):
+        pushlar.append((uid, credits))
+
+    monkeypatch.setitem(__import__("sys").modules, "pushnotify",
+                        type("m", (), {"send_referral_reward_push": staticmethod(_sahte_push)}))
+    asyncio.run(db.grant_referral_reward(davetli))
+    return istemci.rpc, pushlar
+
+
+def test_odul_tam_tarama_degerinde(monkeypatch):
+    """+1 kontor DEGIL: tam bir kisi/marka taramasi kadar (10) odenmeli."""
+    rpc, _ = _odul_calistir(monkeypatch, referrer="davet-eden-1")
+    assert db.REFERRAL_REWARD_CREDITS == 10
+    assert len(rpc) == 2                       # davetli + davet eden
+    for c in rpc:
+        assert c["p_amount"] == db.REFERRAL_REWARD_CREDITS
+        assert c["p_gifted_delta"] == db.REFERRAL_REWARD_CREDITS
+        assert c["p_idempotent"] is True       # ayni davetli icin tek sefer
+        assert "1 tarama" not in c["p_description"]   # eski yanlis metin geri gelmesin
+
+
+def test_odul_iki_tarafa_ayri_idempotent_anahtarla(monkeypatch):
+    rpc, _ = _odul_calistir(monkeypatch, referrer="davet-eden-1", davetli="davetli-9")
+    anahtarlar = {c["p_external_id"] for c in rpc}
+    assert anahtarlar == {"ref_reward_invitee:davetli-9", "ref_reward_inviter:davetli-9"}
+
+
+def test_push_yalniz_davet_edene_gider(monkeypatch):
+    """Davetli odulu uygulamada gorunur; davet eden gormez -> dongu ona bildirilir."""
+    _, pushlar = _odul_calistir(monkeypatch, referrer="davet-eden-1", davetli="davetli-2")
+    assert pushlar == [("davet-eden-1", db.REFERRAL_REWARD_CREDITS)]
+
+
+def test_self_referral_odul_almaz(monkeypatch):
+    rpc, pushlar = _odul_calistir(monkeypatch, referrer="ayni", davetli="ayni")
+    assert rpc == [] and pushlar == []
+
+
+def test_referral_yoksa_odul_yok(monkeypatch):
+    rpc, pushlar = _odul_calistir(monkeypatch, referrer=None)
+    assert rpc == [] and pushlar == []

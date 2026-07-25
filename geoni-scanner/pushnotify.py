@@ -67,6 +67,39 @@ async def send_new_task_push(expert_id: str, task_name: str, ref_code: str = "")
         logger.warning(f"expo new-task push error: {e}")
 
 
+async def send_referral_reward_push(referrer_id: str, credits: int) -> None:
+    """Davet ettigi kisi ilk taramasini tamamlayinca davet EDENe bildirim.
+
+    NEDEN sadece davet edene: davetli odulu zaten uygulamanin icinde, o an,
+    bakiyesinde gorunur. Davet eden ise olayi hic gormez — bildirim olmazsa
+    "davet ettim, bir sey olmadi" sanir ve dongu bir kez donup durur. Viral
+    dongunun geri besleme halkasi budur.
+
+    Bu bir ISLEM bildirimi (hesabina kontor gecti), pazarlama degil — Apple
+    4.5.4 anlaminda guvenli. "Arkadasini davet et" hatirlatmasi ASLA push ile
+    gonderilmez; o uygulama ici davet kartinda durur.
+    """
+    tokens = await _get_tokens(referrer_id)
+    if not tokens:
+        return
+    messages = [
+        {
+            "to": t,
+            "sound": "default",
+            "title": "Davetin karşılık buldu 🎉",
+            "body": f"Davet ettiğin kişi ilk taramasını yaptı — hesabına +{credits} token geçti.",
+            "data": {"type": "referral_reward", "credits": credits},
+        }
+        for t in tokens
+    ]
+    try:
+        async with httpx.AsyncClient() as client:
+            await client.post(EXPO_PUSH_URL, json=messages, headers={"Content-Type": "application/json"}, timeout=15)
+        logger.info(f"referral-reward push sent to {len(tokens)} device(s) for {referrer_id}")
+    except Exception as e:
+        logger.warning(f"expo referral push error: {e}")
+
+
 async def send_score_change_push(user_id: str, label: str, old_score: int, new_score: int) -> None:
     """Izleme skoru degisiminde push gonderir. Kullanicinin kayitli tum
     cihazlarina; token yoksa sessizce gecer."""
