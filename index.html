@@ -234,6 +234,25 @@ h2{font-family:var(--display);font-size:clamp(1.8rem,2.8vw,2.4rem);font-weight:7
 /* FOOTER */
 footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;color:var(--text-muted);font-size:.8125rem;font-family:var(--mono)}
 
+/* CREATOR / ELCI BANDI — arz tarafi (creator), talep tarafi (marka) degil.
+   Ayri bir izleyiciye seslendigi icin site genelindeki indigo yerine amber
+   aksan kullanir; ayni renkte olsaydi ustundeki satin-alma CTA'sinin devami
+   gibi okunup gozden kaciyordu (kurucu geri bildirimi 2026-07-25: "en altinda
+   gorunmuyor" — blok DOM'da vardi ama cerceve/zemin olmadigi icin dip nota
+   donusmustu). .reveal EKLENMEZ: opacity:0 ile basladigi icin observer
+   dusarse blok tamamen kaybolur; zaten bir kez kaybolmus blogu riske atma. */
+.creator-wrap{padding:0 48px 96px}
+.creator-box{max-width:1200px;margin:0 auto;background:var(--surface);border:1px solid rgba(245,166,35,.22);border-radius:14px;padding:34px 40px;display:flex;align-items:center;gap:32px;flex-wrap:wrap;position:relative;overflow:hidden}
+.creator-box::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 0 50%,rgba(245,166,35,.07) 0,transparent 62%);pointer-events:none}
+/* min-width:0 — flex ogesinin varsayilan min-width:auto'su, 380px'lik esasin
+   altina inmesini engelleyip dar ekranda kutuyu tasiriyordu (yatay kaydirma). */
+.creator-txt{flex:1 1 380px;min-width:0;position:relative}
+.creator-box .eyebrow{color:#F5A623;margin-bottom:10px}
+.creator-box h2{font-family:var(--display);font-size:1.4rem;font-weight:700;margin:0 0 8px}
+.creator-box p{color:var(--text-sub);font-size:.95rem;margin:0;max-width:60ch}
+.creator-btn{position:relative;flex:0 0 auto;color:var(--text);padding:13px 24px;border-radius:8px;font-size:.95rem;text-decoration:none;border:1px solid rgba(245,166,35,.4);transition:background .2s,border-color .2s;white-space:nowrap}
+.creator-btn:hover{background:rgba(245,166,35,.1);border-color:rgba(245,166,35,.7)}
+
 /* REVEAL */
 .reveal{opacity:0;transform:translateY(18px);transition:opacity .55s ease,transform .55s ease}
 .reveal.shown{opacity:1;transform:translateY(0)}
@@ -255,6 +274,10 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 @media(max-width:600px){
   .pkgs{grid-template-columns:1fr}
   section,.hero,.cta-wrap,.stat-bar{padding-left:20px;padding-right:20px}
+  .creator-wrap{padding:0 20px 64px}
+  .creator-box{padding:26px 22px;gap:20px}
+  .creator-txt{flex-basis:100%}
+  .creator-btn{width:100%;text-align:center;box-sizing:border-box}
 }
 
 /* LIVE DEMO INPUT */
@@ -942,11 +965,15 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 </div>
 
 <!-- CREATOR / ELÇİ CTA — influencer arz tarafını yakala; IG DM'e (bot işler) -->
-<div style="max-width:720px;margin:0 auto;padding:8px 24px 60px;text-align:center">
-  <span class="eyebrow" data-i18n="creator_eyebrow">// Creator &amp; Elçi</span>
-  <h2 style="font-size:1.35rem;margin:10px 0 10px" data-i18n="creator_h2">Influencer veya creator mısın?</h2>
-  <p style="color:var(--text-sub);font-size:.95rem;max-width:56ch;margin:0 auto 18px" data-i18n="creator_sub">AI çağında görünürlük para ediyor. @hesabını tara, AI seni öneriyor mu gör; erken GEONI creator/elçi programı için konuşalım.</p>
-  <a href="/isbirligi" class="btn-g" data-i18n="creator_cta">İş birliğini gör →</a>
+<div class="creator-wrap">
+  <div class="creator-box">
+    <div class="creator-txt">
+      <span class="eyebrow" data-i18n="creator_eyebrow">// Creator &amp; Elçi</span>
+      <h2 data-i18n="creator_h2">Influencer veya creator mısın?</h2>
+      <p data-i18n="creator_sub">AI çağında görünürlük para ediyor. @hesabını tara, AI seni öneriyor mu gör; erken GEONI creator/elçi programı için konuşalım.</p>
+    </div>
+    <a href="/isbirligi" class="creator-btn" data-i18n="creator_cta">İş birliğini gör →</a>
+  </div>
 </div>
 
 </main>

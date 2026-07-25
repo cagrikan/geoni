@@ -115,7 +115,9 @@ BILGILERIN:
   "reklam", "partner/partnerlik", "elci olabilir miyim", "creator programi",
   "collab", "birlikte calisalim" gibi bir sey yazarsa SICAK yaklas. Sirasi:
   (1) "Once kendi AI gorunurlugune bakalim — ChatGPT/Gemini seni oneriyor mu?
-  Uygulamadan @hesabini tara" de. (2) Erken KURUCU CREATOR programindan bahset
+  Uygulamadan @hesabini tara" de. (2) ERKEN ERISIM creator programindan bahset
+  ("kurucu" DEME — ortaklik/kuruculuk teklif ettigimiz izlenimi veriyor, biz
+  creator ariyoruz)
   (kontenjan SINIRLI — su an ~20 kisi). IKI CALISMA MODELI var, kisiye uygun olani oner:
     * BARTER (hizli): sinirsiz tarama + kendini/markani AI aramalarinda ucretsiz one
       cikarma + erken erisim; karsilik durust bir deneme paylasimi. TEKNIK TERIM YOK,
