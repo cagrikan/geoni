@@ -30,7 +30,7 @@ jobs:
       - name: Run tests (deploy gate)
         run: |
           cd geoni-scanner
-          python -m pip install --quiet pytest httpx
+          python -m pip install --quiet pytest httpx cbor2 cryptography  # cbor2+cryptography: App Attest testleri (tests/test_attest.py)
           python -m pytest tests/ -q
 
       - name: Configure AWS credentials
