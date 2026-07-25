@@ -12,6 +12,7 @@ import re
 import time
 import uuid
 import html
+import urllib.parse
 import logging
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse, parse_qs, quote
@@ -884,13 +885,195 @@ async def record_purchase(user_id: str, credits: int, amount_paid: float, curren
             res = rpc.json()
             # applied=true (ilk teslim) VEYA reason=duplicate (mukerrer webhook) ->
             # ikisi de cagiran icin BASARI (idempotent no-op).
-            if isinstance(res, dict) and (res.get("applied") or res.get("reason") == "duplicate"):
+            if isinstance(res, dict) and res.get("applied"):
+                # Komisyon YALNIZ ilk teslimde. reason=="duplicate" yolunda
+                # cagirmiyoruz: o mukerrer webhook, yeni bir alim degil.
+                # (Yine de partial unique index ikinci savunma hatti.)
+                await _record_referral_commission(client, user_id, external_id,
+                                                  amount_paid, currency_paid)
+                return True
+            if isinstance(res, dict) and res.get("reason") == "duplicate":
                 return True
             logger.warning(f"record_purchase not applied: {res}")
             return False
     except Exception as e:
         logger.warning(f"record_purchase error: {e}")
     return False
+
+
+def _parse_ts(v) -> datetime | None:
+    """Supabase zaman damgasini datetime'a cevirir. Iki bicim de gelebiliyor:
+    '2026-07-25T19:03:04.640749+00:00' ve '2026-07-25 19:03:04.640749+00'
+    (ikincisinde saat dilimi iki haneli — fromisoformat eskiden bunu reddederdi).
+    Cozulemezse None; cagiran guvenli bir varsayilana duser."""
+    if not v:
+        return None
+    t = str(v).replace(" ", "T")
+    if t.endswith("Z"):
+        t = t[:-1] + "+00:00"
+    elif re.search(r"[+-]\d{2}$", t):
+        t += ":00"
+    try:
+        d = datetime.fromisoformat(t)
+    except ValueError:
+        return None
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
+# Influencer komisyonu: KADEMELI ve SURELI (kurucu karari 2026-07-25).
+# (ay_ust_siniri, oran) — davetlinin KAYIT tarihinden itibaren.
+# 1. yil %10, 2. yil %5, 3. yil %5, sonra biter. Sonsuz gelir paylasimi
+# istenmedi: bir kez kazanilan musteriye omur boyu yukumluluk baglanmasin.
+REFERRAL_COMMISSION_TIERS = ((12, 0.10), (24, 0.05), (36, 0.05))
+
+
+def _referral_commission_rate(kayit_tarihi: datetime, alim_tarihi: datetime) -> float:
+    """Davetlinin kayit tarihinden gecen aya gore komisyon orani."""
+    gun = (alim_tarihi - kayit_tarihi).days
+    ay = gun / 30.44  # ortalama ay
+    for ust, oran in REFERRAL_COMMISSION_TIERS:
+        if ay < ust:
+            return oran
+    return 0.0
+
+
+async def _record_referral_commission(client, buyer_id: str, external_id: str,
+                                      amount_paid, currency: str) -> bool:
+    """Davet komisyonu — davetli PARA HARCADIGINDA davet edene nakit.
+
+    KIME: yalnizca KABUL EDILMIS creator/elci ortagina (creator_applications
+    status='accepted'). HERKESE DEGIL. Her kullanici nakit komisyon
+    biriktirseydi (a) her davet kalici bir yukumluluk olurdu, (b) kendi kendini
+    davet eden halkalar dogrudan nakit basardi. Sıradan kullanicinin karsiligi
+    token odulu (grant_referral_reward, iki tarafa 10) — o yerinde duruyor.
+
+    ORAN: kademeli ve sureli, REFERRAL_COMMISSION_TIERS. Saat davetlinin KAYIT
+    tarihinden isler (profiles.created_at) — davetin gerceklestigi an odur.
+
+    MATRAH: fiilen odenen tutar (credit_transactions.amount_paid), liste degil.
+    NOT: bu BRUT tutardir; iOS'ta Apple %15-30 alir, yani %10 brut fiili
+    tahsilatin ~%14'une denk gelir. Kurucu bunu bilerek brut sectiği icin
+    boyle; degistirmek gerekirse tek yer burasi.
+    """
+    try:
+        if not amount_paid or float(amount_paid) <= 0:
+            return False
+        if (currency or "USD").upper() != "USD":
+            logger.info(f"_record_referral_commission: USD disi ({currency}), atlandi")
+            return False
+
+        pr = await client.get(
+            f"{SUPABASE_URL}/rest/v1/profiles?id=eq.{buyer_id}&select=referred_by,created_at",
+            headers=_headers(), timeout=10,
+        )
+        rows = pr.json() if pr.status_code == 200 else []
+        if not rows or not rows[0].get("referred_by"):
+            return False
+        referrer_id = rows[0]["referred_by"]
+
+        # Kabul edilmis ortak mi? Degilse nakit YOK (token odulu zaten verildi).
+        ca = await client.get(
+            f"{SUPABASE_URL}/rest/v1/creator_applications"
+            f"?user_id=eq.{referrer_id}&status=eq.accepted&select=id&limit=1",
+            headers=_headers(), timeout=10,
+        )
+        if ca.status_code != 200 or not ca.json():
+            return False
+
+        simdi = datetime.now(timezone.utc)
+        kayit = _parse_ts(rows[0].get("created_at")) or simdi
+        oran = _referral_commission_rate(kayit, simdi)
+        if oran <= 0:
+            return False  # 3 yil doldu
+
+        # Islem kimligini external_id'den cek (RPC id dondurmuyor); komisyonun
+        # tekrar yazilmasini partial unique index bunun uzerinden engelliyor.
+        tx = await client.get(
+            f"{SUPABASE_URL}/rest/v1/credit_transactions"
+            f"?external_id=eq.{urllib.parse.quote(str(external_id))}&select=id&limit=1",
+            headers=_headers(), timeout=10,
+        )
+        tx_rows = tx.json() if tx.status_code == 200 else []
+        if not tx_rows:
+            return False
+
+        brut = round(float(amount_paid), 2)
+        tutar = round(brut * oran, 2)
+        if tutar <= 0:
+            return False
+        r = await client.post(
+            f"{SUPABASE_URL}/rest/v1/expert_payouts",
+            headers={**_headers(), "Prefer": "return=minimal"},
+            json={
+                "expert_id": referrer_id, "kind": "referral",
+                "transaction_id": tx_rows[0]["id"], "customer_id": buyer_id,
+                "basis_amount": brut, "rate": oran, "amount": tutar,
+                "currency": "USD", "status": "pending",
+                "period_month": simdi.date().replace(day=1).isoformat(),
+                "note": f"Davet komisyonu (%{int(oran * 100)}) — davetlinin alimi",
+            },
+            timeout=10,
+        )
+        if r.status_code == 409:  # ayni islem icin komisyon zaten yazilmis
+            return False
+        if r.status_code not in (200, 201, 204):
+            logger.warning(f"_record_referral_commission {r.status_code}: {r.text[:150]}")
+            return False
+        return True
+    except Exception as e:
+        logger.warning(f"_record_referral_commission error: {e}")
+        return False
+
+
+async def _void_referral_commission(client, buyer_id: str,
+                                    original_external_id: str | None = None,
+                                    amount_paid=None) -> bool:
+    """Iade edilen alimin komisyonunu iptal eder (status='void').
+
+    Iki eslesme yolu var cunku iki kanal ayni bilgiyi vermiyor:
+      - Polar: iadenin external_id'si 'refund_<orijinal>' — orijinali BIREBIR
+        biliyoruz, islem kimliginden kesin eslesme.
+      - Apple/RevenueCat: iade olayi kendi olay kimligiyle geliyor, satin alma
+        satirina baglayacak ortak bir anahtar YOK (alimi rc_<event_id> ile
+        yaziyoruz). Bu yuzden musteri + ayni tutar + bekleyen komisyon
+        uzerinden EN YENIsi iptal edilir. Kesin degil ama iade edilmis satisin
+        komisyonunu odenmis birakmaktan iyidir; iptal defterde gorunur kalir
+        (void satir listede durur, toplamlara girmez).
+    """
+    try:
+        q = None
+        if original_external_id:
+            tx = await client.get(
+                f"{SUPABASE_URL}/rest/v1/credit_transactions"
+                f"?external_id=eq.{urllib.parse.quote(str(original_external_id))}&select=id&limit=1",
+                headers=_headers(), timeout=10,
+            )
+            rows = tx.json() if tx.status_code == 200 else []
+            if rows:
+                q = (f"{SUPABASE_URL}/rest/v1/expert_payouts"
+                     f"?transaction_id=eq.{rows[0]['id']}&kind=eq.referral&status=eq.pending")
+        if q is None and amount_paid:
+            find = await client.get(
+                f"{SUPABASE_URL}/rest/v1/expert_payouts"
+                f"?customer_id=eq.{buyer_id}&kind=eq.referral&status=eq.pending"
+                f"&basis_amount=eq.{round(float(amount_paid), 2)}"
+                f"&select=id&order=created_at.desc&limit=1",
+                headers=_headers(), timeout=10,
+            )
+            rows = find.json() if find.status_code == 200 else []
+            if not rows:
+                return False
+            q = f"{SUPABASE_URL}/rest/v1/expert_payouts?id=eq.{rows[0]['id']}"
+        if q is None:
+            return False
+        r = await client.patch(
+            q, headers={**_headers(), "Prefer": "return=representation"},
+            json={"status": "void", "note": "İade edildi — komisyon iptal"}, timeout=10,
+        )
+        return r.status_code == 200 and bool(r.json())
+    except Exception as e:
+        logger.warning(f"_void_referral_commission error: {e}")
+        return False
 
 
 async def get_credit_transaction(tx_id) -> dict | None:
@@ -1148,7 +1331,10 @@ async def delete_user_account(user_id: str) -> bool:
     return False
 
 
-async def record_refund(user_id: str, credits: int, external_id: str, description: str = "İade: Polar satın alma") -> bool:
+async def record_refund(user_id: str, credits: int, external_id: str,
+                        description: str = "İade: Polar satın alma",
+                        original_external_id: str | None = None,
+                        amount_paid=None) -> bool:
     """Iade sonrasi tokenlari geri duser. Bakiye eksiye dusebilir (kullanici
     tokenlari coktan harcadiysa) - iade karari admin'in, engellemiyoruz.
     Idempotency'yi cagiran taraf transaction_exists ile saglar."""
@@ -1176,7 +1362,11 @@ async def record_refund(user_id: str, credits: int, external_id: str, descriptio
                 logger.warning(f"record_refund rpc failed {rpc.status_code}: {rpc.text[:200]}")
                 return False
             res = rpc.json()
-            return isinstance(res, dict) and bool(res.get("applied"))
+            ok = isinstance(res, dict) and bool(res.get("applied"))
+            if ok:
+                # Iade edilen satisin davet komisyonu odenmis kalmasin.
+                await _void_referral_commission(client, user_id, original_external_id, amount_paid)
+            return ok
     except Exception as e:
         logger.warning(f"record_refund error: {e}")
     return False

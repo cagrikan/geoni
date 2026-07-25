@@ -2085,6 +2085,9 @@ async def revenuecat_webhook(http_request: Request):
             ok = await record_refund(
                 event["user_id"], package["credits"], event["external_id"],
                 description="İade: App Store satın alma",
+                # RevenueCat iadesi orijinal alim satirina baglanacak ortak bir
+                # anahtar vermiyor; komisyon tutar+musteri ile eslenip iptal edilir.
+                amount_paid=event.get("price"),
             )
             return {"success": ok, "refund": True}
         ok = await record_purchase(
@@ -2171,7 +2174,8 @@ async def admin_refund(body: AdminRefundRequest, http_request: Request):
     refund = await polar.create_refund(ext[len("polar_"):])
     if not refund:
         raise HTTPException(status_code=502, detail="Polar iadesi başarısız (sipariş zaten iade edilmiş olabilir)")
-    ok = await record_refund(tx["user_id"], tx["amount"], refund_ext)
+    ok = await record_refund(tx["user_id"], tx["amount"], refund_ext,
+                             original_external_id=ext, amount_paid=tx.get("amount_paid"))
     if ok and refund.get("customer_email"):
         asyncio.create_task(send_refund_email(refund["customer_email"], tx["amount"]))
     return {"success": ok, "refund_id": refund.get("id")}
