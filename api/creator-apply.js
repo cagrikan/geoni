@@ -36,7 +36,10 @@ function normalizeHandle(h) {
   // "@ad", "ad", "instagram.com/ad", "https://www.instagram.com/ad/" -> "@ad"
   let s = clean(h, LIMITS.handle).replace(/^https?:\/\//i, '').replace(/^www\./i, '');
   s = s.replace(/^(?:instagram|tiktok|x|twitter|youtube)\.com\/(?:@)?/i, '');
-  s = s.split(/[/?#]/)[0].replace(/^@+/, '').trim();
+  // KUCUK HARF sart: benzersizlik kisiti duz `handle` kolonunda. Normalize
+  // etmezsek "@Ali" ve "@ali" IKI AYRI basvuru satiri acar (tekilleştirme
+  // caliskan gorunur ama calismaz) — canli testte @DENEME_Creator boyle kacti.
+  s = s.split(/[/?#]/)[0].replace(/^@+/, '').trim().toLowerCase();
   return s ? '@' + s : '';
 }
 

@@ -3258,6 +3258,114 @@ async def list_experts() -> list:
     return experts
 
 
+# ---- Creator / uzman basvurulari -----------------------------------------
+# Basvuru /isbirligi formundan ya da IG DM mulakatindan gelir (ikisi de Vercel
+# tarafinda yazar). BURASI yalnizca ADMIN KARARINI yurutur: kabul/red.
+# Bot 'interviewed'e kadar tasiyabilir, 'accepted' YALNIZ buradan set edilir.
+
+async def admin_list_creator_applications(status: str | None = None) -> dict:
+    """Basvuru listesi + mulakat ozeti. Basvuranin yetenek alanlari bizim
+    hizmet anahtarlarimiza cevrilmis geldigi icin (capable_keys), panelde
+    okunur hizmet ADIYLA gosterilebilsin diye ticket_types da doner."""
+    empty = {"applications": [], "ticket_types": [], "counts": {}}
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return empty
+    try:
+        async with httpx.AsyncClient() as client:
+            q = f"{SUPABASE_URL}/rest/v1/creator_applications?select=*&order=created_at.desc&limit=500"
+            if status:
+                q += f"&status=eq.{status}"
+            r = await client.get(q, headers=_headers(), timeout=15)
+            rows = r.json() if r.status_code == 200 else []
+            tr = await client.get(
+                f"{SUPABASE_URL}/rest/v1/ticket_types?select=id,key,name&order=token_cost",
+                headers=_headers(), timeout=10)
+            types = tr.json() if tr.status_code == 200 else []
+            cr = await client.get(
+                f"{SUPABASE_URL}/rest/v1/creator_applications?select=status",
+                headers=_headers(), timeout=10)
+            counts: dict = {}
+            for row in (cr.json() if cr.status_code == 200 else []):
+                counts[row["status"]] = counts.get(row["status"], 0) + 1
+            return {"applications": rows, "ticket_types": types, "counts": counts}
+    except Exception as e:
+        logger.warning(f"admin_list_creator_applications error: {e}")
+        return empty
+
+
+async def admin_decide_creator_application(
+    app_id: int, admin_id: str, decision: str,
+    make_expert: bool = False, ticket_type_ids: list[int] | None = None,
+) -> dict:
+    """Kabul/red. Kabulde referral kodu (elci mekanigi) baglanir; istenirse
+    uzman yetkisi de acilir.
+
+    KOD NEREDEN GELIYOR: referral_code uuid'den DETERMINISTIK turetiliyor
+    (_ref_code_for), yani basvuranin bir HESABI olmali. Hesap yoksa kabul
+    yine gecerlidir ama kod bos kalir ve kullanici kayit olunca ayni e-posta
+    ile eslesip kod uretilir. "Kabul ettim ama link veremedim" durumu
+    donuste acikca bildirilir (referral_code=None + note).
+    """
+    if decision not in ("accepted", "rejected"):
+        return {"success": False, "error": "invalid_decision"}
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return {"success": False, "error": "not_configured"}
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/creator_applications?id=eq.{int(app_id)}&select=*",
+                headers=_headers(), timeout=10)
+            rows = r.json() if r.status_code == 200 else []
+            if not rows:
+                return {"success": False, "error": "not_found"}
+            app = rows[0]
+
+            user_id = app.get("user_id")
+            code = app.get("referral_code")
+            note = None
+            if decision == "accepted":
+                # Hesabi e-postadan esle (kayitli degilse user_id bos kalir).
+                if not user_id and app.get("email"):
+                    emails = await _fetch_all_auth_emails()
+                    hedef = str(app["email"]).strip().lower()
+                    for uid, mail in emails.items():
+                        if str(mail).strip().lower() == hedef:
+                            user_id = uid
+                            break
+                if user_id and not code:
+                    code = await get_or_create_referral_code(user_id)
+                if not user_id:
+                    note = "hesap_yok"  # kayit olunca eslenecek
+
+            payload = {
+                "status": decision,
+                "decided_at": datetime.now(timezone.utc).isoformat(),
+                "reviewed_by": admin_id,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            if user_id:
+                payload["user_id"] = user_id
+            if code:
+                payload["referral_code"] = code
+            pr = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/creator_applications?id=eq.{int(app_id)}",
+                headers={**_headers(), "Prefer": "return=representation"},
+                json=payload, timeout=10)
+            if pr.status_code != 200 or not pr.json():
+                return {"success": False, "error": "update_failed"}
+
+            # Uzman yetkisi AYRI bir karar: her kabul edilen creator uzman
+            # degildir (barter creator'in teslim yetkinligi olmayabilir).
+            if decision == "accepted" and make_expert and user_id:
+                await admin_set_is_expert(user_id, True, ticket_type_ids or None)
+
+            return {"success": True, "error": None, "user_id": user_id,
+                    "referral_code": code, "note": note}
+    except Exception as e:
+        logger.warning(f"admin_decide_creator_application error: {e}")
+        return {"success": False, "error": "exception"}
+
+
 async def admin_get_payouts(period_month: str | None = None) -> dict:
     """Admin muhasebe defteri: uzman/influencer kazanclari (%33 teslim + %10
     referral) kisi-bazli ozet + satirlar + sozlesme durumu. period_month

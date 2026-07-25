@@ -52,6 +52,7 @@ from db import (
     submit_ticket_evidence, start_ticket_work, admin_list_tickets, admin_assign_ticket, admin_verify_ticket,
     admin_create_ticket_type, admin_set_ticket_type_active, admin_set_is_expert, list_experts,
     admin_get_payouts, admin_mark_payout_paid,
+    admin_list_creator_applications, admin_decide_creator_application,
     rate_ticket, get_ticket_rating_state, get_customer_reputation, notify_experts_new_task,
     has_admin_scope, is_user_suspended, admin_get_user_detail,
     admin_get_user_audits, admin_get_user_transactions, admin_get_user_tickets, admin_set_user_notes,
@@ -1857,6 +1858,33 @@ async def admin_payout_paid(payout_id: int, body: PayoutPaidRequest, http_reques
     if not await admin_mark_payout_paid(payout_id, admin_id, body.paid):
         raise HTTPException(status_code=400, detail="Güncellenemedi")
     return {"success": True}
+
+class CreatorDecisionRequest(BaseModel):
+    decision: str                      # 'accepted' | 'rejected'
+    make_expert: bool = False
+    ticket_type_ids: list[int] | None = None
+
+
+@app.get("/api/admin/creator-applications")
+async def admin_creator_applications(http_request: Request, status: str | None = None):
+    """Creator/uzman basvurulari + DM mulakat ozeti."""
+    await _require_admin_scope(http_request, "tickets")
+    return await admin_list_creator_applications(status)
+
+
+@app.post("/api/admin/creator-applications/{app_id}/decide")
+async def admin_creator_decide(app_id: int, body: CreatorDecisionRequest, http_request: Request):
+    """KABUL KARARI YALNIZ BURADAN. DM botunun bu uca erisimi yok; o en fazla
+    'interviewed' yazabiliyor. Uzman yetkisi vermek gelir paylasimi acar ->
+    tickets kapsami degil, TAM ADMIN sart."""
+    admin_id = (await _require_full_admin(http_request)) if body.make_expert \
+        else (await _require_admin_scope(http_request, "tickets"))
+    result = await admin_decide_creator_application(
+        app_id, admin_id, body.decision, body.make_expert, body.ticket_type_ids)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error") or "Güncellenemedi")
+    return result
+
 
 @app.get("/api/credit-packages")
 async def credit_packages():
