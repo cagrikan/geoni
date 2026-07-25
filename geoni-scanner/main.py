@@ -1778,7 +1778,7 @@ async def admin_verify_ticket_ep(ticket_id: int, body: TicketVerifyRequest, http
 @app.get("/api/admin/ticket-types")
 async def admin_ticket_types(http_request: Request):
     await _require_admin_scope(http_request, "tickets")
-    return await list_ticket_types(active_only=False)
+    return await list_ticket_types(active_only=False, include_internal=True)
 
 class TicketTypeRequest(BaseModel):
     key: str

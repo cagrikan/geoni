@@ -43,6 +43,14 @@ SCAN_COUNT_DISPLAY_BASE = int(os.environ.get("SCAN_COUNT_DISPLAY_BASE", "1200"))
 # 10 = tam bir kisi/marka taramasi: davetli ilk taramasini bedavaya getirmis olur.
 REFERRAL_REWARD_CREDITS = int(os.environ.get("REFERRAL_REWARD_CREDITS", "10"))
 
+# Token'in "referans" USD degeri: 1000'lik paketin kuru ($79.99/1000).
+# YALNIZ RAPORLAMA — muhasebe defterinde bir isin liste degerini gostermek icin.
+# Uzman odemesi bundan TUREMEZ; odeme hizmet basina sabit ucrettir
+# (ticket_types.expert_payout_usd). Paketler arasi birim fiyat $0.0999-$0.0600
+# arasinda degistigi icin "liste fiyati"nin tek dogru degeri yok; bu yuzden
+# odemeyi ona bagli birakmadik.
+TOKEN_REFERENCE_USD = float(os.environ.get("TOKEN_REFERENCE_USD", "0.08"))
+
 
 async def get_total_scan_count() -> int:
     """Public aggregate count for the landing page social-proof counter (Madde 3.1)."""
@@ -2361,7 +2369,10 @@ async def admin_list_audits(
 # ticket_type adi ve alici/uzman e-postasi ayri sorgularla eklenir (ticket'lar
 # tablosu FK'lari sadece id tutuyor, e-posta Supabase Auth'ta ayri yasiyor).
 
-async def list_ticket_types(active_only: bool = True, lang: str = "tr") -> list:
+async def list_ticket_types(active_only: bool = True, lang: str = "tr",
+                            include_internal: bool = False) -> list:
+    """include_internal=True YALNIZ admin ucundan: uzman odemesi ic maliyettir,
+    musteri yanitinda yer almaz."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return []
     try:
@@ -2377,6 +2388,16 @@ async def list_ticket_types(active_only: bool = True, lang: str = "tr") -> list:
                 for row in rows:
                     # Hangi tarama hedefine uygulanabilir (UI/öneri filtresi için).
                     row["applicable_targets"] = applicable_targets_for(row.get("key", ""))
+                    # "1200 token" tek basina olcek vermiyordu (kurucu geri
+                    # bildirimi 2026-07-25). USD karsiligi HESAPLANMIYOR:
+                    # money_price zaten hizmetin GERCEK fiyati (dogrudan satin
+                    # alma / IAP fiyati). Token kurundan turetseydik uydurma bir
+                    # sayi olurdu (paketler arasi birim fiyat %40 degisiyor) ve
+                    # musterinin baska yerde gordugu fiyatla CELISIRDI.
+                    row["usd_value"] = float(row["money_price"]) if row.get("money_price") else None
+                    # Uzman odemesi musteriye AIT DEGIL — ic maliyet, sizdirma.
+                    if not include_internal:
+                        row.pop("expert_payout_usd", None)
                 if lang == "en":
                     for row in rows:
                         if row.get("name_en"):
@@ -3063,6 +3084,89 @@ async def _build_delivery_report(ticket_id: int) -> str:
         return ""
 
 
+async def _record_delivery_payout(client, ticket_id: int) -> bool:
+    """Onaylanan teslim icin uzman kazanc satiri yazar.
+
+    ODEME MODELI: yuzde DEGIL, hizmet basina SABIT ucret
+    (ticket_types.expert_payout_usd — kurucu karari 2026-07-25). Yuzde
+    denenmisti ama matrahi belirsizdi: token'in tek fiyati yok (paketler arasi
+    %40 fark), ustune Apple %15-30 alinca "%33" fiili tahsilatin yarisina
+    cikiyordu ve hediye tokenla alinan iste gelir $0 iken nakit cikiyordu.
+    Sabit ucrette odedigimiz rakami dogrudan biz belirliyoruz.
+
+    basis_amount = hizmetin liste degeri (yalniz BAGLAM icin: defterde
+    "$96'lik is, $35 odendi" okunabilsin). amount = fiilen odenecek tutar.
+
+    Sessizce atlanan durumlar (hata degil):
+      - biletin atanmis uzmani yok -> odenecek kimse yok
+      - hizmetin expert_payout_usd'si NULL -> ucretli uzmana atanmayan hizmet
+      - bu bilet icin zaten odeme satiri var -> tekrar onayda IKINCI BORC YOK
+    """
+    try:
+        tr = await client.get(
+            f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{int(ticket_id)}"
+            f"&select=id,user_id,assigned_expert_id,ticket_type_id,token_cost",
+            headers=_headers(), timeout=10,
+        )
+        rows = tr.json() if tr.status_code == 200 else []
+        if not rows:
+            return False
+        t = rows[0]
+        expert_id = t.get("assigned_expert_id")
+        if not expert_id:
+            return False
+
+        tt = await client.get(
+            f"{SUPABASE_URL}/rest/v1/ticket_types?id=eq.{t['ticket_type_id']}"
+            f"&select=key,name,expert_payout_usd,token_cost,money_price",
+            headers=_headers(), timeout=10,
+        )
+        types = tt.json() if tt.status_code == 200 else []
+        if not types or types[0].get("expert_payout_usd") in (None, ""):
+            return False
+        tip = types[0]
+        tutar = float(tip["expert_payout_usd"])
+
+        # Liste degeri yalniz BAGLAM ("$107.99'luk is, $35 odendi"). Hizmetin
+        # GERCEK fiyati (money_price) kullanilir; token kurundan turetmek
+        # uydurma bir sayi verirdi. Fiyat tanimli degilse token referansina
+        # duser — defter satiri yine de bir baglam tasisin.
+        liste = (float(tip["money_price"]) if tip.get("money_price")
+                 else round(float(tip.get("token_cost") or 0) * TOKEN_REFERENCE_USD, 2))
+        simdi = datetime.now(timezone.utc)
+        payload = {
+            "expert_id": expert_id,
+            "kind": "delivery",
+            "ticket_id": int(ticket_id),
+            "customer_id": t.get("user_id"),
+            "basis_amount": liste,
+            # rate bilgi amacli: sabit ucretin liste degerine orani.
+            "rate": round(tutar / liste, 4) if liste else 0,
+            "amount": tutar,
+            "currency": "USD",
+            "status": "pending",
+            "period_month": simdi.date().replace(day=1).isoformat(),
+            "note": f"{tip.get('name') or tip.get('key')} — onaylanan teslim",
+        }
+        r = await client.post(
+            f"{SUPABASE_URL}/rest/v1/expert_payouts",
+            headers={**_headers(), "Prefer": "return=minimal"},
+            json=payload, timeout=10,
+        )
+        # 409 = kismi benzersiz indeks devrede: bu bilete zaten odeme yazilmis.
+        # Yeniden onaylandi demektir; ikinci borc ACILMAZ ve bu bir hata degil.
+        if r.status_code == 409:
+            logger.info(f"_record_delivery_payout ticket {ticket_id}: odeme zaten var")
+            return False
+        if r.status_code not in (200, 201, 204):
+            logger.warning(f"_record_delivery_payout {r.status_code}: {r.text[:150]}")
+            return False
+        return True
+    except Exception as e:
+        logger.warning(f"_record_delivery_payout error: {e}")
+        return False
+
+
 async def admin_verify_ticket(ticket_id: int, admin_id: str, approve: bool, reject_reason: str = "") -> bool:
     """Onaylanirsa 'verified'e gecer + Is Teslim Raporu threade eklenir.
     Reddedilirse 'rejected' TERMINAL bir durum degil - 'assigned'a geri
@@ -3086,6 +3190,10 @@ async def admin_verify_ticket(ticket_id: int, admin_id: str, approve: bool, reje
             )
             success = r.status_code in (200, 204)
             if success and approve:
+                # Kazanc ONAYDA dogar, teslimde degil: reddedilen teslim bilete
+                # 'assigned' olarak GERI DONUYOR (yukaridaki else dali), yani
+                # 'submitted'da yazsaydik onaylanmayan ise borc acilirdi.
+                await _record_delivery_payout(client, ticket_id)
                 report = await _build_delivery_report(ticket_id)
                 if report:
                     await add_ticket_message(ticket_id, None, "system", body=report)

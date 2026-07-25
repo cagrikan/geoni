@@ -174,3 +174,92 @@ def test_mevcut_kod_yeniden_uretilmez(monkeypatch):
     r = asyncio.run(db.admin_decide_creator_application(13, "admin-1", "accepted"))
     assert r["referral_code"] == "eskikod"
     assert ist.patch_govde["referral_code"] == "eskikod"
+
+
+# ── Uzman teslim odemesi (SABIT UCRET) ──────────────────────────────────────
+# Kurucu karari 2026-07-25: yuzde DEGIL, onaylanan teslim basina sabit ucret
+# (ticket_types.expert_payout_usd). Yuzdenin matrahi belirsizdi.
+
+class _OdemeIstemci:
+    def __init__(self, ticket, tip, post_status=201):
+        self.ticket, self.tip, self.post_status = ticket, tip, post_status
+        self.yazilan = None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def get(self, url, **kw):
+        if "/tickets?" in url:
+            return _SahteYanit([self.ticket] if self.ticket else [])
+        if "ticket_types" in url:
+            return _SahteYanit([self.tip] if self.tip else [])
+        return _SahteYanit([])
+
+    async def post(self, url, **kw):
+        self.yazilan = kw.get("json")
+        return _SahteYanit({}, status=self.post_status)
+
+
+BILET = {"id": 5, "user_id": "musteri-1", "assigned_expert_id": "uzman-1",
+         "ticket_type_id": 3, "token_cost": 1200}
+TIP = {"key": "wikidata_entity", "name": "Wikidata", "expert_payout_usd": "35.00",
+       "token_cost": 1200, "money_price": "107.99"}
+
+
+def _odeme(monkeypatch, ticket=BILET, tip=TIP, post_status=201):
+    monkeypatch.setattr(db, "SUPABASE_URL", "http://x", raising=False)
+    monkeypatch.setattr(db, "SUPABASE_SERVICE_KEY", "k", raising=False)
+    ist = _OdemeIstemci(ticket, tip, post_status)
+    return ist, asyncio.run(db._record_delivery_payout(ist, 5))
+
+
+def test_odeme_sabit_ucret_yazilir(monkeypatch):
+    ist, ok = _odeme(monkeypatch)
+    assert ok is True
+    y = ist.yazilan
+    assert y["amount"] == 35.0                 # SABIT ucret — yuzde degil
+    assert y["basis_amount"] == 107.99         # baglam: hizmetin GERCEK fiyati
+    assert y["expert_id"] == "uzman-1" and y["customer_id"] == "musteri-1"
+    assert y["kind"] == "delivery" and y["status"] == "pending"
+    assert y["period_month"].endswith("-01")   # ay basina yuvarli donem
+
+
+def test_odeme_token_kurundan_TUREMEZ(monkeypatch):
+    """basis_amount hizmetin gercek fiyati olmali; token x referans kur DEGIL.
+    Turetseydik 1200 x 0.08 = $96 cikardi ve musterinin gordugu $107.99 ile
+    celisirdi."""
+    ist, _ = _odeme(monkeypatch)
+    assert ist.yazilan["basis_amount"] != round(1200 * db.TOKEN_REFERENCE_USD, 2)
+
+
+def test_fiyat_yoksa_token_referansina_duser(monkeypatch):
+    ist, ok = _odeme(monkeypatch, tip={**TIP, "money_price": None})
+    assert ok is True
+    assert ist.yazilan["basis_amount"] == round(1200 * db.TOKEN_REFERENCE_USD, 2)
+
+
+def test_atanmis_uzman_yoksa_odeme_yok(monkeypatch):
+    ist, ok = _odeme(monkeypatch, ticket={**BILET, "assigned_expert_id": None})
+    assert ok is False and ist.yazilan is None
+
+
+def test_ucreti_tanimsiz_hizmet_odenmez(monkeypatch):
+    """llms_robots/schema_setup bilerek NULL: otomasyon dusunce $5'lik is
+    atmak anlamsiz. NULL = ucretli uzmana atanmaz/odenmez."""
+    ist, ok = _odeme(monkeypatch, tip={**TIP, "expert_payout_usd": None})
+    assert ok is False and ist.yazilan is None
+
+
+def test_tekrar_onayda_IKINCI_BORC_YOK(monkeypatch):
+    """Red bileti 'assigned'a geri donduruyor, yani tekrar onaylanabiliyor.
+    Kismi benzersiz indeks 409 doner -> yeni borc acilmaz, bu hata degil."""
+    ist, ok = _odeme(monkeypatch, post_status=409)
+    assert ok is False
+
+
+def test_olmayan_bilet(monkeypatch):
+    ist, ok = _odeme(monkeypatch, ticket=None)
+    assert ok is False and ist.yazilan is None
