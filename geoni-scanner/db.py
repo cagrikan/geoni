@@ -3088,7 +3088,9 @@ async def _record_delivery_payout(client, ticket_id: int) -> bool:
     """Onaylanan teslim icin uzman kazanc satiri yazar.
 
     ODEME MODELI: yuzde DEGIL, hizmet basina SABIT ucret
-    (ticket_types.expert_payout_usd — kurucu karari 2026-07-25). Yuzde
+    (ticket_types.expert_payout_usd — kurucu karari 2026-07-25).
+    Guncel skala: icerik $10, wikidata $20, guvenilir kaynaklar $30;
+    llms_robots/schema_setup NULL (ucretli uzmana atanmaz). Yuzde
     denenmisti ama matrahi belirsizdi: token'in tek fiyati yok (paketler arasi
     %40 fark), ustune Apple %15-30 alinca "%33" fiili tahsilatin yarisina
     cikiyordu ve hediye tokenla alinan iste gelir $0 iken nakit cikiyordu.
