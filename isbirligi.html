@@ -15,7 +15,13 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://geoni.ai/og-share.png">
 <link rel="icon" href="/favicon.png">
-<style>:root{color-scheme:light}body{margin:0;padding:0;background:#faf9f5}</style>
+<script>/* Paint'ten ONCE: kayitli tema uygulanir, yoksa isletim sistemi tercihi.
+Eskiden burada sabit "light" vardi ve koyu tema medya sorgusunu eziyordu. */
+(function(){try{var t=localStorage.getItem('geoni_site_theme');
+if(t!=='dark'&&t!=='light'){t=(window.matchMedia&&matchMedia('(prefers-color-scheme:dark)').matches)?'dark':'light';}
+document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<style>:root{color-scheme:light dark}body{margin:0;padding:0;background:#FAFAFE}
+:root[data-theme="dark"] body{background:#121017}</style>
 <style>
   :root{
     --accent:#7C86F5; --accent-deep:#5b63e6; --amber:#F5A623;
@@ -27,11 +33,19 @@
     --mono:"SF Mono","JetBrains Mono",ui-monospace,Menlo,monospace;
     --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
   }
-  @media (prefers-color-scheme:dark){
-    :root{--bg:#121017;--surface:#1b1926;--surface-2:#232130;--text:#ecebf5;--muted:#a6a2bc;--faint:#7d7a97;
-      --border:rgba(124,134,245,.16);--border-strong:rgba(124,134,245,.34);--good:#2fbd84;
-      --shadow:0 1px 2px rgba(0,0,0,.3),0 18px 40px -16px rgba(0,0,0,.6);}
-  }
+  /* Isletim sistemi tercihi (varsayilan sinyal) — ama :not([data-theme]) ile
+     sinirli: kullanici butondan secim yaptiysa medya sorgusu ONU EZMEZ. */
+  @media (prefers-color-scheme:dark){ :root:not([data-theme]){--bg:#121017;--surface:#1b1926;--surface-2:#232130;--text:#ecebf5;--muted:#a6a2bc;--faint:#7d7a97;--border:rgba(124,134,245,.16);--border-strong:rgba(124,134,245,.34);--good:#2fbd84;--shadow:0 1px 2px rgba(0,0,0,.3),0 18px 40px -16px rgba(0,0,0,.6);} }
+  /* Buton secimi her iki yonde de kazanir. */
+  :root[data-theme="dark"]{--bg:#121017;--surface:#1b1926;--surface-2:#232130;--text:#ecebf5;--muted:#a6a2bc;--faint:#7d7a97;--border:rgba(124,134,245,.16);--border-strong:rgba(124,134,245,.34);--good:#2fbd84;--shadow:0 1px 2px rgba(0,0,0,.3),0 18px 40px -16px rgba(0,0,0,.6);}
+  :root[data-theme="light"]{--bg:#FAFAFE;--surface:#FFFFFF;--surface-2:#F3F3FB;--text:#17181f;--muted:#5d6178;--faint:#8a8fa6;--border:rgba(99,102,241,.16);--border-strong:rgba(99,102,241,.30);--good:#1fa971;--shadow:0 1px 2px rgba(23,24,31,.04),0 10px 30px -12px rgba(60,40,130,.14);}
+  .gn-toggles{position:fixed;top:16px;right:16px;z-index:200;display:flex;gap:8px}
+  .gn-tg{display:flex;align-items:center;justify-content:center;min-width:38px;height:38px;padding:0 10px;
+    border-radius:9px;border:1px solid var(--border-strong);background:var(--surface);color:var(--muted);
+    font:600 .78rem/1 var(--mono);cursor:pointer;transition:color .2s,border-color .2s;
+    -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+  .gn-tg:hover{color:var(--text);border-color:var(--accent)}
+  .gn-tg svg{width:17px;height:17px}
   *{box-sizing:border-box}
   body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.6;-webkit-font-smoothing:antialiased}
   :focus-visible{outline:2.5px solid var(--accent);outline-offset:3px;border-radius:5px}
@@ -91,6 +105,12 @@
 </style>
 </head>
 <body>
+  <div class="gn-toggles">
+    <button type="button" class="gn-tg" id="gn-theme" aria-label="Tema değiştir" title="Tema">
+      <svg id="gn-theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></svg>
+    </button>
+    <button type="button" class="gn-tg" id="gn-lang" aria-label="Change language" title="Language">EN</button>
+  </div>
   <header>
     <canvas id="sky" aria-hidden="true"></canvas>
     <div class="wrap head-in">
@@ -102,11 +122,11 @@
           <circle cx="66" cy="56" r="5.5" fill="#F5A623"/>
         </svg>
         <b>geoni</b>
-        <span class="tag">Erken Erişim · Creator Programı</span>
+        <span class="tag" data-i18n="tag">Erken Erişim · Creator Programı</span>
       </div>
-      <span class="eyebrow">Creator programı · seni bekliyoruz</span>
-      <h1>Kitlenin sorduğu soruyu <span class="g">ölçen araç</span> senin olsun.</h1>
-      <p class="lede">GEONI, bir markanın ChatGPT, Claude, Gemini ve Perplexity cevaplarında görünüp
+      <span class="eyebrow" data-i18n="hero_eyebrow">Creator programı · seni bekliyoruz</span>
+      <h1 data-i18n="hero_h1">Kitlenin sorduğu soruyu <span class="g">ölçen araç</span> senin olsun.</h1>
+      <p class="lede" data-i18n="hero_lede">GEONI, bir markanın ChatGPT, Claude, Gemini ve Perplexity cevaplarında görünüp
         görünmediğini 60 saniyede ölçer. <b>Yakında herkes duyacak — sen ilklerden ol.</b>
         Bu brief, seninle nasıl çalışabileceğimizi anlatıyor; zorlama yok, önce dene.</p>
     </div>
@@ -114,68 +134,163 @@
 
   <main class="wrap">
     <section>
-      <span class="eyebrow">Neden şimdi ilgini çeker</span>
-      <h2>AI görünürlüğü, içeriğinin bir sonraki büyük konusu</h2>
-      <p class="sub">Arama, on mavi linkten tek bir AI cevabına kaydı. Takipçilerin de bunu
+      <span class="eyebrow" data-i18n="s1_eyebrow">Neden şimdi ilgini çeker</span>
+      <h2 data-i18n="s1_h2">AI görünürlüğü, içeriğinin bir sonraki büyük konusu</h2>
+      <p class="sub" data-i18n="s1_sub">Arama, on mavi linkten tek bir AI cevabına kaydı. Takipçilerin de bunu
         merak ediyor: "AI beni/markamı tanıyor mu?" Ölçülebilir, paylaşılabilir, tartışmalı — tam
         senlik bir içerik.</p>
       <div class="why">
-        <div class="cell"><div class="k">Yeni kategori</div><div class="v">GEO/AEO Türkiye'de yeni. Erken konuşan otorite olur.</div></div>
-        <div class="cell"><div class="k">Paylaşılabilir</div><div class="v">Skor kartı ("54/100") + "AI'ın önerdiği rakipler" = doğal etkileşim.</div></div>
-        <div class="cell"><div class="k">Kişisel</div><div class="v">Herkes kendi adını/markasını merak eder. Yorum yağar.</div></div>
-        <div class="cell"><div class="k">Ücretsiz dene</div><div class="v">60 saniye, üyeliksiz. İçeriğe malzeme anında.</div></div>
+        <div class="cell"><div class="k" data-i18n="s1_k1">Yeni kategori</div><div class="v" data-i18n="s1_v1">GEO/AEO Türkiye'de yeni. Erken konuşan otorite olur.</div></div>
+        <div class="cell"><div class="k" data-i18n="s1_k2">Paylaşılabilir</div><div class="v" data-i18n="s1_v2">Skor kartı ("54/100") + "AI'ın önerdiği rakipler" = doğal etkileşim.</div></div>
+        <div class="cell"><div class="k" data-i18n="s1_k3">Kişisel</div><div class="v" data-i18n="s1_v3">Herkes kendi adını/markasını merak eder. Yorum yağar.</div></div>
+        <div class="cell"><div class="k" data-i18n="s1_k4">Ücretsiz dene</div><div class="v" data-i18n="s1_v4">60 saniye, üyeliksiz. İçeriğe malzeme anında.</div></div>
       </div>
     </section>
 
     <section>
-      <span class="eyebrow">İki yol · sana uygun olanı seç</span>
-      <h2>Nasıl çalışırız</h2>
+      <span class="eyebrow" data-i18n="s2_eyebrow">İki yol · sana uygun olanı seç</span>
+      <h2 data-i18n="s2_h2">Nasıl çalışırız</h2>
       <div class="models">
         <div class="model">
-          <div class="model-h"><span class="badge">A</span><b>Barter — hızlı, hafif</b></div>
+          <div class="model-h"><span class="badge">A</span><b data-i18n="mA_title">Barter — hızlı, hafif</b></div>
           <div class="model-b">
-            <div class="line"><span class="m">Sen alırsın</span><span class="give"><b>Sınırsız tarama</b> + kişisel markanı ya da ajansını yapay zeka aramalarında ücretsiz öne çıkarırız + erken erişim.</span></div>
-            <div class="line"><span class="m">Sen verirsin</span><span class="give">Dürüst bir deneme paylaşımı — skorunu göster, "denedim" de. Senaryo dayatmıyoruz.</span></div>
-            <div class="line"><span class="m">Kime</span><span class="give">Etkileşimi güçlü, samimi içerik üreten herkese.</span></div>
+            <div class="line"><span class="m" data-i18n="mA_m1">Sen alırsın</span><span class="give" data-i18n="mA_g1"><b>Sınırsız tarama</b> + kişisel markanı ya da ajansını yapay zeka aramalarında ücretsiz öne çıkarırız + erken erişim.</span></div>
+            <div class="line"><span class="m" data-i18n="mA_m2">Sen verirsin</span><span class="give" data-i18n="mA_g2">Dürüst bir deneme paylaşımı — skorunu göster, "denedim" de. Senaryo dayatmıyoruz.</span></div>
+            <div class="line"><span class="m" data-i18n="mA_m3">Kime</span><span class="give" data-i18n="mA_g3">Etkileşimi güçlü, samimi içerik üreten herkese.</span></div>
           </div>
         </div>
         <div class="model">
-          <div class="model-h"><span class="badge star">B</span><b>Uzman-Ortak — derin, gelirli</b><span class="rec">önerilen</span></div>
+          <div class="model-h"><span class="badge star">B</span><b data-i18n="mB_title">Uzman-Ortak — derin, gelirli</b><span class="rec" data-i18n="mB_rec">önerilen</span></div>
           <div class="model-b">
-            <div class="line"><span class="m">Fikir</span><span class="give">SEO/GEO işini zaten yapıyorsan, GEONI <b>uzmanı</b> olursun.</span></div>
-            <div class="line"><span class="m">Nasıl akar</span><span class="give">Kullanıcılar uygulamada tarar, eksik çıkar, hizmet sipariş eder. İş <b>sana atanır</b>, GEONI panelinden teslim edersin.</span></div>
-            <div class="line"><span class="m">Kazanç</span><span class="give">Teslim ettiğin işten <b>gelir payı alırsın.</b> Komisyon ödemezsin, white-label değil — müşteriyi ve tahsilatı GEONI yönetir, sen işi yapıp payını alırsın. Net oranı 15 dakikada netleştiririz.</span></div>
-            <div class="line"><span class="m">Neden iyi</span><span class="give">Tek seferlik post değil — sürekli lead + gelir; kendi kitlene de yeni bir "AI görünürlük" hizmeti.</span></div>
+            <div class="line"><span class="m" data-i18n="mB_m1">Fikir</span><span class="give" data-i18n="mB_g1">SEO/GEO işini zaten yapıyorsan, GEONI <b>uzmanı</b> olursun.</span></div>
+            <div class="line"><span class="m" data-i18n="mB_m2">Nasıl akar</span><span class="give" data-i18n="mB_g2">Kullanıcılar uygulamada tarar, eksik çıkar, hizmet sipariş eder. İş <b>sana atanır</b>, GEONI panelinden teslim edersin.</span></div>
+            <div class="line"><span class="m" data-i18n="mB_m3">Kazanç</span><span class="give" data-i18n="mB_g3">Teslim ettiğin işten <b>gelir payı alırsın.</b> Komisyon ödemezsin, white-label değil — müşteriyi ve tahsilatı GEONI yönetir, sen işi yapıp payını alırsın. Net oranı 15 dakikada netleştiririz.</span></div>
+            <div class="line"><span class="m" data-i18n="mB_m4">Neden iyi</span><span class="give" data-i18n="mB_g4">Tek seferlik post değil — sürekli lead + gelir; kendi kitlene de yeni bir "AI görünürlük" hizmeti.</span></div>
           </div>
         </div>
       </div>
     </section>
 
     <section>
-      <span class="eyebrow">Basit</span>
-      <h2>Üç adım</h2>
+      <span class="eyebrow" data-i18n="s3_eyebrow">Basit</span>
+      <h2 data-i18n="s3_h2">Üç adım</h2>
       <div class="steps">
-        <div class="step"><div><b>Dene.</b> Kendi adını ya da bir markayı 60 saniyede tara. Skorunu gör.</div></div>
-        <div class="step"><div><b>Konuşalım.</b> Beğendiysen 15 dakika — barter mı, uzman-ortak mı, sana uygun olanı netleştirelim.</div></div>
-        <div class="step"><div><b>Başlayalım.</b> Erişimini/uzmanlığını açarız; sen kendi tarzında paylaşırsın.</div></div>
+        <div class="step"><div data-i18n="st1"><b>Dene.</b> Kendi adını ya da bir markayı 60 saniyede tara. Skorunu gör.</div></div>
+        <div class="step"><div data-i18n="st2"><b>Konuşalım.</b> Beğendiysen 15 dakika — barter mı, uzman-ortak mı, sana uygun olanı netleştirelim.</div></div>
+        <div class="step"><div data-i18n="st3"><b>Başlayalım.</b> Erişimini/uzmanlığını açarız; sen kendi tarzında paylaşırsın.</div></div>
       </div>
-      <div class="note"><span class="i">!</span><p>Şeffaflık bizim için önemli: iş birliği içerikleri <b>#işbirliği</b> ya da <b>#reklam</b> etiketiyle paylaşılır. Dürüst deneme, dayatılmış senaryodan hep daha iyi çalışır.</p></div>
+      <div class="note"><span class="i">!</span><p data-i18n="note">Şeffaflık bizim için önemli: iş birliği içerikleri <b>#işbirliği</b> ya da <b>#reklam</b> etiketiyle paylaşılır. Dürüst deneme, dayatılmış senaryodan hep daha iyi çalışır.</p></div>
     </section>
 
     <div class="cta">
-      <h3>Önce sadece dene — skorunu merak ettik 👀</h3>
-      <p>Bir markanı ya da adını 60 saniyede ölç. Beğenirsen konuşuruz; beğenmezsen olsun. <b>Erken erişim kontenjanı: ilk 20 creator.</b></p>
-      <a class="cta-btn" href="https://app.geoni.ai?utm_source=isbirligi&utm_medium=creator" target="_blank" rel="noopener">Ücretsiz tara →</a>
+      <h3 data-i18n="cta_h3">Önce sadece dene — skorunu merak ettik 👀</h3>
+      <p data-i18n="cta_p">Bir markanı ya da adını 60 saniyede ölç. Beğenirsen konuşuruz; beğenmezsen olsun. <b>Erken erişim kontenjanı: ilk 20 creator.</b></p>
+      <a class="cta-btn" href="https://app.geoni.ai?utm_source=isbirligi&utm_medium=creator" target="_blank" rel="noopener" data-i18n="cta_btn">Ücretsiz tara →</a>
       <div class="row">
-        <a href="https://app.geoni.ai?utm_source=isbirligi" target="_blank" rel="noopener">Dene: geoni.ai</a>
-        <a href="https://apps.apple.com/app/id6790143973" target="_blank" rel="noopener">App Store'da GEONI</a>
-        <a href="mailto:mail@geoni.ai">İletişim: mail@geoni.ai</a>
+        <a href="https://app.geoni.ai?utm_source=isbirligi" target="_blank" rel="noopener" data-i18n="row1">Dene: geoni.ai</a>
+        <a href="https://apps.apple.com/app/id6790143973" target="_blank" rel="noopener" data-i18n="row2">App Store'da GEONI</a>
+        <a href="mailto:mail@geoni.ai" data-i18n="row3">İletişim: mail@geoni.ai</a>
       </div>
     </div>
 
-    <footer>geoni — Generative Engine Optimization · AI görünürlük ölçme &amp; iyileştirme</footer>
+    <footer data-i18n="footer">geoni — Generative Engine Optimization · AI görünürlük ölçme &amp; iyileştirme</footer>
   </main>
 
+<script>
+/* i18n + tema. Anahtarlar ana site ile AYNI localStorage'i paylasir
+   (geoni_site_lang / geoni_site_theme) — geoni.ai'da EN secen kullanici
+   buraya gelince tekrar EN secmek zorunda kalmaz. */
+(function () {
+  var EN = {
+    tag: 'Early Access · Creator Program',
+    hero_eyebrow: 'Creator program · we’re waiting for you',
+    hero_h1: 'Own the tool that <span class="g">measures</span> what your audience asks.',
+    hero_lede: 'GEONI measures in 60 seconds whether a brand shows up in ChatGPT, Claude, Gemini and Perplexity answers. <b>Everyone will hear about this soon — be among the first.</b> This brief explains how we could work together; no pressure, just try it first.',
+    s1_eyebrow: 'Why this matters to you now',
+    s1_h2: 'AI visibility is your content’s next big topic',
+    s1_sub: 'Search moved from ten blue links to a single AI answer. Your followers wonder the same thing: "Does AI know me / my brand?" Measurable, shareable, debatable — exactly your kind of content.',
+    s1_k1: 'New category', s1_v1: 'GEO/AEO is new. Whoever speaks early becomes the authority.',
+    s1_k2: 'Shareable', s1_v2: 'A score card ("54/100") + "the rivals AI recommends" = natural engagement.',
+    s1_k3: 'Personal', s1_v3: 'Everyone is curious about their own name or brand. Comments pour in.',
+    s1_k4: 'Free to try', s1_v4: '60 seconds, no signup. Instant material for content.',
+    s2_eyebrow: 'Two paths · pick the one that fits',
+    s2_h2: 'How we work together',
+    mA_title: 'Barter — fast, light',
+    mA_m1: 'You get', mA_m2: 'You give', mA_m3: 'For whom',
+    mA_g1: '<b>Unlimited scans</b> + we promote your personal brand or agency in AI search for free + early access.',
+    mA_g2: 'One honest post about trying it — show your score, say "I tried it". No script imposed.',
+    mA_g3: 'Anyone creating genuine content with strong engagement.',
+    mB_title: 'Expert Partner — deeper, paid', mB_rec: 'recommended',
+    mB_m1: 'The idea', mB_m2: 'How it flows', mB_m3: 'Earnings', mB_m4: 'Why it’s good',
+    mB_g1: 'If you already do SEO/GEO work, you become a GEONI <b>expert</b>.',
+    mB_g2: 'Users scan in the app, gaps show up, they order a service. The job is <b>assigned to you</b> and you deliver it from the GEONI panel.',
+    mB_g3: 'You <b>take a share of the revenue</b> from every job you deliver. You pay no commission and it isn’t white-label — GEONI owns the customer and the billing, you do the work and take your share. We settle the exact rate in 15 minutes.',
+    mB_g4: 'Not a one-off post — recurring leads and income; plus a new "AI visibility" service for your own audience.',
+    s3_eyebrow: 'Simple', s3_h2: 'Three steps',
+    st1: '<b>Try it.</b> Scan your own name or a brand in 60 seconds. See your score.',
+    st2: '<b>Let’s talk.</b> If you like it, 15 minutes — barter or expert partner, we’ll pick what fits you.',
+    st3: '<b>Let’s start.</b> We open your access / expert role; you post in your own style.',
+    note: 'Transparency matters to us: collaboration content is posted with a <b>#sponsored</b> or <b>#ad</b> tag. An honest review always beats a scripted one.',
+    cta_h3: 'Just try it first — we’re curious about your score 👀',
+    cta_p: 'Measure a brand or your own name in 60 seconds. If you like it we’ll talk; if not, no hard feelings. <b>Early access quota: first 20 creators.</b>',
+    cta_btn: 'Scan free →',
+    row1: 'Try it: geoni.ai', row2: 'GEONI on the App Store', row3: 'Contact: mail@geoni.ai',
+    footer: 'geoni — Generative Engine Optimization · measuring &amp; improving AI visibility'
+  };
+  var TR = {};
+  document.querySelectorAll('[data-i18n]').forEach(function (el) { TR[el.getAttribute('data-i18n')] = el.innerHTML; });
+
+  var META = {
+    en: { title: 'GEONI — Looking for the first creators (Early Access)',
+          desc: 'Own the tool that measures what your audience asks. GEONI measures brand visibility in ChatGPT/Claude/Gemini/Perplexity. Barter or expert partner — try it first.' },
+    tr: { title: document.title,
+          desc: (document.querySelector('meta[name="description"]') || {}).content || '' }
+  };
+
+  function applyLang(l) {
+    var d = l === 'en' ? EN : TR;
+    document.querySelectorAll('[data-i18n]').forEach(function (el) {
+      var k = el.getAttribute('data-i18n');
+      if (d[k] !== undefined) el.innerHTML = d[k];
+    });
+    document.documentElement.lang = l === 'en' ? 'en' : 'tr';
+    document.title = META[l === 'en' ? 'en' : 'tr'].title;
+    var m = document.querySelector('meta[name="description"]');
+    if (m) m.setAttribute('content', META[l === 'en' ? 'en' : 'tr'].desc);
+    var b = document.getElementById('gn-lang');
+    if (b) b.textContent = l === 'en' ? 'TR' : 'EN';
+  }
+
+  var SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>';
+  var MOON = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+  function applyTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    var i = document.getElementById('gn-theme-icon');
+    if (i) i.innerHTML = t === 'dark' ? SUN : MOON;
+  }
+
+  var lang = 'tr', theme = 'light';
+  try { lang = localStorage.getItem('geoni_site_lang') === 'en' ? 'en' : 'tr'; } catch (e) {}
+  try {
+    theme = localStorage.getItem('geoni_site_theme');
+    if (theme !== 'dark' && theme !== 'light') {
+      theme = (window.matchMedia && matchMedia('(prefers-color-scheme:dark)').matches) ? 'dark' : 'light';
+    }
+  } catch (e) { theme = 'light'; }
+  applyLang(lang); applyTheme(theme);
+
+  document.getElementById('gn-lang').addEventListener('click', function () {
+    lang = lang === 'en' ? 'tr' : 'en';
+    try { localStorage.setItem('geoni_site_lang', lang); } catch (e) {}
+    applyLang(lang);
+  });
+  document.getElementById('gn-theme').addEventListener('click', function () {
+    theme = theme === 'dark' ? 'light' : 'dark';
+    try { localStorage.setItem('geoni_site_theme', theme); } catch (e) {}
+    applyTheme(theme);
+  });
+})();
+</script>
 <script>
 (function(){
   var c=document.getElementById('sky'); if(!c) return;
