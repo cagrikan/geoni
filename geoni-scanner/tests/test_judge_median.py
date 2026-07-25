@@ -6,7 +6,9 @@ import brand_recall as b
 
 def _run_stable(samples, model_texts):
     it = iter(samples)
-    async def fake(mt, wr, pi):
+    # cache kwarg (2026-07-25 prompt caching): _stable artik ilk ornegi tek basina,
+    # kalanini paralel cagirir ve hepsine cache=True gecer — sahte judge de kabul etmeli.
+    async def fake(mt, wr, pi, cache=False):
         return next(it)
     orig, orig_n = b.judge_batch_accuracy, b.JUDGE_SAMPLES
     b.judge_batch_accuracy = fake
@@ -50,3 +52,22 @@ def test_single_sample_passthrough():
     samples = [{"claude": _entry(42)}]
     r = _run_stable(samples, {"claude": "x"})
     assert r["claude"]["dogruluk_skoru"] == 42.0
+
+
+def test_stable_uses_prompt_cache():
+    """MALIYET korumasi (2026-07-25): _stable TUM judge orneklerini cache=True ile
+    cagirmali. Bir refactor bunu dusurursa judge girdi tokeni tekrar tam fiyattan
+    faturalanir (~%36 maliyet artisi) ve kimse fark etmez — bu test onu yakalar."""
+    seen = []
+
+    async def fake(mt, wr, pi, cache=False):
+        seen.append(cache)
+        return {"claude": _entry(70)}
+
+    orig, orig_n = b.judge_batch_accuracy, b.JUDGE_SAMPLES
+    b.judge_batch_accuracy, b.JUDGE_SAMPLES = fake, 3
+    try:
+        asyncio.run(b.judge_batch_accuracy_stable({"claude": "x"}, [], {}))
+    finally:
+        b.judge_batch_accuracy, b.JUDGE_SAMPLES = orig, orig_n
+    assert seen == [True, True, True], f"tum ornekler cache'li olmali, gelen: {seen}"

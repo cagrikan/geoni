@@ -452,8 +452,12 @@ async def _post_retry(client, url, *, _tries: int = 3, _base: float = 0.6, **kwa
 
 
 async def _ask_claude(prompt: str, temperature: float = RECALL_TEMPERATURE, max_tokens: int = 500,
-                      model: str = "claude-haiku-4-5") -> str | None:
+                      model: str = "claude-haiku-4-5", cache: bool = False) -> str | None:
     # model default'u recall motoru (haiku); judge bagimsiz bir modelle cagirir (A-3).
+    # cache=True (2026-07-25): prompt'u cache_control'lu TEK metin blogu olarak yollar.
+    # Anthropic icin tek text blogu duz string ile OZDESTIR — model/prompt/ornekleme
+    # degismez, YALNIZCA faturalama degisir (ayni prompt tekrar gelirse girdi tokeni
+    # %10 fiyatlanir). Judge 3 kez ayni prompt'u gonderdiginden buyuk tasarruf saglar.
     if not ANTHROPIC_API_KEY:
         return None
     try:
@@ -465,7 +469,10 @@ async def _ask_claude(prompt: str, temperature: float = RECALL_TEMPERATURE, max_
                     "model": model,
                     "max_tokens": max_tokens,
                     "temperature": temperature,
-                    "messages": [{"role": "user", "content": prompt}],
+                    "messages": [{"role": "user", "content": (
+                        [{"type": "text", "text": prompt,
+                          "cache_control": {"type": "ephemeral"}}] if cache else prompt
+                    )}],
                 },
                 timeout=30,
             )
@@ -1133,7 +1140,8 @@ async def _check_model_two_phase(name: str, topic: str, web_results: list, ask_f
 
 # ── Judge tabanli dogruluk skorlamasi (Madde 2.1) ──────────────────────────
 
-async def judge_batch_accuracy(model_texts: dict, web_results: list, person_info: dict) -> dict:
+async def judge_batch_accuracy(model_texts: dict, web_results: list, person_info: dict,
+                               cache: bool = False) -> dict:
     """
     Model yanitlarini TEK toplu judge cagrisinda Tavily web verisiyle
     karsilastirarak dogruluk puanlar.
@@ -1223,7 +1231,7 @@ async def judge_batch_accuracy(model_texts: dict, web_results: list, person_info
     if ANTHROPIC_API_KEY:
         try:
             raw = await _ask_claude(prompt, temperature=0, max_tokens=600,
-                                    model=JUDGE_MODEL_ANTHROPIC)
+                                    model=JUDGE_MODEL_ANTHROPIC, cache=cache)
             out = _parse_judge_output(_extract_structured_json(raw or ""))
             if out:
                 return out
@@ -1267,11 +1275,18 @@ async def judge_batch_accuracy_stable(model_texts: dict, web_results: list, pers
     Maliyet: judge basina +2 cagri (~toplam %2-3). JUDGE_SAMPLES=1 -> eski davranis."""
     if JUDGE_SAMPLES <= 1:
         return await judge_batch_accuracy(model_texts, web_results, person_info)
-    samples = await asyncio.gather(*[
-        judge_batch_accuracy(model_texts, web_results, person_info)
-        for _ in range(JUDGE_SAMPLES)
+    # MALIYET (2026-07-25): 3 ornek BIREBIR AYNI promptu gonderiyor ve girdi, judge
+    # maliyetinin ~%69'u. Prompt caching ile ilk cagri cache YAZAR, kalan ikisi OKUR
+    # (girdi %10 fiyatlanir) -> judge maliyeti ~%36 duser. Cikti DEGISMEZ: ayni model,
+    # ayni prompt, ayni ornekleme — yalnizca faturalama degisir. Cache'in tutmasi icin
+    # ilk cagri BITMELI; ucu birden paralel gonderilirse ucu de cache-miss olur. Bu
+    # yuzden ilk ornek tek basina, kalan ikisi paralel kosar (~+4sn gecikme, onaylandi).
+    first = await judge_batch_accuracy(model_texts, web_results, person_info, cache=True)
+    rest = await asyncio.gather(*[
+        judge_batch_accuracy(model_texts, web_results, person_info, cache=True)
+        for _ in range(JUDGE_SAMPLES - 1)
     ], return_exceptions=True)
-    samples = [s for s in samples if isinstance(s, dict) and s]
+    samples = [s for s in ([first] + list(rest)) if isinstance(s, dict) and s]
     if not samples:
         return {}
     if len(samples) == 1:
@@ -1728,7 +1743,22 @@ async def check_brand_recall(
     # AYRI judge cagrisiyla yargilanir (shadow verisi -> model_results["grok"].judge).
     live_texts = {k: v for k, v in representative_texts.items() if k not in SHADOW_ENGINES}
     shadow_texts = {k: v for k, v in representative_texts.items() if k in SHADOW_ENGINES}
-    judge_results = await judge_batch_accuracy_stable(live_texts, web_results, person_info)
+    # MALIYET (2026-07-25): HICBIR canli motor tanimadiysa judge'i hic cagirma.
+    # Kanit (kod okunarak dogrulandi, tahmin degil): (a) taninmayan modelin skoru
+    # _model_score_from_components(taniyor=False) -> 0.0 ve legacy_score da 0.0
+    # (satir: "... if data['recognized'] else 0.0") -> per-model skor AYNI; (b) kalite
+    # kanali recognition_count==0 dalinda quality_score=0.0'a SABITLENIYOR (F-O3), yani
+    # dogruluk_values hic okunmuyor. Dolayisiyla MANSET SKOR BIT-BIT AYNI; yalnizca
+    # tanilama alanlari (judge/score_components) bos kalir. Taramalarin ~%11'i boyle.
+    live_recognized = any(v.get("recognized") for k, v in model_raw.items() if k not in SHADOW_ENGINES)
+    if live_texts and live_recognized:
+        judge_results = await judge_batch_accuracy_stable(live_texts, web_results, person_info)
+    else:
+        judge_results = {}
+        if live_texts:
+            logger.info("judge atlandi: hicbir canli motor tanimadi (skor etkisi YOK, quality zaten 0)")
+    # NOT: golge (grok) judge'a DOKUNULMADI — 2026-07-30 Grok golge-mod kararinin
+    # veri setini eksiltmemek icin (kazanc 1 cagri, veri daha degerli).
     if shadow_texts:
         try:
             # Golge judge TEK ornek (judge_batch_accuracy) — _stable'in 3x medyani gerekmez;
