@@ -33,6 +33,7 @@ from ratelimit import enforce_audit_rate_limits, RateLimitExceeded
 from mailer import send_audit_report_email, send_purchase_email, send_refund_email
 from brand_recall import check_brand_recall, infer_brand_identity, SCORING_VERSION
 from free_scan import free_scan_gate, record_free_scan
+import attest  # Apple App Attest: mobil muafiyetini imzaya baglar (bkz. _mobile_exempt)
 from db import (
     create_pending_audit, update_audit_status, get_audit_row,
     save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits, get_credit_balance,
@@ -710,7 +711,77 @@ def _is_mobile_client(http_request) -> bool:
     # iOS native (URLSession): 'GEONI/<build> CFNetwork/<v> Darwin/<v>'. Herhangi biri
     # yeterli; web tarayicilari 'CFNetwork'/'Darwin'/'GEONI' ASLA gondermez. 'Expo' de
     # dahil (dev/Expo Go). curl/python-requests bu isaretlerin HICBIRINI tasimaz.
+    #
+    # ⚠️ BU KONTROL TAKLIT EDILEBILIR (2026-07-25 tespiti): UA bir string'tir, herkes
+    # gonderebilir. Sahte UA + device_token'siz istek Turnstile'i, IP limitini ve
+    # DeviceCheck katmanini birden atlar; tarama basina ~$0.31 gercek para yanar.
+    # Kalici cozum App Attest (attest.py) — muafiyeti imzaya baglar. Gecis kademeli:
+    #   Faz 1 (SU AN): attest dogrulanir + LOGLANIR, muafiyet hala UA'ya bakar.
+    #                  Boylece attest'siz eski surumler kirilmaz.
+    #   Faz 2: ATTEST_ENFORCE=1 -> muafiyet YALNIZCA gecerli assertion ile verilir.
+    # Faz 2'ye ancak attest'li surum yayilinca gecilir (bkz. _mobile_exempt).
     return any(m in ua for m in ("GEONI", "CFNetwork", "Darwin", "Expo"))
+
+
+async def _mobile_exempt(http_request) -> bool:
+    """Mobil muafiyeti (Turnstile + IP rate-limit atlama) verilsin mi?
+
+    Faz 1: App Attest sonucu LOGLANIR ama karar UA'ya gore verilir (davranis degismez).
+    Faz 2 (ATTEST_ENFORCE=1): karar YALNIZCA gecerli assertion'a gore verilir.
+    """
+    ua_ok = _is_mobile_client(http_request)
+    try:
+        attested, sebep = await attest.check_request(http_request)
+    except Exception as e:  # attest katmani ASLA taramayi dusurmemeli
+        attested, sebep = False, f"attest hatasi: {str(e)[:60]}"
+
+    if ua_ok or attested:
+        logger.info(f"mobil muafiyet: ua={ua_ok} attest={attested} ({sebep})")
+
+    if attest.ENFORCE:
+        return attested
+    return ua_ok
+
+
+# --------------------------------------------------------------------------- App Attest
+class AttestRegisterRequest(BaseModel):
+    key_id: str = Field(..., max_length=200)      # Apple'in urettigi anahtar kimligi (base64)
+    attestation: str = Field(..., max_length=20000)  # CBOR attestation nesnesi (base64)
+    challenge: str = Field(..., max_length=200)
+
+
+@app.get("/api/attest/challenge")
+async def attest_challenge(http_request: Request):
+    """Tek kullanimlik challenge. Cihaz bunu imzalayarak attestation uretir."""
+    ch = await attest.new_challenge()
+    if not ch:
+        raise HTTPException(status_code=503, detail="attest servisi hazir degil")
+    return {"challenge": ch, "ttl_seconds": attest.CHALLENGE_TTL_MIN * 60}
+
+
+@app.post("/api/attest/register")
+async def attest_register(request: AttestRegisterRequest, http_request: Request):
+    """Attestation'i dogrular ve cihazin public key'ini kaydeder.
+
+    Basarili olursa bu cihaz bundan sonra assertion uretip mobil muafiyetini
+    kriptografik olarak kanitlayabilir (bkz. _mobile_exempt)."""
+    if not await attest._consume_challenge(request.challenge):
+        raise HTTPException(status_code=400, detail="challenge gecersiz/kullanilmis/suresi gecmis")
+    try:
+        sonuc = attest.verify_attestation(request.key_id, request.attestation, request.challenge)
+    except Exception as e:
+        logger.warning(f"attest dogrulama basarisiz: {str(e)[:150]}")
+        raise HTTPException(status_code=400, detail="attestation dogrulanamadi")
+
+    auth_header = http_request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
+    user_id = await get_user_id_from_token(token) if token else None
+
+    ok = await attest.save_key(request.key_id, sonuc["public_key"], sonuc["environment"], user_id)
+    if not ok:
+        raise HTTPException(status_code=500, detail="anahtar kaydedilemedi")
+    logger.info(f"attest kayit: env={sonuc['environment']} user={'var' if user_id else 'yok'}")
+    return {"ok": True, "environment": sonuc["environment"]}
 
 
 @app.post("/api/audit/quick", response_model=AuditResponse)
@@ -724,7 +795,7 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
         user_id_rl = await get_user_id_from_token(token_rl) if token_rl else None
         is_premium = await check_is_premium(user_id_rl) if user_id_rl else False
         if not is_premium and not _is_internal_scan(http_request):
-            enforce_audit_rate_limits(client_ip, request.email, request.domain, skip_ip=_is_mobile_client(http_request))
+            enforce_audit_rate_limits(client_ip, request.email, request.domain, skip_ip=await _mobile_exempt(http_request))
     except RateLimitExceeded as e:
         raise HTTPException(
             status_code=429,
@@ -733,7 +804,7 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
         )
 
     # Anti-abuse (Turnstile): rate-limit'i tamamlar. Ic tarama muaf.
-    if not _is_internal_scan(http_request) and not _is_mobile_client(http_request):
+    if not _is_internal_scan(http_request) and not await _mobile_exempt(http_request):
         await enforce_turnstile(request.turnstile_token, client_ip, request.lang or "tr", "audit")
 
     # F-Y4 (Fable 2026-07-19): geçersiz domain (boşluk/@/bozuk yapı) submit'te reddedilir.
@@ -940,7 +1011,7 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
         if not is_premium2 and not _is_internal_scan(http_request):
             # T3: kimlik kovasi user_id olsun (email varsayilani anonymous@geoni.ai
             # -> tum premium-olmayanlar ayni kovayi paylasip birbirine 429 yediriyordu).
-            enforce_audit_rate_limits(client_ip, user_id_rl2, request.name, skip_ip=_is_mobile_client(http_request))
+            enforce_audit_rate_limits(client_ip, user_id_rl2, request.name, skip_ip=await _mobile_exempt(http_request))
     except RateLimitExceeded as e:
         raise HTTPException(
             status_code=429,
@@ -949,7 +1020,7 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
         )
 
     # Anti-abuse (Turnstile): rate-limit'i tamamlar. Ic tarama muaf.
-    if not _is_internal_scan(http_request) and not _is_mobile_client(http_request):
+    if not _is_internal_scan(http_request) and not await _mobile_exempt(http_request):
         await enforce_turnstile(request.turnstile_token, client_ip, request.lang or "tr", "brand-check")
 
     # Ucretsiz-tarama tavani (cihaz + hesap). private zaten 10 kredi, premium muaf.
@@ -999,7 +1070,7 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
     client_ip = get_client_ip(http_request)
     try:
         if not _is_internal_scan(http_request):
-            enforce_audit_rate_limits(client_ip, request.email, request.handle, skip_ip=_is_mobile_client(http_request))
+            enforce_audit_rate_limits(client_ip, request.email, request.handle, skip_ip=await _mobile_exempt(http_request))
     except RateLimitExceeded as e:
         raise HTTPException(
             status_code=429,
