@@ -93,6 +93,30 @@ document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   .note{display:flex;gap:13px;align-items:flex-start;margin-top:24px;padding:16px 18px;background:var(--surface-2);border:1px solid var(--border);border-left:3px solid var(--amber);border-radius:12px}
   .note .i{color:var(--amber);font-family:var(--mono);font-weight:700;flex:none}
   .note p{font-size:.92rem;color:var(--text)}
+  .form{margin-top:22px;display:grid;gap:16px}
+  .f-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .f{display:grid;gap:7px;font-size:.9rem}
+  .f>span{color:var(--muted);font-weight:600}
+  .f>span i{font-style:normal;font-weight:400;color:var(--faint)}
+  .f input,.f select,.f textarea{width:100%;font:inherit;font-size:.97rem;color:var(--text);
+    background:var(--surface);border:1px solid var(--border-strong);border-radius:11px;padding:11px 13px}
+  .f textarea{resize:vertical;min-height:78px}
+  .f-models{border:0;padding:0;margin:0;display:grid;gap:10px}
+  .f-models legend{padding:0;color:var(--muted);font-weight:600;font-size:.9rem;margin-bottom:4px}
+  .f-pick{display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1px solid var(--border);
+    border-radius:12px;padding:13px 15px;cursor:pointer;transition:border-color .2s}
+  .f-pick:has(input:checked){border-color:var(--accent)}
+  .f-pick input{margin-top:3px;accent-color:var(--accent);flex:none}
+  .f-pick b{display:block;font-size:.97rem}
+  .f-pick i{display:block;font-style:normal;color:var(--muted);font-size:.88rem;margin-top:2px}
+  /* Bal kupu: ekranda YOK ama display:none degil — bazi botlar gizli alani atlar. */
+  .f-hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+  .f-btn{justify-self:start;font:inherit;font-weight:700;font-size:1rem;color:#fff;cursor:pointer;
+    background:linear-gradient(150deg,var(--accent),var(--accent-deep));border:0;border-radius:12px;padding:13px 24px}
+  .f-btn[disabled]{opacity:.55;cursor:default}
+  .f-msg{font-size:.92rem;min-height:1.2em}
+  .f-msg.ok{color:var(--good)}
+  .f-msg.err{color:#e5484d}
   .cta{margin-top:26px;background:linear-gradient(150deg,var(--accent),var(--accent-deep));color:#fff;border-radius:16px;padding:30px;box-shadow:var(--shadow)}
   .cta h3{font-size:1.3rem;font-weight:800;letter-spacing:-.02em}
   .cta p{margin-top:10px;opacity:.92;font-size:.98rem}
@@ -100,7 +124,7 @@ document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   .cta .row{margin-top:18px;display:flex;flex-wrap:wrap;gap:10px 22px;font-family:var(--mono);font-size:.82rem}
   .cta .row a{color:#fff;opacity:.9;text-decoration:none;border-bottom:1px solid rgba(255,255,255,.4)}
   footer{padding:34px 0 0;color:var(--faint);font-family:var(--mono);font-size:.72rem;letter-spacing:.03em;text-align:center}
-  @media(max-width:620px){.why{grid-template-columns:1fr}}
+  @media(max-width:620px){.why{grid-template-columns:1fr}.f-row{grid-template-columns:1fr}.f-btn{justify-self:stretch;text-align:center}}
   @media(prefers-reduced-motion:reduce){#sky{display:none}}
 </style>
 </head>
@@ -173,18 +197,56 @@ document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
 
     <section>
       <span class="eyebrow" data-i18n="s3_eyebrow">Basit</span>
-      <h2 data-i18n="s3_h2">Üç adım</h2>
+      <h2 data-i18n="s3_h2">Nasıl ilerliyor</h2>
       <div class="steps">
         <div class="step"><div data-i18n="st1"><b>Dene.</b> Kendi adını ya da bir markayı 60 saniyede tara. Skorunu gör.</div></div>
-        <div class="step"><div data-i18n="st2"><b>Konuşalım.</b> Beğendiysen 15 dakika — barter mı, uzman-ortak mı, sana uygun olanı netleştirelim.</div></div>
-        <div class="step"><div data-i18n="st3"><b>Başlayalım.</b> Erişimini/uzmanlığını açarız; sen kendi tarzında paylaşırsın.</div></div>
+        <div class="step"><div data-i18n="st2"><b>Başvur.</b> Aşağıdaki formu doldur — 30 saniye, e-posta bile şart değil.</div></div>
+        <div class="step"><div data-i18n="st3"><b>Kısa görüşme.</b> Instagram'dan yazarız: nasıl içerik üretmeyi düşündüğünü ve kendi işinde neler yaptığını konuşuruz. Birkaç mesaj, o kadar.</div></div>
+        <div class="step"><div data-i18n="st4"><b>Karar ekipte.</b> Değerlendirir, uygun olanlara erişimi — SEO/GEO yapıyorsan uzmanlığı da — açarız.</div></div>
       </div>
       <div class="note"><span class="i">!</span><p data-i18n="note">Şeffaflık bizim için önemli: iş birliği içerikleri <b>#işbirliği</b> ya da <b>#reklam</b> etiketiyle paylaşılır. Dürüst deneme, dayatılmış senaryodan hep daha iyi çalışır.</p></div>
     </section>
 
+    <section id="basvur">
+      <span class="eyebrow" data-i18n="f_eyebrow">Başvuru · 30 saniye</span>
+      <h2 data-i18n="f_h2">Seni tanıyalım</h2>
+      <p class="sub" data-i18n="f_sub">Formu bırak, Instagram'dan yazalım. <b>Erken erişim kontenjanı: ilk 20 creator.</b></p>
+      <form id="apply" class="form" novalidate>
+        <div class="f-row">
+          <label class="f"><span data-i18n="f_name">Adın</span>
+            <input name="name" required maxlength="80" autocomplete="name"></label>
+          <label class="f"><span data-i18n="f_handle">Hesabın</span>
+            <input name="handle" required maxlength="60" placeholder="@kullaniciadi"></label>
+        </div>
+        <div class="f-row">
+          <label class="f"><span data-i18n="f_band">Takipçi</span>
+            <select name="follower_band">
+              <option value="">—</option><option value="&lt;1k">&lt; 1.000</option>
+              <option value="1-10k">1.000 – 10.000</option><option value="10-50k">10.000 – 50.000</option>
+              <option value="50-250k">50.000 – 250.000</option><option value="250k+">250.000+</option>
+            </select></label>
+          <label class="f"><span data-i18n="f_mail">E-posta <i data-i18n="f_opt">(isteğe bağlı)</i></span>
+            <input name="email" type="email" maxlength="254" autocomplete="email"></label>
+        </div>
+        <fieldset class="f-models">
+          <legend data-i18n="f_model">Hangisi sana uyuyor?</legend>
+          <label class="f-pick"><input type="radio" name="model" value="barter" checked>
+            <span><b data-i18n="f_m_barter">Barter</b><i data-i18n="f_m_barter_d">İçerik üretiyorum, sınırsız erişim isterim</i></span></label>
+          <label class="f-pick"><input type="radio" name="model" value="expert">
+            <span><b data-i18n="f_m_expert">Uzman-Ortak</b><i data-i18n="f_m_expert_d">SEO/GEO işi yapıyorum, gelen işleri teslim edebilirim</i></span></label>
+        </fieldset>
+        <label class="f"><span data-i18n="f_note">Nasıl bir içerik düşünüyorsun? <i data-i18n="f_opt2">(isteğe bağlı)</i></span>
+          <textarea name="note" rows="3" maxlength="600"></textarea></label>
+        <!-- Bal kupu: ekranda yok, yalniz bot doldurur. -->
+        <div class="f-hp" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>
+        <button type="submit" class="f-btn" data-i18n="f_submit">Başvurumu gönder →</button>
+        <p class="f-msg" id="apply-msg" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+
     <div class="cta">
       <h3 data-i18n="cta_h3">Önce sadece dene — skorunu merak ettik 👀</h3>
-      <p data-i18n="cta_p">Bir markanı ya da adını 60 saniyede ölç. Beğenirsen konuşuruz; beğenmezsen olsun. <b>Erken erişim kontenjanı: ilk 20 creator.</b></p>
+      <p data-i18n="cta_p">Başvurmadan önce bir bak: kendi adını ya da bir markayı 60 saniyede ölç. Görüşmede ilk konuşacağımız şey o skor olacak.</p>
       <a class="cta-btn" href="https://app.geoni.ai?utm_source=isbirligi&utm_medium=creator" target="_blank" rel="noopener" data-i18n="cta_btn">Ücretsiz tara →</a>
       <div class="row">
         <a href="https://app.geoni.ai?utm_source=isbirligi" target="_blank" rel="noopener" data-i18n="row1">Dene: geoni.ai</a>
@@ -226,13 +288,23 @@ document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
     mB_g2: 'Users scan in the app, gaps show up, they order a service. The job is <b>assigned to you</b> and you deliver it from the GEONI panel.',
     mB_g3: 'You <b>take a share of the revenue</b> from every job you deliver. You pay no commission and it isn’t white-label — GEONI owns the customer and the billing, you do the work and take your share. We settle the exact rate in 15 minutes.',
     mB_g4: 'Not a one-off post — recurring leads and income; plus a new "AI visibility" service for your own audience.',
-    s3_eyebrow: 'Simple', s3_h2: 'Three steps',
+    s3_eyebrow: 'Simple', s3_h2: 'How it works',
+    st4: '<b>The team decides.</b> We review and open access to the right people — plus expert status if you do SEO/GEO.',
+    f_eyebrow: 'Apply · 30 seconds', f_h2: 'Tell us who you are',
+    f_sub: 'Leave the form, we’ll message you on Instagram. <b>Early access quota: first 20 creators.</b>',
+    f_name: 'Your name', f_handle: 'Your handle', f_band: 'Followers',
+    f_mail: 'Email <i>(optional)</i>', f_opt: '(optional)', f_opt2: '(optional)',
+    f_model: 'Which one fits you?',
+    f_m_barter: 'Barter', f_m_barter_d: 'I create content and want unlimited access',
+    f_m_expert: 'Expert Partner', f_m_expert_d: 'I do SEO/GEO work and can deliver incoming jobs',
+    f_note: 'What kind of content do you have in mind? <i>(optional)</i>',
+    f_submit: 'Send my application →',
     st1: '<b>Try it.</b> Scan your own name or a brand in 60 seconds. See your score.',
-    st2: '<b>Let’s talk.</b> If you like it, 15 minutes — barter or expert partner, we’ll pick what fits you.',
-    st3: '<b>Let’s start.</b> We open your access / expert role; you post in your own style.',
+    st2: '<b>Apply.</b> Fill in the form below — 30 seconds, email isn’t even required.',
+    st3: '<b>A short chat.</b> We message you on Instagram: how you’re thinking of covering it, and what you do in your own work. A few messages, that’s it.',
     note: 'Transparency matters to us: collaboration content is posted with a <b>#sponsored</b> or <b>#ad</b> tag. An honest review always beats a scripted one.',
     cta_h3: 'Just try it first — we’re curious about your score 👀',
-    cta_p: 'Measure a brand or your own name in 60 seconds. If you like it we’ll talk; if not, no hard feelings. <b>Early access quota: first 20 creators.</b>',
+    cta_p: 'Before you apply, take a look: measure your own name or a brand in 60 seconds. That score is the first thing we’ll talk about.',
     cta_btn: 'Scan free →',
     row1: 'Try it: geoni.ai', row2: 'GEONI on the App Store', row3: 'Contact: mail@geoni.ai',
     footer: 'geoni — Generative Engine Optimization · measuring &amp; improving AI visibility'
@@ -259,6 +331,9 @@ document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
     if (m) m.setAttribute('content', META[l === 'en' ? 'en' : 'tr'].desc);
     var b = document.getElementById('gn-lang');
     if (b) b.textContent = l === 'en' ? 'TR' : 'EN';
+    // Placeholder data-i18n ile degismez (innerHTML degil attribute) — elle.
+    var hi = document.querySelector('#apply input[name="handle"]');
+    if (hi) hi.placeholder = l === 'en' ? '@username' : '@kullaniciadi';
   }
 
   var SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>';
@@ -288,6 +363,41 @@ document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
     theme = theme === 'dark' ? 'light' : 'dark';
     try { localStorage.setItem('geoni_site_theme', theme); } catch (e) {}
     applyTheme(theme);
+  });
+})();
+</script>
+<script>
+/* Basvuru formu. Tarayici veritabanina DEGIL, /api/creator-apply'a yazar
+   (tabloda RLS acik, politika yok — anon erisim sifir). */
+(function () {
+  var f = document.getElementById('apply'); if (!f) return;
+  var msg = document.getElementById('apply-msg');
+  var btn = f.querySelector('.f-btn');
+  var EN = document.documentElement.lang === 'en';
+  var T = {
+    tr: { ok: 'Aldık! Instagram’dan yazacağız — DM kutuna bak.', name: 'Adını yazar mısın?',
+          handle: 'Hesabını yazar mısın (@kullaniciadi).', rate: 'Çok fazla deneme oldu, biraz sonra tekrar dene.',
+          err: 'Gönderilemedi. Birazdan tekrar dener misin?', send: 'Gönderiliyor…' },
+    en: { ok: 'Got it! We’ll message you on Instagram — check your DMs.', name: 'What’s your name?',
+          handle: 'Please add your handle (@username).', rate: 'Too many attempts, try again shortly.',
+          err: 'Couldn’t send. Mind trying again in a moment?', send: 'Sending…' }
+  };
+  function t(k) { return T[document.documentElement.lang === 'en' ? 'en' : 'tr'][k]; }
+  function say(text, cls) { msg.textContent = text; msg.className = 'f-msg ' + (cls || ''); }
+
+  f.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var d = Object.fromEntries(new FormData(f).entries());
+    if (!(d.name || '').trim()) return say(t('name'), 'err');
+    if (!(d.handle || '').trim()) return say(t('handle'), 'err');
+    btn.disabled = true; say(t('send'));
+    fetch('/api/creator-apply', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d)
+    }).then(function (r) {
+      if (r.ok) { f.reset(); say(t('ok'), 'ok'); btn.disabled = true; return; }
+      btn.disabled = false;
+      say(r.status === 429 ? t('rate') : t('err'), 'err');
+    }).catch(function () { btn.disabled = false; say(t('err'), 'err'); });
   });
 })();
 </script>
