@@ -1,3 +1,7 @@
+> ⚠️ **GÜNCEL DEĞİL (2026-07-26).** Bu dosya gün-1 planından kalmadır ve
+> gerçekleşmemiş bir mimariyi (SQLAlchemy/Postgres/Redis/docker-compose)
+> anlatır. Güncel mimari için `README.md`.
+
 # GEONI Visibility Scanner MVP - Development Summary
 
 **Date:** June 30, 2026  

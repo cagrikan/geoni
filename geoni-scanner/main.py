@@ -8,7 +8,7 @@ without a website (e.g. political candidates, executives).
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, Response, RedirectResponse
+from fastapi.responses import StreamingResponse, Response, RedirectResponse, JSONResponse
 from card import render_score_card
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List
@@ -2331,8 +2331,17 @@ async def admin_audit_detail(audit_id: str, http_request: Request):
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
+    """Yakalanmamis istisna -> 500 + JSON govde.
+
+    Eskiden duz `dict` donuyordu; Starlette bunu bir Response'a cevirmiyor ve
+    istemciye TAMAMEN BOS govde gidiyordu (content-length 0). Istemciler
+    `res.json().catch(...)` ile savunmali oldugu icin kullanici yine jenerik
+    hata goruyordu, ama API sozlesmesi bozuktu ve teshis zorlasiyordu
+    (2026-07-26 denetimi). Govde SABIT ve sizinti icermez: istisna metni
+    istemciye gitmez, yalniz loga yazilir.
+    """
     logger.error(f"Unhandled exception: {str(exc)}")
-    return {"error": "Internal server error"}
+    return JSONResponse(status_code=500, content={"error": "Internal server error"})
 
 if __name__ == "__main__":
     import uvicorn

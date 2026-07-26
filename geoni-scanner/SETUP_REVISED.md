@@ -1,3 +1,7 @@
+> ⚠️ **GÜNCEL DEĞİL (2026-07-26).** Bu dosya gün-1 planından kalmadır ve
+> gerçekleşmemiş bir mimariyi (SQLAlchemy/Postgres/Redis/docker-compose)
+> anlatır. Güncel mimari için `README.md`.
+
 # GEONI Deployment - Revised Setup
 ## GitHub: cagrikan/geoni/geoni-scanner
 ## Domain: geoni.ai (Landing page live on Vercel)

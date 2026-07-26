@@ -1,0 +1,18 @@
+# Docker derleme baglamini kucult: bunlarin imajda isi yok.
+# (2026-07-26 denetimi: .dockerignore YOKTU, test venv'i + dokumanlar + testler
+#  her derlemede baglamla birlikte gonderiliyordu.)
+.venv*
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+tests/
+*.md
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
