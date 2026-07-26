@@ -3714,6 +3714,49 @@ async def list_experts() -> list:
 # tarafinda yazar). BURASI yalnizca ADMIN KARARINI yurutur: kabul/red.
 # Bot 'interviewed'e kadar tasiyabilir, 'accepted' YALNIZ buradan set edilir.
 
+async def _ensure_expert_contract(client, expert_id: str, mode: str, admin_id: str,
+                                  note: str = "") -> bool:
+    """Kabul edilen uzman/elci icin 1 YILLIK sozlesme kaydi acar.
+
+    NEDEN (kurucu karari 2026-07-26): "uzmanla sozlesme yapilmasi gerekli, NDA
+    vs, yillik". expert_contracts tablosu vardi ama YAZAN KOD YOKTU — admin
+    muhasebe ekrani "sozlesme durumu" alanini hep BOS gosteriyordu (2026-07-26
+    denetimi, yarim kalmis ozellik).
+
+    Idempotent: ayni uzman+mod icin AKTIF sozlesme varsa yenisini ACMAZ
+    (kismi UNIQUE indeks DB seviyesinde de garanti eder). NDA imzasi ve belge
+    baglantilari sonradan elle islenir — imzayi kod atamaz.
+    """
+    try:
+        var = await client.get(
+            f"{SUPABASE_URL}/rest/v1/expert_contracts"
+            f"?expert_id=eq.{expert_id}&mode=eq.{mode}&status=eq.active&select=id&limit=1",
+            headers=_headers(), timeout=10)
+        if var.status_code == 200 and var.json():
+            return False  # zaten aktif sozlesme var
+        bugun = datetime.now(timezone.utc).date()
+        r = await client.post(
+            f"{SUPABASE_URL}/rest/v1/expert_contracts",
+            headers={**_headers(), "Prefer": "return=minimal"},
+            json={
+                "expert_id": expert_id, "mode": mode,
+                "starts_at": bugun.isoformat(),
+                "ends_at": bugun.replace(year=bugun.year + 1).isoformat(),  # 1 yil
+                "status": "active", "created_by": admin_id,
+                "note": note or "Başvuru kabulünde otomatik açıldı — NDA ve sözleşme belgesi elle işlenecek",
+            }, timeout=10)
+        if r.status_code == 409:
+            return False  # yaris: baska istek acti
+        if r.status_code not in (200, 201, 204):
+            logger.warning(f"_ensure_expert_contract {r.status_code}: {r.text[:150]}")
+            return False
+        logger.info(f"sozlesme acildi: expert={expert_id} mode={mode} (1 yil)")
+        return True
+    except Exception as e:
+        logger.warning(f"_ensure_expert_contract error: {e}")
+        return False
+
+
 async def admin_list_creator_applications(status: str | None = None) -> dict:
     """Basvuru listesi + mulakat ozeti. Basvuranin yetenek alanlari bizim
     hizmet anahtarlarimiza cevrilmis geldigi icin (capable_keys), panelde
@@ -3809,6 +3852,16 @@ async def admin_decide_creator_application(
             # degildir (barter creator'in teslim yetkinligi olmayabilir).
             if decision == "accepted" and make_expert and user_id:
                 await admin_set_is_expert(user_id, True, ticket_type_ids or None)
+
+            # Kabul edilen herkese 1 YILLIK sozlesme kaydi (kurucu karari
+            # 2026-07-26). mode: uzman yetkisi verildiyse 'service', yoksa
+            # 'referral' (barter/elci). NDA imzasi ve belge baglantilari
+            # sonradan ELLE islenir — imzayi kod atamaz.
+            if decision == "accepted" and user_id:
+                await _ensure_expert_contract(
+                    client, user_id,
+                    "service" if make_expert else "referral", admin_id,
+                    note=f"Creator başvurusu #{app_id} kabulü")
 
             return {"success": True, "error": None, "user_id": user_id,
                     "referral_code": code, "note": note}

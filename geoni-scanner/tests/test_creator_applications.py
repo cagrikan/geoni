@@ -263,3 +263,91 @@ def test_tekrar_onayda_IKINCI_BORC_YOK(monkeypatch):
 def test_olmayan_bilet(monkeypatch):
     ist, ok = _odeme(monkeypatch, ticket=None)
     assert ok is False and ist.yazilan is None
+
+
+# ── Uzman sozlesmesi (kurucu karari 2026-07-26: NDA + yillik) ───────────────
+
+class _SozlesmeIstemci(_SahteIstemci):
+    """Kabul akisinda expert_contracts POST'unu yakalar."""
+    def __init__(self, app_row, mevcut_sozlesme=None):
+        super().__init__(app_row)
+        self.mevcut_sozlesme = mevcut_sozlesme or []
+        self.sozlesmeler = []
+
+    async def get(self, url, **kw):
+        if "expert_contracts" in url:
+            return _SahteYanit(self.mevcut_sozlesme)
+        return await super().get(url, **kw)
+
+    async def post(self, url, **kw):
+        if "expert_contracts" in url:
+            self.sozlesmeler.append(kw.get("json"))
+        return await super().post(url, **kw)
+
+
+def _kur_sozlesme(monkeypatch, app_row, mevcut=None):
+    monkeypatch.setattr(db, "SUPABASE_URL", "http://x", raising=False)
+    monkeypatch.setattr(db, "SUPABASE_SERVICE_KEY", "k", raising=False)
+    ist = _SozlesmeIstemci(app_row, mevcut)
+    monkeypatch.setattr(db.httpx, "AsyncClient", lambda *a, **k: ist)
+
+    async def _mails(*a, **k):
+        return {}
+
+    async def _expert(*a, **k):
+        return True
+
+    monkeypatch.setattr(db, "_fetch_all_auth_emails", _mails, raising=False)
+    monkeypatch.setattr(db, "admin_set_is_expert", _expert, raising=False)
+    return ist
+
+
+BASVURU = {"id": 5, "status": "interviewed", "user_id": UUID, "email": None, "referral_code": None}
+
+
+def test_kabulde_1_YILLIK_sozlesme_acilir(monkeypatch):
+    ist = _kur_sozlesme(monkeypatch, BASVURU)
+    asyncio.run(db.admin_decide_creator_application(5, "admin-1", "accepted", make_expert=True))
+    assert len(ist.sozlesmeler) == 1
+    s = ist.sozlesmeler[0]
+    assert s["expert_id"] == UUID and s["status"] == "active"
+    assert s["mode"] == "service"           # uzman yetkisi verildi
+    assert s["created_by"] == "admin-1"
+    # Tam 1 yil
+    from datetime import date
+    b, bit = date.fromisoformat(s["starts_at"]), date.fromisoformat(s["ends_at"])
+    assert bit.year - b.year == 1 and (bit.month, bit.day) == (b.month, b.day)
+
+
+def test_uzman_yetkisi_YOKSA_mode_referral(monkeypatch):
+    """Barter creator uzman degildir; sozlesmesi 'referral' (elci) modunda."""
+    ist = _kur_sozlesme(monkeypatch, BASVURU)
+    asyncio.run(db.admin_decide_creator_application(5, "admin-1", "accepted", make_expert=False))
+    assert ist.sozlesmeler and ist.sozlesmeler[0]["mode"] == "referral"
+
+
+def test_AKTIF_sozlesme_varsa_IKINCISI_ACILMAZ(monkeypatch):
+    ist = _kur_sozlesme(monkeypatch, BASVURU, mevcut=[{"id": 1}])
+    asyncio.run(db.admin_decide_creator_application(5, "admin-1", "accepted", make_expert=True))
+    assert ist.sozlesmeler == []
+
+
+def test_REDDEDILENE_sozlesme_acilmaz(monkeypatch):
+    ist = _kur_sozlesme(monkeypatch, BASVURU)
+    asyncio.run(db.admin_decide_creator_application(5, "admin-1", "rejected"))
+    assert ist.sozlesmeler == []
+
+
+def test_hesabi_yoksa_sozlesme_acilmaz(monkeypatch):
+    """user_id yoksa baglanacak profil de yok."""
+    ist = _kur_sozlesme(monkeypatch, {**BASVURU, "user_id": None, "email": None})
+    asyncio.run(db.admin_decide_creator_application(5, "admin-1", "accepted"))
+    assert ist.sozlesmeler == []
+
+
+def test_NDA_imzasini_KOD_ATAMAZ(monkeypatch):
+    """Imza hukuki bir eylem — otomatik atanmamali, elle islenir."""
+    ist = _kur_sozlesme(monkeypatch, BASVURU)
+    asyncio.run(db.admin_decide_creator_application(5, "admin-1", "accepted", make_expert=True))
+    s = ist.sozlesmeler[0]
+    assert "nda_signed_at" not in s and "nda_doc_url" not in s
