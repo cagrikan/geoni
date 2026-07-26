@@ -745,6 +745,44 @@ async def _mobile_exempt(http_request) -> bool:
     return ua_ok
 
 
+async def _mobile_ip_exempt(http_request, device_token: Optional[str],
+                            user_id: Optional[str]) -> bool:
+    """IP hiz sinirini atlamak icin AYRI ve DAHA SIKI kapi (2026-07-26 denetimi).
+
+    NEDEN AYRILDI: `_mobile_exempt` tek basina hem Turnstile'i hem IP limitini
+    atlatiyordu ve yalnizca User-Agent'a bakiyordu. UA taklit edilebilir bir
+    string oldugu icin `User-Agent: GEONI/1 CFNetwork/1 Darwin/1` gonderen
+    herkes HER IKI katmani birden atliyor, cihaz/hesap tavani da device_token
+    gonderilmediginde devre disi kaliyordu -> SINIRSIZ maliyet DoS
+    (tarama basina gercek para).
+
+    Turnstile muafiyeti UA'ya bagli KALIYOR: Turnstile bir web bot-widget'i,
+    mobilde token URETILEMEZ, orada zorlamak gercek kullaniciyi kirar.
+    Ama IP limitini atlamak icin KANIT istiyoruz:
+      - device_token (Apple DeviceCheck) VAR, ya da
+      - gecerli App Attest assertion'i VAR, ya da
+      - kullanici GIRIS YAPMIS.
+    Ucu de yoksa istek calisir ama web ile ayni IP limitine tabi olur —
+    kimseyi kirmadan "sinirsiz" kismini kapatir.
+
+    Kanitli mobil icin IP atlama gerekcesi AYNEN gecerli: operator NAT'i
+    (CGNAT) binlerce mobil kullaniciyi tek IP'de topluyor, per-IP limit onlari
+    toplu bloklar.
+
+    ATTEST_ENFORCE=1 olunca bu fonksiyon gereksizlesir; o zaman muafiyet zaten
+    yalnizca imzayla verilir.
+    """
+    if not await _mobile_exempt(http_request):
+        return False
+    if device_token or user_id:
+        return True
+    try:
+        attested, _ = await attest.check_request(http_request)
+        return bool(attested)
+    except Exception:
+        return False
+
+
 # --------------------------------------------------------------------------- App Attest
 class AttestRegisterRequest(BaseModel):
     key_id: str = Field(..., max_length=200)      # Apple'in urettigi anahtar kimligi (base64)
@@ -797,7 +835,8 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
         user_id_rl = await get_user_id_from_token(token_rl) if token_rl else None
         is_premium = await check_is_premium(user_id_rl) if user_id_rl else False
         if not is_premium and not _is_internal_scan(http_request):
-            enforce_audit_rate_limits(client_ip, request.email, request.domain, skip_ip=await _mobile_exempt(http_request))
+            enforce_audit_rate_limits(client_ip, request.email, request.domain,
+                                      skip_ip=await _mobile_ip_exempt(http_request, request.device_token, user_id_rl))
     except RateLimitExceeded as e:
         raise HTTPException(
             status_code=429,
@@ -1013,7 +1052,8 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
         if not is_premium2 and not _is_internal_scan(http_request):
             # T3: kimlik kovasi user_id olsun (email varsayilani anonymous@geoni.ai
             # -> tum premium-olmayanlar ayni kovayi paylasip birbirine 429 yediriyordu).
-            enforce_audit_rate_limits(client_ip, user_id_rl2, request.name, skip_ip=await _mobile_exempt(http_request))
+            enforce_audit_rate_limits(client_ip, user_id_rl2, request.name,
+                                      skip_ip=await _mobile_ip_exempt(http_request, request.device_token, user_id_rl2))
     except RateLimitExceeded as e:
         raise HTTPException(
             status_code=429,
@@ -1072,7 +1112,8 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
     client_ip = get_client_ip(http_request)
     try:
         if not _is_internal_scan(http_request):
-            enforce_audit_rate_limits(client_ip, request.email, request.handle, skip_ip=await _mobile_exempt(http_request))
+            enforce_audit_rate_limits(client_ip, request.email, request.handle,
+                                          skip_ip=await _mobile_ip_exempt(http_request, request.device_token, None))
     except RateLimitExceeded as e:
         raise HTTPException(
             status_code=429,

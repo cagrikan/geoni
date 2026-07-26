@@ -51,7 +51,22 @@ def _sanitize_text(s: str, max_len: int) -> str:
     s = re.sub(r"[\r\n\t]+", " ", s or "")
     s = re.sub(r"[\[\]()<>`#>|{}]", "", s)
     s = re.sub(r"\s{2,}", " ", s).strip()
-    return s[:max_len].rstrip()
+    if len(s) <= max_len:
+        return s
+    # KELIME SINIRINDA kes. Eskiden duz `s[:max_len]` idi ve cumleyi ortadan
+    # boluyordu: canli bilet #61'de musteriye teslim edilen JSON-LD'nin
+    # knowsAbout dizisinde "...markalar yapay z" diye yarim bir madde vardi ve
+    # bu blok musterinin sitesinin <head>'ine yapistiriliyordu (2026-07-26
+    # denetimi). Bu fonksiyon 28 yerden cagriliyor — duzeltme hepsine yayilir.
+    kesik = s[:max_len]
+    bosluk = kesik.rfind(" ")
+    # Bosluk VARSA her zaman orada kes. (Once "cok kisa kalmasin" diye bir oran
+    # esigi denedim, test n=29'da yine yarim kelime uretti: teslim edilen metinde
+    # yarim kelime HICBIR uzunlukta kabul edilebilir degil, kisa kalmasi yeglenir.)
+    # Bosluk yoksa tek uzun bir belirtec vardir; orada sert kesmekten baska yol yok.
+    if bosluk > 0:
+        kesik = kesik[:bosluk]
+    return kesik.rstrip(" ,;:-·—–")
 
 
 def _same_site_url(url: str, domain: str) -> bool:

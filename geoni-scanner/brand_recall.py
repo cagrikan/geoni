@@ -75,11 +75,28 @@ _provider_alert_last: dict[str, float] = {}
 _PROVIDER_ALERT_THROTTLE = 3600.0
 
 
+# Motor anahtari -> musteriye gosterilen ad. Modul seviyesinde: hem skor
+# hesabinda hem "olculemeyen motorlar" uyarisinda AYNI ad kullanilsin.
+MODEL_LABELS = {"claude": "Claude", "openai": "ChatGPT", "gemini": "Gemini",
+                "perplexity": "Perplexity", "grok": "Grok"}
+
+_KREDI_ISARETLERI = ("credit", "billing", "quota", "insufficient", "balance")
+
+
 def _is_provider_health_failure(status: int, body: str) -> bool:
     if status in (401, 402, 403):
         return True
-    if status == 400 and any(k in (body or "").lower()
-                             for k in ("credit", "billing", "quota", "insufficient", "balance")):
+    govde = (body or "").lower()
+    if status == 400 and any(k in govde for k in _KREDI_ISARETLERI):
+        return True
+    # 429 + KREDI ISARETI: OpenAI kota tukenmesini de 429 ile dondurur
+    # (`insufficient_quota`), gecici hiz siniriyla AYNI kodu paylasir; ayrimi
+    # yalnizca govde verir. Eski kural "429 asla alarm degil" diyordu ve tam da
+    # bu yuzden 2026-07-24'te OpenAI kredisi bitince ALARM HIC CALMADI:
+    # ECS'te 128 adet 429 birikti, en agirlikli motor (openai, WEIGHTS 0.28)
+    # iki gun sessizce olcumden dustu, skor kararliligi +-9.4'ten +-16.8'e cikti.
+    # Gercek gecici 429 (rate_limit_exceeded) hala alarm URETMEZ.
+    if status == 429 and any(k in govde for k in _KREDI_ISARETLERI):
         return True
     return False
 
@@ -1774,7 +1791,7 @@ async def check_brand_recall(
     per_model_shadow_score = {}   # Grup B faz-1 golge skor (B6+B7)
     dogruluk_values = []
 
-    display_names = {"claude": "Claude", "openai": "ChatGPT", "gemini": "Gemini", "perplexity": "Perplexity", "grok": "Grok"}
+    display_names = MODEL_LABELS
 
     for key, data in model_raw.items():
         judge = judge_results.get(key)
@@ -2027,6 +2044,18 @@ async def check_brand_recall(
             # nis-eksik bayragi (UI "nis gir, olcelim" akisi). Web/marka modunda None/False.
             "resolved_identity": resolved_identity,
             "needs_niche": needs_niche,
+            # Olculemeyen motorlar — RAPORDA GORUNUR UYARI icin (kurucu karari
+            # 2026-07-26). NEDEN: 24 Temmuz'da bir saglayicinin kredisi bitti,
+            # en agirlikli motor (openai .28) iki gun sessizce olcumden dustu ve
+            # musteri eksik olculmus bir skoru tam skor sanarak gordu.
+            # DIKKAT — bu alan MUSTERIYE gider: sebep YAZILMAZ. Kredi/fatura/
+            # kota gibi ic bilgi sizdirilmaz; UI notrr bir "erisim sorunu" mesaji
+            # gosterir. Sebep yalnizca admin mailine ve loga gider
+            # (_provider_health_alert).
+            "engines_unavailable": [
+                MODEL_LABELS.get(k, k) for k in model_keys
+                if not model_raw[k].get("measured", True)
+            ],
             # A4-6 (QA 2026-07-19): tarama telemetrisi — result_json'a gomulur ki
             # "sessiz bozulma" SQL'le izlenebilsin (migration yok). competitors_empty /
             # engines_measured=0 gibi sinyaller determinizm/saglayici-kesinti tartismalarini
