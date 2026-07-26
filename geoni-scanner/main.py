@@ -53,7 +53,7 @@ from db import (
     admin_create_ticket_type, admin_set_ticket_type_active, admin_set_is_expert, list_experts,
     admin_get_payouts, admin_mark_payout_paid,
     admin_list_creator_applications, admin_decide_creator_application,
-    admin_void_payout,
+    admin_void_payout, admin_list_contracts, admin_update_contract,
     rate_ticket, get_ticket_rating_state, get_customer_reputation, notify_experts_new_task,
     has_admin_scope, is_user_suspended, admin_get_user_detail,
     admin_get_user_audits, admin_get_user_transactions, admin_get_user_tickets, admin_set_user_notes,
@@ -1898,6 +1898,33 @@ async def admin_improvement_run(http_request: Request, days: int = 7):
 
 class PayoutPaidRequest(BaseModel):
     paid: bool = True
+
+class ContractUpdateRequest(BaseModel):
+    nda_signed_at: Optional[str] = None
+    nda_doc_url: Optional[str] = Field(None, max_length=500)
+    contract_url: Optional[str] = Field(None, max_length=500)
+    status: Optional[str] = None
+    ends_at: Optional[str] = None
+    note: Optional[str] = Field(None, max_length=1000)
+
+
+@app.get("/api/admin/contracts")
+async def admin_contracts(http_request: Request):
+    """Uzman/elci sozlesmeleri. Hukuki+finansal kayit -> TAM ADMIN."""
+    await _require_full_admin(http_request)
+    return await admin_list_contracts()
+
+
+@app.post("/api/admin/contracts/{contract_id}")
+async def admin_contract_update(contract_id: int, body: ContractUpdateRequest, http_request: Request):
+    """NDA imza tarihi / belge baglantilari / durum. Yalniz GONDERILEN alanlar
+    guncellenir (exclude_unset) — bos gonderilen alan mevcut degeri silmesin."""
+    admin_id = await _require_full_admin(http_request)
+    result = await admin_update_contract(contract_id, admin_id, body.dict(exclude_unset=True))
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error") or "Güncellenemedi")
+    return result
+
 
 class PayoutVoidRequest(BaseModel):
     reason: str = ""

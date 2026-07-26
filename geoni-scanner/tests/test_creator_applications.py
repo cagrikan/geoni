@@ -351,3 +351,77 @@ def test_NDA_imzasini_KOD_ATAMAZ(monkeypatch):
     asyncio.run(db.admin_decide_creator_application(5, "admin-1", "accepted", make_expert=True))
     s = ist.sozlesmeler[0]
     assert "nda_signed_at" not in s and "nda_doc_url" not in s
+
+
+# ── Sozlesme guncelleme (admin paneli) ──────────────────────────────────────
+
+class _GuncelleIstemci:
+    def __init__(self, sonuc=None):
+        self.sonuc = sonuc if sonuc is not None else [{"id": 1, "status": "active"}]
+        self.patchler = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def patch(self, url, **kw):
+        self.patchler.append((url, kw.get("json")))
+        return _SahteYanit(self.sonuc)
+
+
+def _kur_guncelle(monkeypatch, sonuc=None):
+    monkeypatch.setattr(db, "SUPABASE_URL", "http://x", raising=False)
+    monkeypatch.setattr(db, "SUPABASE_SERVICE_KEY", "k", raising=False)
+    ist = _GuncelleIstemci(sonuc)
+    monkeypatch.setattr(db.httpx, "AsyncClient", lambda *a, **k: ist)
+    return ist
+
+
+def test_kimlik_alanlari_UCTAN_DEGISTIRILEMEZ(monkeypatch):
+    """expert_id/mode beyaz listede DEGIL: yanlislikla baska uzmanin
+    sozlesmesine baglanmasin."""
+    ist = _kur_guncelle(monkeypatch)
+    r = asyncio.run(db.admin_update_contract(
+        1, "admin-1", {"expert_id": "baska-uzman", "mode": "service", "note": "x"}))
+    assert r["success"] is True
+    govde = ist.patchler[0][1]
+    assert "expert_id" not in govde and "mode" not in govde
+    assert govde["note"] == "x"
+
+
+def test_https_DISI_baglanti_reddedilir(monkeypatch):
+    """Panelde tiklanabilir link olacak — javascript:/data: semasi gecmemeli."""
+    ist = _kur_guncelle(monkeypatch)
+    for kotu in ("javascript:alert(1)", "http://x.test/a", "data:text/html,x", "//x.test"):
+        r = asyncio.run(db.admin_update_contract(1, "admin-1", {"nda_doc_url": kotu}))
+        assert r["success"] is False and r["error"].startswith("invalid_url"), kotu
+    assert ist.patchler == [], "gecersiz URL ile DB'ye yazildi"
+
+
+def test_https_baglanti_kabul(monkeypatch):
+    ist = _kur_guncelle(monkeypatch)
+    r = asyncio.run(db.admin_update_contract(1, "admin-1", {"contract_url": "https://ornek.com/s.pdf"}))
+    assert r["success"] is True
+    assert ist.patchler[0][1]["contract_url"] == "https://ornek.com/s.pdf"
+
+
+def test_bos_baglanti_TEMIZLER(monkeypatch):
+    """Alan bosaltilirsa None yazilmali (bos string degil)."""
+    ist = _kur_guncelle(monkeypatch)
+    asyncio.run(db.admin_update_contract(1, "admin-1", {"nda_doc_url": ""}))
+    assert ist.patchler[0][1]["nda_doc_url"] is None
+
+
+def test_gecersiz_durum_reddedilir(monkeypatch):
+    ist = _kur_guncelle(monkeypatch)
+    r = asyncio.run(db.admin_update_contract(1, "admin-1", {"status": "silindi"}))
+    assert r["success"] is False and r["error"] == "invalid_status"
+    assert ist.patchler == []
+
+
+def test_bos_govde_reddedilir(monkeypatch):
+    _kur_guncelle(monkeypatch)
+    r = asyncio.run(db.admin_update_contract(1, "admin-1", {}))
+    assert r["success"] is False and r["error"] == "no_fields"

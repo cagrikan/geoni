@@ -3870,6 +3870,89 @@ async def admin_decide_creator_application(
         return {"success": False, "error": "exception"}
 
 
+async def admin_list_contracts() -> dict:
+    """Tum uzman/elci sozlesmeleri + kisi adi/e-postasi.
+
+    NEDEN AYRI UC: sozlesme daha once yalnizca admin_get_payouts icinde,
+    ODEME KAYDI OLAN uzmanlar icin donuyordu — 0 odeme varken hicbir sozlesme
+    gorunmuyordu (2026-07-26). Sozlesme finansal degil HUKUKI bir kayit;
+    odemeden bagimsiz listelenmeli.
+    """
+    empty = {"contracts": []}
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return empty
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/expert_contracts?select=*&order=created_at.desc&limit=500",
+                headers=_headers(), timeout=15)
+            rows = r.json() if r.status_code == 200 else []
+            if not rows:
+                return empty
+            ids = {x["expert_id"] for x in rows if x.get("expert_id")}
+            adlar: dict = {}
+            if ids:
+                id_list = ",".join(f'"{i}"' for i in ids)
+                pr = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/profiles?id=in.({id_list})&select=id,full_name,is_expert",
+                    headers=_headers(), timeout=10)
+                for row in (pr.json() if pr.status_code == 200 else []):
+                    adlar[row["id"]] = row
+            emails = await _fetch_all_auth_emails()
+            for x in rows:
+                p = adlar.get(x.get("expert_id")) or {}
+                x["expert_name"] = p.get("full_name") or (str(x.get("expert_id"))[:8])
+                x["expert_email"] = emails.get(x.get("expert_id"), "")
+                x["is_expert"] = p.get("is_expert")
+            return {"contracts": rows}
+    except Exception as e:
+        logger.warning(f"admin_list_contracts error: {e}")
+        return empty
+
+
+# Sozlesmede admin'in ELLE isleyebilecegi alanlar. Beyaz liste: expert_id/mode
+# gibi kimlik alanlari uctan DEGISTIRILEMEZ (yanlislikla baska uzmanin
+# sozlesmesine baglanmasin).
+_CONTRACT_EDITABLE = {"nda_signed_at", "nda_doc_url", "contract_url", "status", "ends_at", "note"}
+_CONTRACT_STATUS = {"active", "expired", "cancelled"}
+
+
+async def admin_update_contract(contract_id: int, admin_id: str, fields: dict) -> dict:
+    """Sozlesme belgelerini/durumunu gunceller (NDA imza tarihi, belge linkleri).
+
+    Imza tarihini KOD ATAMAZ, admin girer — imza hukuki bir eylem.
+    URL alanlari yalnizca https kabul eder (panelde tiklanabilir link olacak;
+    javascript:/data: gibi semalar admin tarayicisinda calismasin).
+    """
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return {"success": False, "error": "not_configured"}
+    temiz = {k: v for k, v in (fields or {}).items() if k in _CONTRACT_EDITABLE}
+    if not temiz:
+        return {"success": False, "error": "no_fields"}
+    if "status" in temiz and temiz["status"] not in _CONTRACT_STATUS:
+        return {"success": False, "error": "invalid_status"}
+    for alan in ("nda_doc_url", "contract_url"):
+        v = temiz.get(alan)
+        if v in ("", None):
+            temiz[alan] = None
+        elif not str(v).startswith("https://"):
+            return {"success": False, "error": f"invalid_url:{alan}"}
+    temiz["renewed_at"] = datetime.now(timezone.utc).isoformat()
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/expert_contracts?id=eq.{int(contract_id)}",
+                headers={**_headers(), "Prefer": "return=representation"},
+                json=temiz, timeout=10)
+            if r.status_code != 200 or not r.json():
+                return {"success": False, "error": "update_failed"}
+            logger.info(f"sozlesme guncellendi: id={contract_id} admin={admin_id} alanlar={list(temiz)}")
+            return {"success": True, "error": None, "contract": r.json()[0]}
+    except Exception as e:
+        logger.warning(f"admin_update_contract error: {e}")
+        return {"success": False, "error": "exception"}
+
+
 async def admin_get_payouts(period_month: str | None = None) -> dict:
     """Admin muhasebe defteri: uzman/influencer kazanclari (%33 teslim + %10
     referral) kisi-bazli ozet + satirlar + sozlesme durumu. period_month
