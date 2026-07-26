@@ -42,22 +42,22 @@ export default async function handler(req, res) {
   const refQS = /^[a-z0-9]{4,16}$/.test(ref) ? `&ref=${ref}` : '';
   const L = lang === 'tr' ? {
     title: `AI Görünürlük Skoru: ${score}/100 — ${label}`,
-    desc: "Senin skorun kaç? Markanın, adının veya sitenin ChatGPT, Gemini ve Perplexity'deki görünürlüğünü 60 saniyede ücretsiz ölç.",
+    desc: "Senin skorun kaç? Markanın, adının veya sitenin ChatGPT, Gemini ve Perplexity'deki görünürlüğünü dakikalar içinde ücretsiz ölç.",
     kind: data.type === 'person' ? 'kişi' : 'marka',
     scoreLabel: 'AI Görünürlük Skoru',
     hook: 'AI seni tanıyor mu?',
     sub: `Bu skor; ChatGPT, Gemini ve Perplexity'nin bu ${isWeb ? 'siteyi' : 'ismi'} ne kadar tanıdığını gösteriyor. Peki seninki kaç?`,
     cta: 'Kendi skorunu ölç →',
-    free: '60 saniye · ücretsiz · üyelik gerekmez',
+    free: 'ücretsiz · üyelik gerekmez',
   } : {
     title: `AI Visibility Score: ${score}/100 — ${label}`,
-    desc: "What's yours? Measure how your brand, name or site shows up in ChatGPT, Gemini and Perplexity — free, in 60 seconds.",
+    desc: "What's yours? Measure how your brand, name or site shows up in ChatGPT, Gemini and Perplexity — free, in minutes.",
     kind: data.type === 'person' ? 'person' : 'brand',
     scoreLabel: 'AI Visibility Score',
     hook: 'Does AI know you?',
     sub: `This score shows how well ChatGPT, Gemini and Perplexity know this ${isWeb ? 'site' : 'name'}. So — what's yours?`,
     cta: 'Measure your score →',
-    free: '60 seconds · free · no sign-up',
+    free: 'free · no sign-up',
   };
   const title = L.title;
   const desc = L.desc;

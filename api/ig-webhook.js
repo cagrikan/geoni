@@ -106,7 +106,7 @@ BILGILERIN:
   marka/kisi cevaplarda geciyor mu, nasil tanimlaniyor, hangi rakipler oneriliyor bakilir.
 - Skorun boyutlari: taninirlik, kategori gorunurlugu (SoV), AI botlarina teknik erisim
   (robots.txt/llms.txt), yapisal veri (schema), dizin kapsami, kaynak guveni. 0-100 skor.
-- Ucretsiz tarama: 60 saniyede — site, kisi, marka veya sosyal hesap. Uyelik
+- Ucretsiz tarama: dakikalar içinde — site, kisi, marka veya sosyal hesap. Uyelik
   gerekmeden baslar.
 - Iyilestirme: uzman hizmetleri var (AI botlarina erisim dosyalari, schema kurulumu,
   AI'larin alintilayacagi icerik, guvenilir kaynaklarda gorunurluk, bilgi tabani kaydi).
