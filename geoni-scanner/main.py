@@ -1529,11 +1529,16 @@ class TicketPurchaseRequest(BaseModel):
     ticket_type_id: int
     audit_id: Optional[str] = None
     target: Optional[str] = ""
+    # Tekrar-deneme korumasi: istemci ayni satin alma denemesi icin ayni
+    # kimligi gonderir. Opsiyonel — gondermeyen eski istemciler eskisi gibi
+    # calisir (yalniz korumasiz kalir).
+    request_id: Optional[str] = Field(None, max_length=64)
 
 @app.post("/api/tickets")
 async def create_ticket(body: TicketPurchaseRequest, http_request: Request):
     user_id = await _require_user(http_request)
-    result = await purchase_ticket(user_id, body.ticket_type_id, body.audit_id, body.target or "")
+    result = await purchase_ticket(user_id, body.ticket_type_id, body.audit_id,
+                                   body.target or "", body.request_id)
     if not result["success"]:
         messages = {
             "invalid_ticket_type": "Geçersiz bilet türü",

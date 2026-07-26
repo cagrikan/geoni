@@ -2821,7 +2821,8 @@ async def _telafi_et(user_id: str, cost: int, ticket_type: dict, sebep: str) -> 
         logger.error(f"TELAFI BASARISIZ (istisna) user={user_id} cost={cost} sebep={sebep}: {e}")
 
 
-async def purchase_ticket(user_id: str, ticket_type_id: int, audit_id: str | None = None, target: str = "") -> dict:
+async def purchase_ticket(user_id: str, ticket_type_id: int, audit_id: str | None = None,
+                          target: str = "", request_id: str | None = None) -> dict:
     """Deducts token_cost from the buyer's balance and creates the ticket -
     both steps must succeed together, so balance is checked and the profile
     patched before the ticket row is inserted (best-effort atomicity without
@@ -2851,6 +2852,31 @@ async def purchase_ticket(user_id: str, ticket_type_id: int, audit_id: str | Non
     if missing:
         return {"success": False, "error": "prereq_missing", "missing": missing}
     cost = ticket_type["token_cost"]
+
+    # TEKRAR-DENEME KORUMASI. Kullanici hata alip "tekrar dene" dediginde
+    # eskiden IKINCI KEZ kontor dusuyordu (en pahali hizmet 1500 kontor).
+    # Istemci ayni deneme icin ayni request_id'yi gonderir; daha once basarili
+    # olmus bir deneme varsa yeni bilet ACILMAZ, mevcut bilet donulur.
+    # NEDEN ON-KONTROL + DB KISITI BIRLIKTE: on-kontrol TOCTOU'ya acik (iki
+    # istek ayni anda gecerse ikisi de "yok" gorur), bu yuzden asil garanti
+    # tickets.request_id uzerindeki kismi UNIQUE indekstir; insert 409 verirse
+    # asagida yaristan kaybeden taraf mevcut bileti okur ve KONTORU GERI VERIR.
+    if request_id:
+        try:
+            async with httpx.AsyncClient() as c0:
+                r0 = await c0.get(
+                    f"{SUPABASE_URL}/rest/v1/tickets"
+                    f"?request_id=eq.{urllib.parse.quote(request_id)}"
+                    f"&select=id,ticket_type_id&limit=1",
+                    headers=_headers(), timeout=10)
+                if r0.status_code == 200 and r0.json():
+                    var = r0.json()[0]
+                    logger.info(f"purchase_ticket idempotent: request_id={request_id} -> ticket={var['id']}")
+                    return {"success": True, "error": None, "ticket_id": var["id"],
+                            "ticket_type_key": ticket_type.get("key"), "idempotent": True}
+        except Exception as e:
+            logger.warning(f"purchase_ticket idempotency on-kontrol hatasi: {e}")
+
     # Telafi izleyicisi: kredi DUSTUYSE ve sonrasinda is bitmediyse geri almaliyiz.
     # Eskiden telafi YALNIZ "ticket insert bir HTTP yanitiyla dondu ama durumu
     # kotu" dalindaydi; timeout/baglanti kopmasi dogrudan `except`e dusuyor ve
@@ -2891,9 +2917,23 @@ async def purchase_ticket(user_id: str, ticket_type_id: int, audit_id: str | Non
                 json={
                     "user_id": user_id, "audit_id": audit_id, "ticket_type_id": ticket_type_id,
                     "target": target or None, "token_cost": cost,
+                    "request_id": request_id,
                 },
                 timeout=10,
             )
+            # 409 = ayni request_id ile baska bir istek yarisi kazandi (TOCTOU).
+            # Bilet ZATEN var; kontoru geri ver ve var olani dondur.
+            if ticket_r.status_code == 409 and request_id:
+                await _telafi_et(user_id, cost, ticket_type, "idempotent_yaris")
+                dusuldu = False
+                r2 = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/tickets"
+                    f"?request_id=eq.{urllib.parse.quote(request_id)}&select=id&limit=1",
+                    headers=_headers(), timeout=10)
+                if r2.status_code == 200 and r2.json():
+                    return {"success": True, "error": None, "ticket_id": r2.json()[0]["id"],
+                            "ticket_type_key": ticket_type.get("key"), "idempotent": True}
+                return {"success": False, "error": "ticket_create_failed"}
             if ticket_r.status_code not in (200, 201) or not ticket_r.json():
                 # Bilet olusmadi ama kredi dustu -> atomik geri al (refund).
                 await _telafi_et(user_id, cost, ticket_type, "ticket_create_failed")
