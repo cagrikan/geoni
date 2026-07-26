@@ -53,6 +53,7 @@ from db import (
     admin_create_ticket_type, admin_set_ticket_type_active, admin_set_is_expert, list_experts,
     admin_get_payouts, admin_mark_payout_paid,
     admin_list_creator_applications, admin_decide_creator_application,
+    admin_void_payout,
     rate_ticket, get_ticket_rating_state, get_customer_reputation, notify_experts_new_task,
     has_admin_scope, is_user_suspended, admin_get_user_detail,
     admin_get_user_audits, admin_get_user_transactions, admin_get_user_tickets, admin_set_user_notes,
@@ -1892,6 +1893,19 @@ async def admin_improvement_run(http_request: Request, days: int = 7):
 
 class PayoutPaidRequest(BaseModel):
     paid: bool = True
+
+class PayoutVoidRequest(BaseModel):
+    reason: str = ""
+
+
+@app.post("/api/admin/payouts/{payout_id}/void")
+async def admin_payout_void(payout_id: int, body: PayoutVoidRequest, http_request: Request):
+    """Odeme satirini elle iptal et. Finansal -> TAM ADMIN. Void GERI ALINMAZ."""
+    admin_id = await _require_full_admin(http_request)
+    if not await admin_void_payout(payout_id, admin_id, body.reason):
+        raise HTTPException(status_code=400, detail="İptal edilemedi (zaten iptal olabilir)")
+    return {"success": True}
+
 
 @app.post("/api/admin/payouts/{payout_id}/paid")
 async def admin_payout_paid(payout_id: int, body: PayoutPaidRequest, http_request: Request):

@@ -981,7 +981,14 @@ async def _record_referral_commission(client, buyer_id: str, external_id: str,
             return False
 
         simdi = datetime.now(timezone.utc)
-        kayit = _parse_ts(rows[0].get("created_at")) or simdi
+        kayit = _parse_ts(rows[0].get("created_at"))
+        if kayit is None:
+            # FAIL-CLOSED: eskiden `or simdi` vardi -> tarih cozulemezse "bugun
+            # kayit oldu" varsayilip EN YUKSEK oran (%10) odeniyordu; 5 yil
+            # onceki, suresi dolmus bir davetli bile taze gibi komisyon alirdi
+            # (2026-07-26 denetimi). Belirsizlikte odeme YAPILMAZ.
+            logger.warning(f"_record_referral_commission: created_at cozulemedi (buyer={buyer_id}), komisyon atlandi")
+            return False
         oran = _referral_commission_rate(kayit, simdi)
         if oran <= 0:
             return False  # 3 yil doldu
@@ -1025,6 +1032,41 @@ async def _record_referral_commission(client, buyer_id: str, external_id: str,
         return False
 
 
+async def void_delivery_payout(ticket_id: int, sebep: str = "iade/itiraz") -> bool:
+    """Bir biletin TESLIM odemesini iptal eder (status='void').
+
+    NEDEN VAR: 2026-07-26 denetimine kadar `kind='delivery'` bir odemeyi void
+    eden HICBIR yol yoktu. Musteri itiraz edip admin tokeni iade ettiginde
+    uzmana yazilan borc (or. $30) 'pending' kaliyor ve normal akista odeniyordu
+    — sirket hem geliri iade ediyor hem uzmana nakit oduyordu. Admin bunu
+    API'den duzeltemiyor, yalniz elle DB'ye dokunarak cozebiliyordu.
+
+    Idempotent: zaten void ise 0 satir doner, False. Odenmis (paid) satiri da
+    void eder — para cikmissa bile defter dogruyu gostermeli; muhasebe
+    duzeltmesi admin'in isi.
+    """
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/expert_payouts"
+                f"?ticket_id=eq.{int(ticket_id)}&kind=eq.delivery&status=neq.void",
+                headers={**_headers(), "Prefer": "return=representation"},
+                json={"status": "void", "note": f"İptal — {sebep}"}, timeout=10,
+            )
+            if r.status_code != 200:
+                logger.warning(f"void_delivery_payout {r.status_code}: {r.text[:150]}")
+                return False
+            rows = r.json()
+            if rows:
+                logger.warning(f"teslim odemesi iptal edildi: ticket={ticket_id} sebep={sebep}")
+            return bool(rows)
+    except Exception as e:
+        logger.warning(f"void_delivery_payout error: {e}")
+        return False
+
+
 async def _void_referral_commission(client, buyer_id: str,
                                     original_external_id: str | None = None,
                                     amount_paid=None) -> bool:
@@ -1053,15 +1095,29 @@ async def _void_referral_commission(client, buyer_id: str,
                 q = (f"{SUPABASE_URL}/rest/v1/expert_payouts"
                      f"?transaction_id=eq.{rows[0]['id']}&kind=eq.referral&status=eq.pending")
         if q is None and amount_paid:
+            # ZAMAN PENCERESI + EN ESKI. Denetim (2026-07-26) sunu gosterdi:
+            # yalnizca (musteri + tutar) ile EN YENI satiri void etmek YANLIS
+            # komisyonu iptal edebiliyor — davetli ayni paketi iki kez alip
+            # Apple ESKI alimi iade ederse, heuristik YENI (gecerli) komisyonu
+            # siliyor, iade edilenin komisyonu ise odeniyordu.
+            # Iki degisiklik: (1) 180 gunden eski satirlara hic dokunma —
+            # alakasiz eski bir komisyonu silme riskini keser. (2) EN ESKI
+            # eslesmeyi sec: iadeler tipik olarak once yapilan alimi hedefler,
+            # boylece cok-alimli durumda dogru satira daha yakin isabet eder.
+            # Kesin cozum RevenueCat alim satirina transaction_id yazmak — bu
+            # bir sema/sozlesme isi, ayri maddede duruyor.
+            pencere = (datetime.now(timezone.utc) - timedelta(days=180)).isoformat()
             find = await client.get(
                 f"{SUPABASE_URL}/rest/v1/expert_payouts"
                 f"?customer_id=eq.{buyer_id}&kind=eq.referral&status=eq.pending"
                 f"&basis_amount=eq.{round(float(amount_paid), 2)}"
-                f"&select=id&order=created_at.desc&limit=1",
+                f"&created_at=gte.{pencere}"
+                f"&select=id&order=created_at.asc&limit=1",
                 headers=_headers(), timeout=10,
             )
             rows = find.json() if find.status_code == 200 else []
             if not rows:
+                logger.info(f"_void_referral_commission: eslesen bekleyen komisyon yok (buyer={buyer_id})")
                 return False
             q = f"{SUPABASE_URL}/rest/v1/expert_payouts?id=eq.{rows[0]['id']}"
         if q is None:
@@ -2728,6 +2784,43 @@ async def missing_service_prerequisites(user_id: str, service_key: str, target: 
         return []
 
 
+async def _telafi_et(user_id: str, cost: int, ticket_type: dict, sebep: str) -> None:
+    """Bilet acilamadiginda dusulen kontoru geri verir VE DEFTERE YAZAR.
+
+    Neden ayri fonksiyon: iki cikis yolundan (kotu HTTP yaniti / istisna)
+    cagriliyor ve ikisinde de AYNI davranis gerekiyor.
+
+    Neden ledger satiri: `deduct_credits_if_enough` yalnizca bakiyeyi degistirir,
+    deftere yazmaz. Eskiden telafi sonrasi defterde "-cost ticket_purchase"
+    satiri kaliyor, karsiligi olmuyordu -> credit_transactions toplami
+    profiles.credit_balance ile UYUSMUYORDU (2026-07-26 denetimi, bulgu 6).
+    Kendi HTTP istemcisini acar: cagiran istemci timeout'ta bozulmus olabilir.
+    """
+    try:
+        async with httpx.AsyncClient() as c2:
+            r = await c2.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/deduct_credits_if_enough",
+                headers=_headers(), json={"p_user_id": user_id, "p_amount": -cost}, timeout=10,
+            )
+            # 2xx'in TAMAMI basari: RPC 200 doner ama PostgREST 201/204 de
+            # dondurebiliyor; "!= 200" demek basarili bir telafiyi BASARISIZ
+            # sayip krediyi geri vermis oldugumuz halde ledger'i atlardi.
+            if r.status_code >= 300:
+                # Telafi BASARISIZ: elle mutabakat gerekir, sessiz gecme.
+                logger.error(f"TELAFI BASARISIZ user={user_id} cost={cost} sebep={sebep} http={r.status_code}")
+                return
+            await c2.post(
+                f"{SUPABASE_URL}/rest/v1/credit_transactions",
+                headers=_headers(),
+                json={"user_id": user_id, "amount": cost, "type": "ticket_refund",
+                      "description": f"[{ticket_type.get('key','')}] iade — hizmet açılamadı ({sebep})"},
+                timeout=10,
+            )
+            logger.warning(f"purchase_ticket telafi edildi: user={user_id} cost={cost} sebep={sebep}")
+    except Exception as e:
+        logger.error(f"TELAFI BASARISIZ (istisna) user={user_id} cost={cost} sebep={sebep}: {e}")
+
+
 async def purchase_ticket(user_id: str, ticket_type_id: int, audit_id: str | None = None, target: str = "") -> dict:
     """Deducts token_cost from the buyer's balance and creates the ticket -
     both steps must succeed together, so balance is checked and the profile
@@ -2758,6 +2851,13 @@ async def purchase_ticket(user_id: str, ticket_type_id: int, audit_id: str | Non
     if missing:
         return {"success": False, "error": "prereq_missing", "missing": missing}
     cost = ticket_type["token_cost"]
+    # Telafi izleyicisi: kredi DUSTUYSE ve sonrasinda is bitmediyse geri almaliyiz.
+    # Eskiden telafi YALNIZ "ticket insert bir HTTP yanitiyla dondu ama durumu
+    # kotu" dalindaydi; timeout/baglanti kopmasi dogrudan `except`e dusuyor ve
+    # KREDI GERI ALINMADAN cikiliyordu (2026-07-26 denetimi). En pahali hizmet
+    # 1500 kontor: kullanici hem tokeni kaybediyor hem bilet alamiyor, tekrar
+    # deneyince bir daha dusuyordu.
+    dusuldu = False
     try:
         async with httpx.AsyncClient() as client:
             # Atomik kosullu dusum: yeterli bakiye varsa TEK UPDATE ile duser ve
@@ -2771,6 +2871,7 @@ async def purchase_ticket(user_id: str, ticket_type_id: int, audit_id: str | Non
             )
             if rpc_r.status_code != 200 or not rpc_r.json():
                 return {"success": False, "error": "insufficient_balance"}
+            dusuldu = True  # bu noktadan sonra her cikis yolunda telafi gerekir
 
             await client.post(
                 f"{SUPABASE_URL}/rest/v1/credit_transactions",
@@ -2795,16 +2896,19 @@ async def purchase_ticket(user_id: str, ticket_type_id: int, audit_id: str | Non
             )
             if ticket_r.status_code not in (200, 201) or not ticket_r.json():
                 # Bilet olusmadi ama kredi dustu -> atomik geri al (refund).
-                await client.post(
-                    f"{SUPABASE_URL}/rest/v1/rpc/deduct_credits_if_enough",
-                    headers=_headers(), json={"p_user_id": user_id, "p_amount": -cost}, timeout=10,
-                )
+                await _telafi_et(user_id, cost, ticket_type, "ticket_create_failed")
+                dusuldu = False
                 return {"success": False, "error": "ticket_create_failed"}
             new_ticket = ticket_r.json()[0]
+            dusuldu = False  # is tamamlandi, telafi gerekmiyor
             await _clone_ticket_tasks(client, new_ticket["id"], ticket_type_id)
             return {"success": True, "error": None, "ticket_id": new_ticket["id"], "ticket_type_key": ticket_type.get("key")}
     except Exception as e:
-        logger.warning(f"purchase_ticket error: {e}")
+        # KRITIK: buraya timeout/baglanti kopmasiyla da dusuluyor. Kredi dustuyse
+        # MUTLAKA geri al — yoksa kullanici hem tokeni hem hizmeti kaybeder.
+        logger.error(f"purchase_ticket error (dusuldu={dusuldu}): {e}")
+        if dusuldu:
+            await _telafi_et(user_id, cost, ticket_type, "exception")
         return {"success": False, "error": "exception"}
 
 
@@ -3376,6 +3480,13 @@ async def admin_verify_ticket(ticket_id: int, admin_id: str, approve: bool, reje
                 }
             else:
                 payload = {"status": "assigned", "reject_reason": reject_reason}
+                # RED = teslim kabul edilmedi -> uzman kazanci da IPTAL.
+                # Onayda yazilan borc red'de duruyordu; musteri itiraz edip admin
+                # haklı bulunca sirket hem geliri iade edip hem uzmana odemeye
+                # devam ediyordu (2026-07-26 denetimi). Uzman duzeltip yeniden
+                # teslim eder ve tekrar onaylanirsa YENI satir acilir (kismi
+                # benzersiz indeks yalniz void-olmayanlari sayar).
+                await void_delivery_payout(ticket_id, sebep="teslim reddedildi")
             r = await client.patch(
                 f"{SUPABASE_URL}/rest/v1/tickets?id=eq.{ticket_id}",
                 headers=_headers(), json=payload, timeout=10,
@@ -3752,6 +3863,39 @@ async def admin_get_payouts(period_month: str | None = None) -> dict:
     except Exception as e:
         logger.warning(f"admin_get_payouts error: {e}")
         return empty
+
+
+async def admin_void_payout(payout_id: int, admin_id: str, sebep: str = "") -> bool:
+    """Admin bir odeme satirini elle iptal eder.
+
+    NEDEN: denetime kadar (2026-07-26) yanlis/gecersiz bir odeme satirini
+    duzeltmenin API yolu YOKTU — yalnizca dogrudan veritabanina dokunmak.
+    Ozellikle Apple iadelerinde tutar+musteri heuristigi yanlis satiri
+    hedefleyebildigi icin elle duzeltme sart.
+
+    Void GERI ALINMAZ (status=neq.void filtresi): iptal kalicidir, gerekirse
+    yeni satir acilir. Boylece defterde iz kaybolmaz.
+    """
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/expert_payouts?id=eq.{int(payout_id)}&status=neq.void",
+                headers={**_headers(), "Prefer": "return=representation"},
+                json={"status": "void",
+                      "note": f"Admin iptali{(' — ' + sebep) if sebep else ''}"},
+                timeout=10,
+            )
+            if r.status_code != 200:
+                return False
+            rows = r.json()
+            if rows:
+                logger.warning(f"admin_void_payout: id={payout_id} admin={admin_id} sebep={sebep}")
+            return isinstance(rows, list) and len(rows) > 0
+    except Exception as e:
+        logger.warning(f"admin_void_payout error: {e}")
+        return False
 
 
 async def admin_mark_payout_paid(payout_id: int, admin_id: str, paid: bool = True) -> bool:

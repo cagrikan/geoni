@@ -511,8 +511,19 @@ export default async function handler(req, res) {
 
   const raw = await readRawBody(req);
 
+  // FAIL-CLOSED: secret yoksa DOGRULAMA YAPMA, iste reddet. Eskiden
+  // `cfg.ig_app_secret || ''` ile BOS ANAHTARLI HMAC hesaplaniyordu; secret
+  // DB'den silinir/bosalirsa algoritma herkesce bilindigi icin saldirgan da
+  // ayni imzayi uretip sahte webhook gonderebilirdi (2026-07-26 denetimi).
+  // Polar ve RevenueCat dogrulayicilari zaten boyle davraniyor.
+  if (!cfg.ig_app_secret) {
+    console.error('ig-webhook: ig_app_secret TANIMSIZ — istek reddedildi');
+    res.statusCode = 401;
+    return res.end('signature not configured');
+  }
+
   const sig = req.headers['x-hub-signature-256'] || '';
-  const expected = 'sha256=' + crypto.createHmac('sha256', cfg.ig_app_secret || '').update(raw).digest('hex');
+  const expected = 'sha256=' + crypto.createHmac('sha256', cfg.ig_app_secret).update(raw).digest('hex');
   const valid = sig.length === expected.length &&
     crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
   if (!valid) {
