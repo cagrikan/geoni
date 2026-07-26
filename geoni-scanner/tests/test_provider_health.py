@@ -50,3 +50,21 @@ def test_model_etiketleri_musteriye_uygun():
     assert MODEL_LABELS["openai"] == "ChatGPT"
     assert MODEL_LABELS["claude"] == "Claude"
     assert set(MODEL_LABELS) >= {"claude", "openai", "gemini", "perplexity", "grok"}
+
+
+# ── Tarama suresi telemetrisi ────────────────────────────────────────────────
+# 2026-07-26: kisi/marka/sosyal taramalarinda sure HIC kaydedilmiyordu
+# (audits satiri isin sonunda yaziliyor; completed_at = result_json'daki
+# created_at; ikisi de baslangici bilmiyor). "60 saniye mi 2 dakika mi"
+# tartismasini veriyle cevaplayabilmek icin duration_ms telemetriye eklendi.
+
+def test_duration_ms_telemetriye_yaziliyor():
+    """Kaynakta duration_ms'in telemetry blogunda ve monotonic saatle
+    olculdugu sabit — regresyonda sessizce dusmesin."""
+    import inspect
+    import brand_recall
+    kaynak = inspect.getsource(brand_recall.check_brand_recall)
+    assert "_baslangic = time.monotonic()" in kaynak, "baslangic damgasi yok"
+    assert '"duration_ms"' in kaynak, "duration_ms telemetriye yazilmiyor"
+    # monotonic KULLANILMALI: sistem saati geri alinirsa negatif sure cikmasin
+    assert "time.time() - _baslangic" not in kaynak

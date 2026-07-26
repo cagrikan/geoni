@@ -102,7 +102,7 @@ def _parse_sitemap_xml(text: str) -> dict:
 
 
 async def fetch_sitemap(client: httpx.AsyncClient, base_url: str, limit: int = 200,
-                        _max_child_sitemaps: int = 10) -> dict:
+                        _max_child_sitemaps: int = 10, deadline: float | None = None) -> dict:
     """
     Sitemap'ten URL listesi + lastmod tarihlerini ceker. lastmod tarihleri
     tazelik skorunun (scoring.py v3) gercek-tarih sinyalidir; eskiden hic
@@ -127,6 +127,16 @@ async def fetch_sitemap(client: httpx.AsyncClient, base_url: str, limit: int = 2
                 child_locs = [e["loc"] for e in parsed["entries"]][:_max_child_sitemaps]
                 for cu in child_locs:
                     if len(urls) >= limit:
+                        break
+                    # SURE SINIRI KESFI DE KAPSAR. Toplam sinir (CRAWL_TOTAL_TIMEOUT)
+                    # yalnizca crawl DONGUSUNDE kontrol ediliyordu; robots+sitemap
+                    # kesfi kapsam disindaydi. En kotu durumda 1 kok + 10 alt
+                    # sitemap x 10sn = ~110sn, tek kontrol yapilmadan yanabiliyordu.
+                    # Uretimde crawl fazinin 311sn surdugu tarama gorulduğu icin
+                    # (PHASE_TIMING, 2026-07-26) bu bosluk kapatildi: butcesi
+                    # bitmisse elde ne varsa onunla devam et — bos donme.
+                    if deadline is not None and time.monotonic() > deadline:
+                        logger.info(f"Sitemap kesfi sure sinirinda kesildi ({len(urls)} URL toplandi)")
                         break
                     try:
                         cr = await safe_get(client, cu, timeout=10)
@@ -306,7 +316,10 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
     # assert_public_host'tan gecti; 30x ile ic adrese sicramasin.
     async with httpx.AsyncClient(follow_redirects=False) as client:
         robots = await fetch_robots_txt(client, base_url)
-        sitemap = await fetch_sitemap(client, base_url, limit=page_limit)
+        # Kesif icin toplam butcenin YARISI: kalan yari gercek sayfa taramasina
+        # kalsin. Sitemap bos donerse crawl yine ana sayfadan BFS ile ilerler.
+        sitemap = await fetch_sitemap(client, base_url, limit=page_limit,
+                                      deadline=start_time + DEFAULT_TOTAL_TIMEOUT * 0.5)
         for su in sitemap["urls"]:
             if su not in visited:
                 queue.append((su, 1))

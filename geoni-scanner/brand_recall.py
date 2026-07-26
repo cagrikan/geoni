@@ -1537,6 +1537,15 @@ async def check_brand_recall(
     5.5 Share of Voice: kategori sorgularinda gorunurluk (v3, %30 agirlik)
     6. Topic uretimi
     """
+    # Tarama SURESI olcumu. NEDEN: kisi/marka/sosyal taramalarinda sure hic
+    # kaydedilmiyordu — audits satiri isin SONUNDA yaziliyor, `completed_at`
+    # de result_json'daki `created_at` (sonucun uretildigi an) oluyor; ikisi de
+    # baslangici bilmiyor, aradaki fark ~1sn cikiyordu. Yani 4 tarama tipinin
+    # 3'unde "ne kadar suruyor" sorusunu VERIYLE cevaplayamiyorduk
+    # (2026-07-26: "60 saniye" iddiasini duzeltirken ortaya cikti).
+    # Sema degisikligi gerekmez: sure telemetriye yazilir, result_json'da durur.
+    _baslangic = time.monotonic()
+
     msgs = PROGRESS_MESSAGES.get(lang, PROGRESS_MESSAGES["tr"])
 
     def emit(message: str):
@@ -2061,6 +2070,8 @@ async def check_brand_recall(
             # engines_measured=0 gibi sinyaller determinizm/saglayici-kesinti tartismalarini
             # "yeniden kos ve gozle" yerine veriyle cevaplar (canary bunlari kontrol eder).
             "telemetry": {
+                # Tarama suresi — SQL'le p50/p90 cikarilabilsin diye ham ms.
+                "duration_ms": int((time.monotonic() - _baslangic) * 1000),
                 "engines_measured": sum(1 for m in model_results.values()
                                         if isinstance(m, dict) and m.get("recognized") is not None),
                 "sov_checked": sov_checked,
