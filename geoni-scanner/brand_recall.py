@@ -636,7 +636,20 @@ async def _ask_gemini_grounded(prompt: str, temperature: float = 0.0, max_tokens
                 json={
                     "contents": [{"role": "user", "parts": [{"text": prompt}]}],
                     "tools": [{"google_search": {}}],
-                    "generationConfig": {"maxOutputTokens": max(max_tokens, 1500), "temperature": temperature},
+                    "generationConfig": {
+                        "maxOutputTokens": max(max_tokens, 2500),
+                        "temperature": temperature,
+                        # 2026-07-27 OLCUM: gemini-2.5-flash'ta "thinking" VARSAYILAN ACIK ve
+                        # maxOutputTokens'i metinle PAYLASIYOR. Zor promptlarda dusunme butceyi
+                        # bitirip finishReason=MAX_TOKENS'a dusuruyor -> asagidaki dalda motor
+                        # komple atlaniyordu (canli: google SOV yanit orani %42.9).
+                        # Ayni prompt olculdu: dusunme acik -> 2519 karakter / 8 atif / 276
+                        # dusunme token; thinkingBudget=0 -> 4209 karakter / 12 atif / 0 dusunme.
+                        # Grounding'de zincirleme akil yurutmeye gerek yok — arama sonuclarinin
+                        # kendisi zaten kanit. Butceyi buyutmek ISE YARAMIYOR (4000 denendi:
+                        # 2500 karakter, degisim yok); sorun butce degil, nereye harcandigi.
+                        "thinkingConfig": {"thinkingBudget": 0},
+                    },
                 },
                 timeout=40,
             )
