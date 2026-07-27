@@ -101,6 +101,20 @@ def _is_provider_health_failure(status: int, body: str) -> bool:
     return False
 
 
+def _hata(e: BaseException) -> str:
+    """Istisnayi TIPIYLE birlikte yazdirir.
+
+    NEDEN VAR (2026-07-27): httpx'in transport istisnalarinin (`ReadTimeout`,
+    `ConnectTimeout`, `PoolTimeout`, `RemoteProtocolError`, `ReadError`) `str(e)`
+    degeri BOS STRING'tir. Duz `logger.warning(f"... failed: " + str(e))` bu yuzden sadece
+    "OpenAI web query failed: " yaziyordu — hangi hata oldugu, hatta bir zaman
+    asimi mi oldugu bile gorunmuyordu. ChatGPT SOV motoru haftalarca cagrilarin
+    ~%85'inde 60sn timeout'a dusup sessizce None donuyordu ve log bunu
+    gizliyordu; sorun ancak canli olcumle bulundu. Tipi yazdirmak bu SINIFI kapatir.
+    """
+    return f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+
+
 async def _provider_health_alert(provider: str, status: int, body: str) -> None:
     if not _is_provider_health_failure(status, body):
         return
@@ -122,7 +136,7 @@ async def _provider_health_alert(provider: str, status: int, body: str) -> None:
                  "Kredi / anahtar / faturalama kontrol et."],
                 cta_label="Admin Panel", cta_url="https://app.geoni.ai")
     except Exception as e:
-        logger.warning(f"provider health alert email failed: {e}")
+        logger.warning(f"provider health alert email failed: {_hata(e)}")
 
 # T2: SOV'un ChatGPT/Claude web-arama motorlarinda kullanilan guncel modeller.
 # Ayni OPENAI_API_KEY / ANTHROPIC_API_KEY anahtarlariyla calisir.
@@ -440,7 +454,7 @@ async def _google_search(name: str, topic: str, max_results: int = 8, tavily_que
 
         except Exception as e:
             last_error = str(e)
-            logger.warning(f"Tavily {tavily_label} failed: {e}; failover")
+            logger.warning(f"Tavily {tavily_label} failed: {_hata(e)}; failover")
             continue
 
     # Tum anahtarlar basarisiz: servis kesintisi (bos-sonuctan ayri).
@@ -500,7 +514,7 @@ async def _ask_claude(prompt: str, temperature: float = RECALL_TEMPERATURE, max_
             asyncio.create_task(_provider_health_alert("anthropic", r.status_code, r.text))
             logger.warning(f"Claude {r.status_code}: {r.text[:200]}")
     except Exception as e:
-        logger.warning(f"Claude query failed: {e}")
+        logger.warning(f"Claude query failed: {_hata(e)}")
     return None
 
 
@@ -529,7 +543,7 @@ async def _ask_openai(prompt: str, temperature: float = RECALL_TEMPERATURE, max_
             asyncio.create_task(_provider_health_alert("openai", r.status_code, r.text))
             logger.warning(f"OpenAI {r.status_code}: {r.text[:200]}")
     except Exception as e:
-        logger.warning(f"OpenAI query failed: {e}")
+        logger.warning(f"OpenAI query failed: {_hata(e)}")
     return None
 
 
@@ -563,7 +577,7 @@ async def _ask_grok(prompt: str, temperature: float = RECALL_TEMPERATURE, max_to
             asyncio.create_task(_provider_health_alert("grok", r.status_code, r.text))
             logger.warning(f"Grok {r.status_code}: {r.text[:200]}")
     except Exception as e:
-        logger.warning(f"Grok query failed: {e}")
+        logger.warning(f"Grok query failed: {_hata(e)}")
     return None
 
 
@@ -594,7 +608,7 @@ async def _ask_gemini(prompt: str, temperature: float = RECALL_TEMPERATURE, max_
             asyncio.create_task(_provider_health_alert("google", r.status_code, r.text))
             logger.warning(f"Gemini {r.status_code}: {r.text[:200]}")
     except Exception as e:
-        logger.warning(f"Gemini query failed: {e}")
+        logger.warning(f"Gemini query failed: {_hata(e)}")
     return None
 
 
@@ -643,7 +657,7 @@ async def _ask_gemini_grounded(prompt: str, temperature: float = 0.0, max_tokens
                 return {"text": text, "citations": citations}
             logger.warning(f"Gemini grounded {r.status_code}: {r.text[:200]}")
     except Exception as e:
-        logger.warning(f"Gemini grounded query failed: {e}")
+        logger.warning(f"Gemini grounded query failed: {_hata(e)}")
     return None
 
 
@@ -689,7 +703,7 @@ async def _ask_perplexity_sourced(prompt: str, temperature: float = RECALL_TEMPE
             asyncio.create_task(_provider_health_alert("perplexity", r.status_code, r.text))
             logger.warning(f"Perplexity {r.status_code}: {r.text[:200]}")
     except Exception as e:
-        logger.warning(f"Perplexity query failed: {e}")
+        logger.warning(f"Perplexity query failed: {_hata(e)}")
     return None
 
 
@@ -723,7 +737,7 @@ async def _ask_perplexity(prompt: str, temperature: float = RECALL_TEMPERATURE, 
             asyncio.create_task(_provider_health_alert("perplexity", r.status_code, r.text))
             logger.warning(f"Perplexity {r.status_code}: {r.text[:200]}")
     except Exception as e:
-        logger.warning(f"Perplexity query failed: {e}")
+        logger.warning(f"Perplexity query failed: {_hata(e)}")
     return None
 
 
@@ -750,12 +764,20 @@ async def _ask_openai_web(prompt: str, temperature: float = 0.0, max_tokens: int
                     "model": OPENAI_WEB_MODEL,
                     "input": prompt,
                     "tools": [{"type": "web_search"}],
-                    # Fable #2: gpt-5 REASONING modeli; web_search + akil yurutme 1500 token'i
-                    # tuketip status=incomplete (bos metin) donuyordu -> ChatGPT SOV motoru %15
-                    # yanit. Butce artirildi ki metin uretecek yer kalsin.
+                    # 2026-07-27 OLCUM: butce artirmak TEK BASINA CALISMIYOR. gpt-5 varsayilan
+                    # akil yurutme seviyesinde bütçenin TAMAMINI reasoning'e harciyor: 4000
+                    # token butceyle 3392'si reasoning, uretilen metin 0 karakter, status=
+                    # incomplete/max_output_tokens. Yani 19 Tem'deki "butceyi 4000 yap"
+                    # duzeltmesi sonucsuzdu — akil yurutme verilen bütçeyi ne olursa olsun doldurur.
+                    # effort="low" ile ayni prompt: 58s, completed, 5546 karakter, 17 atif,
+                    # reasoning 1216 token. Hem CALISIYOR hem DAHA UCUZ.
+                    # ("minimal" KULLANILAMAZ: web_search ile birlikte API 400 doner.)
+                    "reasoning": {"effort": "low"},
                     "max_output_tokens": max(max_tokens, 4000),
                 },
-                timeout=60,
+                # Olculen gercek sure effort=low ile ~58s; 60 sn sinir tam kenardaydi ve
+                # cagrilarin cogu ReadTimeout'a dusuyordu (asagidaki loglama notuna bak).
+                timeout=120,
             )
             if r.status_code == 200:
                 asyncio.create_task(log_provider_call("openai"))
@@ -783,7 +805,7 @@ async def _ask_openai_web(prompt: str, temperature: float = 0.0, max_tokens: int
                 return {"text": joined, "citations": citations}
             logger.warning(f"OpenAI web {r.status_code}: {r.text[:200]}")
     except Exception as e:
-        logger.warning(f"OpenAI web query failed: {e}")
+        logger.warning(f"OpenAI web query failed: {_hata(e)}")
     return None
 
 
@@ -839,7 +861,7 @@ async def _ask_claude_web(prompt: str, temperature: float = 0.0, max_tokens: int
                 return {"text": " ".join(texts).strip(), "citations": citations}
             logger.warning(f"Claude web {r.status_code}: {r.text[:200]}")
     except Exception as e:
-        logger.warning(f"Claude web query failed: {e}")
+        logger.warning(f"Claude web query failed: {_hata(e)}")
     return None
 
 
@@ -887,7 +909,7 @@ async def _ask_grok_web(prompt: str, temperature: float = 0.0, max_tokens: int =
             asyncio.create_task(_provider_health_alert("grok_web", r.status_code, r.text))
             logger.warning(f"Grok web {r.status_code}: {r.text[:200]}")
     except Exception as e:
-        logger.warning(f"Grok web query failed: {e}")
+        logger.warning(f"Grok web query failed: {_hata(e)}")
     return None
 
 
@@ -1471,7 +1493,7 @@ async def _generate_brand_topics(name: str, topic: str, google_results: list, re
                         "opportunity_topics": data.get("opportunity_topics", []),
                     }
     except Exception as e:
-        logger.warning(f"Brand topic generation failed: {e}")
+        logger.warning(f"Brand topic generation failed: {_hata(e)}")
 
     return {"performing_topics": [], "opportunity_topics": []}
 
@@ -1569,7 +1591,7 @@ async def check_brand_recall(
     try:
         web_results = await _google_search(name, topic, tavily_query=tavily_query)
     except SearchUnavailableError as e:
-        logger.warning(f"Tavily servis kesintisi; web doğrulama atlanıyor, ölçüm belirsiz: {e}")
+        logger.warning(f"Tavily servis kesintisi; web doğrulama atlanıyor, ölçüm belirsiz: {_hata(e)}")
         web_results = []
         web_search_failed = True
 
@@ -1608,9 +1630,9 @@ async def check_brand_recall(
                     else:
                         logger.info(f"LinkedIn profile not public ({r.status_code}), skipping")
         except BlockedHostError as e:
-            logger.warning(f"LinkedIn URL SSRF engellendi: {e}")
+            logger.warning(f"LinkedIn URL SSRF engellendi: {_hata(e)}")
         except Exception as e:
-            logger.info(f"LinkedIn check failed: {e}, skipping")
+            logger.info(f"LinkedIn check failed: {_hata(e)}, skipping")
 
     # Step 1c: Identity verification (only if web results found and context given)
     # Yalnizca sehir gibi zayif baglam dogrulamayi TETIKLEMEZ: "Geoni + ankara"
@@ -1661,7 +1683,7 @@ async def check_brand_recall(
                             "scoring_version": SCORING_VERSION,
                         }
         except Exception as e:
-            logger.warning(f"Identity verification failed: {e}")
+            logger.warning(f"Identity verification failed: {_hata(e)}")
 
     # Step 1d (Fable 2026-07-24 perf): SOV'u burada ERKEN baslat — arka planda
     # Step 2 (5 model) + Step 3 (judge) ile PARALEL kossun. SOV yalniz name/topic/
@@ -1791,7 +1813,7 @@ async def check_brand_recall(
             # golge verisi ic analiz icin, canli skoru etkilemiyor -> judge maliyetini 3x->1x kis.
             judge_results = {**judge_results, **await judge_batch_accuracy(shadow_texts, web_results, person_info)}
         except Exception as e:
-            logger.warning(f"shadow judge (grok) error: {e}")
+            logger.warning(f"shadow judge (grok) error: {_hata(e)}")
     emit(msgs["scoring"])
 
     model_results = {}
@@ -2102,7 +2124,7 @@ async def check_brand_recall(
             await on_partial(_partial_result)
         except Exception as e:
             # Ara sonuc en kotu ihtimalle GEC gelir, hic gelmemesi taramayi BOZMAMALI.
-            logger.warning(f"on_partial callback basarisiz (yok sayildi, tarama devam ediyor): {e}")
+            logger.warning(f"on_partial callback basarisiz (yok sayildi, tarama devam ediyor): {_hata(e)}")
 
     # Topic-gen (musteriye gorunur performing/opportunity_topics) SOV ile paralel
     # calisir; golge motor metni bağlama girmesin (live_texts, grok haric).
@@ -2194,5 +2216,5 @@ async def infer_brand_identity(domain: str, pages: list) -> dict:
             "topic": topic_m.group(1).strip() if topic_m else fallback_name,
         }
     except Exception as e:
-        logger.warning(f"Brand identity inference failed: {e}")
+        logger.warning(f"Brand identity inference failed: {_hata(e)}")
         return {"name": fallback_name, "topic": fallback_name}
