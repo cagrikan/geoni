@@ -15,9 +15,15 @@ import free_scan
 
 
 def _install(monkeypatch, *, premium=False, device_state={"used": False, "other": False},
-             account_used=0, limit=1):
+             account_used=0, limit=1, creator=False, creator_used=0):
     """Katmanlari sahte async fonksiyonlarla degistirir; cagri kayitlarini döner."""
     rec = {"inc": [], "mark": []}
+
+    async def _creator(uid):
+        return creator
+
+    async def _aylik(uid):
+        return creator_used
 
     async def _premium(uid):
         return premium
@@ -36,6 +42,9 @@ def _install(monkeypatch, *, premium=False, device_state={"used": False, "other"
         rec["mark"].append((token, state))
         return True
 
+    monkeypatch.setattr(free_scan, "is_barter_creator", _creator)
+    monkeypatch.setattr(free_scan, "count_scans_this_month", _aylik)
+    monkeypatch.setattr(free_scan, "CREATOR_MONTHLY_SCANS", 30)
     monkeypatch.setattr(free_scan, "check_is_premium", _premium)
     monkeypatch.setattr(free_scan, "get_free_scans_used", _acct)
     monkeypatch.setattr(free_scan, "increment_free_scans", _inc)
@@ -105,3 +114,46 @@ def test_logged_in_both_recorded(monkeypatch):
     asyncio.run(free_scan.record_free_scan("u1", "devtok", info))
     assert rec["inc"] == ["u1"]                     # hesap +1
     assert rec["mark"] == [("devtok", {"used": False, "other": True})]
+
+
+# ── Creator (barter) aylik kotasi: isbirligi.html'de "ayda 30 tarama" vaadi ──
+
+def test_creator_under_quota_allowed_and_no_counters_touched(monkeypatch):
+    rec = _install(monkeypatch, creator=True, creator_used=29,
+                   device_state={"used": True, "other": True}, account_used=99)
+    allowed, info = asyncio.run(free_scan.free_scan_gate("u1", "devtok"))
+    # Cihaz biti dolu ve hesap sayaci tavanda olsa BILE creator gecer:
+    # kota kontrolu bu iki katmandan ONCE calisir.
+    assert allowed and info["reason"] == "creator" and info["limit"] == 30
+    asyncio.run(free_scan.record_free_scan("u1", "devtok", info))
+    # Turev sayim kullanildigi icin tutulacak sayac yok → ikisi de dokunulmamali
+    assert rec["inc"] == [] and rec["mark"] == []
+
+
+def test_creator_at_quota_blocked_with_monthly_limit(monkeypatch):
+    _install(monkeypatch, creator=True, creator_used=30)
+    allowed, info = asyncio.run(free_scan.free_scan_gate("u1", "devtok"))
+    assert not allowed and info["reason"] == "free_limit_reached"
+    assert info["limit"] == 30 and info["creator"] is True
+
+
+def test_creator_count_failure_is_safe_side(monkeypatch):
+    """Sayim yapilamazsa kota DOLMUS sayilir. Tersi (izin ver) sayim hatasini
+    sinirsiz ucretsiz taramaya cevirirdi ve her tarama gercek para yakiyor."""
+    _install(monkeypatch, creator=True, creator_used=None)
+    allowed, info = asyncio.run(free_scan.free_scan_gate("u1", "devtok"))
+    assert not allowed and info["creator"] is True
+
+
+def test_premium_beats_creator(monkeypatch):
+    """Kredi almis creator kotaya takilmamali — premium kontrolu once gelir."""
+    _install(monkeypatch, premium=True, creator=True, creator_used=99)
+    allowed, info = asyncio.run(free_scan.free_scan_gate("u1", "devtok"))
+    assert allowed and info["reason"] == "premium"
+
+
+def test_non_creator_unaffected(monkeypatch):
+    """Creator olmayan kullanicida yol aynen eski davranis."""
+    _install(monkeypatch, creator=False, device_state={"used": False, "other": False})
+    allowed, info = asyncio.run(free_scan.free_scan_gate("u1", "devtok"))
+    assert allowed and info["reason"] == "ok"

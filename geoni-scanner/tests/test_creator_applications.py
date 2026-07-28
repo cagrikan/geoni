@@ -425,3 +425,41 @@ def test_bos_govde_reddedilir(monkeypatch):
     _kur_guncelle(monkeypatch)
     r = asyncio.run(db.admin_update_contract(1, "admin-1", {}))
     assert r["success"] is False and r["error"] == "no_fields"
+
+
+# ── Creator aylik kotasi: sayim URL'i ───────────────────────────────────────
+
+class _SayimIstemci:
+    """count_scans_this_month'un urettigi URL'i yakalar; PostgREST'i taklit eder."""
+
+    def __init__(self):
+        self.url = None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def get(self, url, headers=None, timeout=None):
+        self.url = url
+        y = _SahteYanit([], 200)
+        y.headers = {"content-range": "*/7"}
+        return y
+
+
+def test_aylik_sayim_urlde_arti_isareti_kullanmaz(monkeypatch):
+    """CANLI YASANDI (2026-07-28): datetime.isoformat() '+00:00' uretiyor ve
+    sorgu dizesindeki '+' PostgREST'te BOSLUGA cozulup 400 donduruyor. Fonksiyon
+    None donuyordu, o da 'kota dolmus' guvenli tarafina dusup HER creator'i
+    bloklardi. Bu test o bicimi kilitler."""
+    ist = _SayimIstemci()
+    monkeypatch.setattr(db.httpx, "AsyncClient", lambda *a, **k: ist)
+    monkeypatch.setattr(db, "SUPABASE_URL", "https://x.supabase.co")
+    monkeypatch.setattr(db, "SUPABASE_SERVICE_KEY", "k")
+
+    sonuc = asyncio.run(db.count_scans_this_month("11111111-1111-1111-1111-111111111111"))
+
+    assert sonuc == 7                       # Content-Range paydasi okunuyor
+    assert "+" not in ist.url               # asil tuzak
+    assert "created_at=gte." in ist.url and ist.url.count("Z&") == 1

@@ -507,6 +507,72 @@ async def increment_free_scans(user_id: str) -> int | None:
     return None
 
 
+# ── Creator (barter) aylik tarama kotasi ────────────────────────────────────
+# isbirligi.html'de barter creator'a "ayda 30 tarama" vaat ediliyor (2026-07-28
+# oncesi "sinirsiz" yaziyordu, kurucu karariyla indirildi). Kotayi AYRI SAYAC
+# KOLONUNDA tutmuyoruz: aylik sayacin her ay sifirlanmasi gerekir, bu da cron +
+# saat dilimi + kacan reset = kalici hata kaynagi. Bunun yerine audits'ten TUREV
+# sayim yapiyoruz — sayac diye bir sey olmayinca drift de olmuyor.
+# Indeks: audits(user_id, created_at desc) — migration creator_monthly_scan_index.
+
+_creator_cache: dict[str, tuple[bool, float]] = {}
+
+
+async def is_barter_creator(user_id: str) -> bool:
+    """Kabul edilmis BARTER creator mi? (expert ortagina tarama kotasi vaat
+    edilmiyor — ona is yonlendiriliyor, o yuzden yalnizca model='barter'.)"""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
+        return False
+    cached = _creator_cache.get(user_id)
+    if cached and time.monotonic() - cached[1] < _TOKEN_CACHE_TTL:
+        return cached[0]
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/creator_applications"
+                f"?user_id=eq.{user_id}&status=eq.accepted&model=eq.barter&select=id&limit=1",
+                headers=_headers(), timeout=8,
+            )
+            if r.status_code == 200:
+                result = bool(r.json())
+                _creator_cache[user_id] = (result, time.monotonic())
+                return result
+    except Exception as e:
+        logger.warning(f"is_barter_creator failed: {e}")
+    return False
+
+
+async def count_scans_this_month(user_id: str) -> int | None:
+    """Kullanicinin BU TAKVIM AYINDA baslattigi tarama sayisi.
+    None → sayilamadi; cagiran GUVENLI TARAFA dusup kotayi dolmus saymali
+    (aksi halde sayim hatasi sinirsiz ucretsiz tarama demek olurdu)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
+        return None
+    simdi = datetime.now(timezone.utc)
+    ay_basi = simdi.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    # DIKKAT: isoformat() "+00:00" uretir; sorgu dizesindeki "+" PostgREST'te
+    # BOSLUGA cozulur -> 400 "invalid input syntax for type timestamp".
+    # Canlida olculdu (2026-07-28). Z bicimi bu tuzagi tasimiyor.
+    ay_str = ay_basi.strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/audits"
+                f"?user_id=eq.{user_id}&created_at=gte.{ay_str}&select=id&limit=1",
+                headers={**_headers(), "Prefer": "count=exact"}, timeout=8,
+            )
+            if r.status_code in (200, 206):
+                # PostgREST toplam sayiyi Content-Range'in payda kisminda doner: "0-0/42"
+                rng = r.headers.get("content-range", "")
+                if "/" in rng:
+                    toplam = rng.rsplit("/", 1)[1]
+                    if toplam.isdigit():
+                        return int(toplam)
+    except Exception as e:
+        logger.warning(f"count_scans_this_month failed: {e}")
+    return None
+
+
 _is_admin_cache: dict[str, tuple[bool, float]] = {}
 
 
