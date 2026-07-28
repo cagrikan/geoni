@@ -6,13 +6,24 @@ tekrar kurulunca (ya da wipe'ta) sifirlaniyor → sinirsiz ucretsiz istismar.
 Apple DeviceCheck her FIZIKSEL cihaz icin Apple sunucusunda 2 bit kalici depo
 verir; uygulama silinse/yeniden kurulsa/cihaz "erase" edilse bile korunur.
 
-2 bit = 0..3 durum. free_scans_used sayacini burada tutariz:
-    count = (bit1 << 1) | bit0     (bit0 = count&1, bit1 = (count>>1)&1)
+🔴 KRITIK: bu 2 bit UYGULAMA basina DEGIL, GELISTIRICI EKIBI (2Y6PBTM588) basina.
+Ayni ekipteki daktilo (app.timeletter.mobile) AYNI iki biti kullaniyor. Eskiden ikisi de
+0..3 sayaci yaziyordu → 2 ucretsiz GEONI taramasi yapan kullanici daktilo'da sayaci
+dolu okuyup ilk mektuptan itibaren paraya takiliyordu (tersi de). Kurucu karari
+(2026-07-27): **her uygulamaya 1 bit, uygulama basina 1 ucretsiz hak.**
+
+    bit0 → daktilo        bit1 → GEONI (BU dosya)
+
+Sayac yok; GEONI yalnizca kendi bitini boole olarak okur/yazar.
+
+⚠️ Apple'da tek bit yazan uc YOK: `update_two_bits` IKI biti birden yazar. Bu yuzden
+yazmadan once daktilo'nun bitini okuyup AYNEN geri yazmak zorunludur (oku-degistir-yaz).
+Bu adim atlanirsa daktilo kullanicilarinin hakki sifirlanir.
 
 Akis:
   1) iOS istemci `DCDevice.generateToken()` ile device_token uretir, backend'e yollar.
-  2) query_device_count(token) → cihazin mevcut sayaci (yeni cihaz → 0).
-  3) Tarama izinliyse ve tamamlandiysa set_device_count(token, count+1).
+  2) query_device_state(token) → {"used": GEONI biti, "other": daktilo biti}.
+  3) Tarama izinliyse ve tamamlandiysa mark_device_used(token, state).
 
 Gerekli env (App Store Connect → Keys → DeviceCheck .p8):
   APPLE_TEAM_ID           (ör. 2Y6PBTM588)
@@ -23,6 +34,14 @@ Gerekli env (App Store Connect → Keys → DeviceCheck .p8):
 Env eksikse modul GUVENLI TARAFA duser: is_configured()=False → cagiran cihaz
 katmanini atlar (account/IP katmani devrede kalir), tarama BLOKLANMAZ. Boylece
 key gelene kadar canli akis bozulmaz.
+
+🛑 ENV'I ACMADAN ONCE OKU (2026-07-28): daktilo'da bir GOC kurali acik —
+"bit1=1 & bit0=0 → eski daktilo izi, bit0'a tasi". GEONI canli olmadigi surece bu
+desen gercekten daktilo'nundur. Ama biz env'i acar acmaz ayni desen "GEONI hakkini
+kullandi" demeye baslar; kural acik kalirsa daktilo her muhurlemede GEONI'nin bitini
+SILER. Bu yuzden once daktilo tarafinda `DEVICECHECK_LEGACY_BIT1_MIGRATION=0`
+(Vercel `timeletter-relay`) yapilmali, memory/devicecheck-bit-sozlesmesi.md'ye
+"sonumlendi" yazilmali; ANCAK ONDAN SONRA buraya DEVICECHECK_* env'i girilir.
 """
 from __future__ import annotations
 
@@ -47,7 +66,14 @@ _HOST = (
     else "https://api.devicecheck.apple.com"
 )
 
-MAX_FREE_SCANS = int(os.environ.get("FREE_SCAN_LIMIT", "2"))
+# Ekip bit'i paylasildigi icin CIHAZ katmani yapisal olarak yalnizca 1 hak ifade
+# edebilir (tek bit = 0/1). HESAP katmani (profiles.free_scans_used) ayni sayiyi
+# kullanir; varsayilan 1'e cekildi (kurucu karari 2026-07-27).
+MAX_FREE_SCANS = int(os.environ.get("FREE_SCAN_LIMIT", "1"))
+
+# Sozlesme (memory/devicecheck-bit-sozlesmesi.md) — DEGISTIRME.
+_GEONI_BIT = "bit1"
+_OTHER_BIT = "bit0"  # daktilo
 
 
 def is_configured() -> bool:
@@ -110,55 +136,55 @@ def _base_body(device_token: str) -> dict:
     }
 
 
-# ── Sayac (2 bit) ───────────────────────────────────────────────────────────
+# ── Bit durumu (GEONI = bit1, daktilo = bit0) ───────────────────────────────
 
-async def query_device_count(device_token: str) -> int | None:
-    """Cihazin ucretsiz-tarama sayaci (0..3). Yeni cihaz / bit yoksa 0.
+async def query_device_state(device_token: str) -> dict | None:
+    """{"used": bool, "other": bool} → GEONI biti ve daktilo biti.
+    Yeni cihaz / hic bit yazilmamis → ikisi de False.
     None → sorgu yapilamadi (env yok ya da Apple hatasi) → cagiran cihaz
-    katmanini ATLAMALI (guvenli taraf: diger katmanlar korur)."""
+    katmanini ATLAMALI (guvenli taraf: diger katmanlar korur).
+
+    `other` yalnizca bilgi degil: yazarken geri konmasi ZORUNLU (bkz. modul basligi)."""
     if not is_configured() or not device_token:
         return None
     r = await _post("/v1/query_two_bits", _base_body(device_token))
     if r is None:
         return None
+    bos = {"used": False, "other": False}
     if r.status_code == 200:
         try:
             d = r.json()
-            bit0 = 1 if d.get("bit0") else 0
-            bit1 = 1 if d.get("bit1") else 0
-            return (bit1 << 1) | bit0
         except Exception:
-            return 0  # govde parse edilemedi ama 200 → bit set degil kabul et
-    # Apple bit hic set edilmemisse 200 + "Failed to find bit state" DONMESI
-    # yerine bazen düz metin döner; bunu "yeni cihaz = 0" say.
+            return bos  # 200 ama govde yok → Apple'in "hic bit yok" bicimi
+        if not isinstance(d, dict):
+            return bos
+        return {"used": bool(d.get(_GEONI_BIT)), "other": bool(d.get(_OTHER_BIT))}
+    # Bit hic set edilmemisse Apple bazen 200 disinda duz metin doner → yeni cihaz.
     text = (r.text or "").lower()
     if "failed to find bit state" in text or "bit state not found" in text:
-        return 0
-    if r.status_code in (400,) and "bit" in text:
-        return 0
+        return bos
+    if r.status_code == 400 and "bit" in text:
+        return bos
     logger.warning(f"DeviceCheck query beklenmedik yanit: {r.status_code} {r.text[:120]}")
     return None
 
 
-async def set_device_count(device_token: str, count: int) -> bool:
-    """Cihaz sayacini `count` (0..3) yap. Basari → True."""
+async def mark_device_used(device_token: str, state: dict | None) -> bool:
+    """GEONI bitini 1 yapar; daktilo bitini `state`ten AYNEN korur. Basari → True.
+
+    `state` None ise yazmayiz: diger uygulamanin bitini bilmeden yazmak onun hakkini
+    sifirlar. Hak kaybettirmektense bir ucretsiz taramayi kayitsiz birakmak yeglenir
+    (hesap katmani + IP rate-limit yine devrede)."""
     if not is_configured() or not device_token:
         return False
-    count = max(0, min(3, int(count)))
+    if state is None:
+        logger.warning("DeviceCheck: bit durumu okunamadigi icin yazilmadi (daktilo biti korunur)")
+        return False
     body = _base_body(device_token)
-    body["bit0"] = bool(count & 1)
-    body["bit1"] = bool((count >> 1) & 1)
+    body[_GEONI_BIT] = True
+    body[_OTHER_BIT] = bool(state.get("other"))
     r = await _post("/v1/update_two_bits", body)
     ok = bool(r is not None and r.status_code == 200)
     if not ok and r is not None:
         logger.warning(f"DeviceCheck update basarisiz: {r.status_code} {r.text[:120]}")
     return ok
-
-
-async def device_over_limit(device_token: str) -> bool:
-    """Cihaz ucretsiz tavani doldurmus mu? Sorgu yapilamadiysa (None) → False
-    (guvenli taraf: cihaz katmani belirsizse account/IP katmani karar verir)."""
-    count = await query_device_count(device_token)
-    if count is None:
-        return False
-    return count >= MAX_FREE_SCANS

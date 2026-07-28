@@ -26,22 +26,24 @@ import logging
 from db import check_is_premium, get_free_scans_used, increment_free_scans
 from devicecheck import (
     MAX_FREE_SCANS as FREE_SCAN_LIMIT,
-    query_device_count,
-    set_device_count,
+    mark_device_used,
+    query_device_state,
 )
 
 logger = logging.getLogger(__name__)
 
 
 async def free_scan_gate(user_id: str | None, device_token: str | None) -> tuple[bool, dict]:
-    """(allowed, info) döner. info, record_free_scan icin device_count tasir."""
+    """(allowed, info) döner. info, record_free_scan icin device_state tasir."""
     # Premium/kredi almis kullanici: tavan yok.
     if user_id and await check_is_premium(user_id):
-        return True, {"reason": "premium", "device_count": None}
+        return True, {"reason": "premium", "device_state": None}
 
     # Cihaz katmani (None → sorgulanamadi → bu katman atlanir).
-    device_count = await query_device_count(device_token) if device_token else None
-    device_over = device_count is not None and device_count >= FREE_SCAN_LIMIT
+    # Ekip bit'i daktilo ile paylasildigi icin cihaz katmani tek bit = tek hak;
+    # FREE_SCAN_LIMIT yalnizca hesap katmanini yonetir (bkz. devicecheck.py basligi).
+    device_state = await query_device_state(device_token) if device_token else None
+    device_over = device_state is not None and device_state["used"]
 
     # Hesap katmani (anonimde user_id yok → 0 → atlanir).
     account_used = await get_free_scans_used(user_id) if user_id else 0
@@ -53,10 +55,10 @@ async def free_scan_gate(user_id: str | None, device_token: str | None) -> tuple
             "limit": FREE_SCAN_LIMIT,
             "device_over": device_over,
             "account_over": account_over,
-            "device_count": device_count,
+            "device_state": device_state,
             "account_used": account_used,
         }
-    return True, {"reason": "ok", "device_count": device_count, "account_used": account_used}
+    return True, {"reason": "ok", "device_state": device_state, "account_used": account_used}
 
 
 async def record_free_scan(user_id: str | None, device_token: str | None, info: dict) -> None:
@@ -65,6 +67,7 @@ async def record_free_scan(user_id: str | None, device_token: str | None, info: 
         return
     if user_id:
         await increment_free_scans(user_id)
-    device_count = info.get("device_count")
-    if device_token and device_count is not None:
-        await set_device_count(device_token, device_count + 1)
+    device_state = info.get("device_state")
+    if device_token and device_state is not None:
+        # daktilo'nun biti `device_state["other"]`ten aynen geri yazilir.
+        await mark_device_used(device_token, device_state)

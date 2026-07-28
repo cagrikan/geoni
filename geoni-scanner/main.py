@@ -32,6 +32,7 @@ from topics import generate_topics_and_opportunities
 from ratelimit import enforce_audit_rate_limits, RateLimitExceeded
 from mailer import send_audit_report_email, send_purchase_email, send_refund_email
 from brand_recall import check_brand_recall, infer_brand_identity, SCORING_VERSION
+from devicecheck import MAX_FREE_SCANS as FREE_SCAN_LIMIT
 from free_scan import free_scan_gate, record_free_scan
 import attest  # Apple App Attest: mobil muafiyetini imzaya baglar (bkz. _mobile_exempt)
 from db import (
@@ -247,9 +248,13 @@ def _login_required_message(lang: str) -> str:
 
 
 def _free_limit_message(lang: str) -> str:
+    # Sayi ELLE yazilmaz: FREE_SCAN_LIMIT 2'den 1'e inince (DeviceCheck bit'i daktilo
+    # ile paylasildigi icin, bkz. devicecheck.py) bu metin "2" demeye devam ediyordu.
+    n = FREE_SCAN_LIMIT
     if lang == "en":
-        return "You've used your 2 free scans. Subscribe or buy credits to keep scanning."
-    return "2 ücretsiz taramanı kullandın. Taramaya devam için abone ol ya da kredi al."
+        return (f"You've used your {n} free scan{'s' if n != 1 else ''}. "
+                "Subscribe or buy credits to keep scanning.")
+    return f"{n} ücretsiz taramanı kullandın. Taramaya devam için abone ol ya da kredi al."
 
 
 def _suspended_message(lang: str) -> str:
@@ -885,7 +890,7 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
         if not allowed:
             raise HTTPException(status_code=402, detail={
                 "error": "free_limit_reached",
-                "limit": gate_info.get("limit", 2),
+                "limit": gate_info.get("limit", FREE_SCAN_LIMIT),
                 "message": _free_limit_message(request.lang or "tr"),
             })
         background_tasks.add_task(record_free_scan, user_id_rl, request.device_token, gate_info)
@@ -1072,7 +1077,7 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
         if not allowed:
             raise HTTPException(status_code=402, detail={
                 "error": "free_limit_reached",
-                "limit": gate_info.get("limit", 2),
+                "limit": gate_info.get("limit", FREE_SCAN_LIMIT),
                 "message": _free_limit_message(request.lang or "tr"),
             })
         background_tasks.add_task(record_free_scan, user_id_rl2, request.device_token, gate_info)
@@ -1143,7 +1148,7 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
             if not allowed:
                 raise HTTPException(status_code=402, detail={
                     "error": "free_limit_reached",
-                    "limit": gate_info.get("limit", 2),
+                    "limit": gate_info.get("limit", FREE_SCAN_LIMIT),
                     "message": _free_limit_message(request.lang or "tr"),
                 })
             background_tasks.add_task(record_free_scan, sc_uid, request.device_token, gate_info)
