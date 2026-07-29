@@ -2176,7 +2176,11 @@ async def revenuecat_webhook(http_request: Request):
         return {"ignored": True}
 
     sandbox = event["environment"] != "PRODUCTION"
-    channel = "ios_sandbox" if sandbox else "ios"
+    # Kanal MAGAZADAN gelir, varsayimdan degil. Eskiden sabit "ios" yaziliyordu
+    # (webhook yalniz iOS varken yazilmisti); Android yayina cikinca Play
+    # alimlari da "ios_sandbox" olarak deftere gecti ve ciro raporu Android
+    # gelirini iOS'a yazdi (2026-07-29, rc_B776BFBA...).
+    channel, store_label = iap.channel_and_label(event["store"], sandbox)
     suffix = " (sandbox)" if sandbox else ""
 
     # Iki urun ailesi: token paketleri (cuzdana kredi) ve dogrudan hizmet
@@ -2188,7 +2192,7 @@ async def revenuecat_webhook(http_request: Request):
                 return {"success": True}
             ok = await record_refund(
                 event["user_id"], package["credits"], event["external_id"],
-                description="İade: App Store satın alma",
+                description=f"İade: {store_label} satın alma",
                 # RevenueCat iadesi orijinal alim satirina baglanacak ortak bir
                 # anahtar vermiyor; komisyon tutar+musteri ile eslenip iptal edilir.
                 amount_paid=event.get("price"),
@@ -2198,7 +2202,7 @@ async def revenuecat_webhook(http_request: Request):
             user_id=event["user_id"], credits=package["credits"],
             amount_paid=event["price"], currency_paid=event["currency"],
             external_id=event["external_id"], channel=channel,
-            description="App Store satın alma" + suffix,
+            description=f"{store_label} satın alma" + suffix,
         )
         return {"success": ok}
 

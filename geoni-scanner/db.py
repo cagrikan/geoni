@@ -1509,6 +1509,7 @@ async def get_admin_sales_stats(days: int = 14) -> dict:
     result = {
         "revenue_by_channel": {}, "revenue_total": 0, "currency": "TRY",
         "by_source": {}, "revenue_by_source": {}, "recent": [], "daily": [],
+        "sandbox_excluded": 0,
     }
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return result
@@ -1529,6 +1530,19 @@ async def get_admin_sales_stats(days: int = 14) -> dict:
         purchases = []
 
     daily_buckets = {}
+    # Sandbox/test alimlarinda gercek para donmez (App Store sandbox, Play
+    # lisans testi). Ciroya katilirlarsa rapor sismis olur - kurucunun kendi
+    # test alimi 739.99 TRY olarak ciroya giriyordu. Disaridi tut ama SAYISINI
+    # dondur: sessizce yutmak, "satis gorunmuyor" seklinde yeni bir kafa
+    # karisikligi yaratir.
+    # Kanal etiketini YAZAN yer iap.channel_and_label; okuyan burasi. Kosulu
+    # kopyalamak yerine ayni moduldeki yardimciyi kullaniyoruz - iki yere
+    # kopyalanan kosul sessizce ayrisir (bkz. credits_spent hatasi, 07-29).
+    from iap import is_sandbox_channel as _sandbox_kanal
+    gercek = [p for p in purchases if not _sandbox_kanal(p.get("channel"))]
+    result["sandbox_excluded"] = len(purchases) - len(gercek)
+    purchases = gercek
+
     for p in purchases:
         channel = p.get("channel") or "web"
         amount_paid = float(p.get("amount_paid") or 0)

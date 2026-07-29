@@ -60,7 +60,7 @@ def parse_event(payload: dict) -> dict | None:
     None if it's an event type we ignore (renewals, test pings, etc.).
 
     Returns: {kind, user_id, product_id, external_id, price, currency,
-    environment} where kind is "grant" or "refund".
+    environment, store} where kind is "grant" or "refund".
     """
     event = (payload or {}).get("event") or {}
     etype = event.get("type")
@@ -93,4 +93,51 @@ def parse_event(payload: dict) -> dict | None:
         "price": event.get("price_in_purchased_currency") or event.get("price") or 0,
         "currency": event.get("currency") or "USD",
         "environment": event.get("environment") or "PRODUCTION",
+        # Hangi magaza odemeyi aldi. RevenueCat: APP_STORE / MAC_APP_STORE /
+        # PLAY_STORE / AMAZON / STRIPE / PROMOTIONAL. Bilinmiyorsa APP_STORE'a
+        # DUSMEYIZ - "UNKNOWN" der ve kanal oyle yazilir; sessizce iOS saymak
+        # tam olarak 2026-07-29'da yasanan hataydi (Play alimi "ios_sandbox"
+        # olarak deftere gecti).
+        "store": event.get("store") or "UNKNOWN",
     }
+
+
+# RevenueCat magaza adi -> bizim kanal etiketimiz (credit_transactions.channel).
+# Admin ciro raporu (db.get_admin_sales_stats) bu etikete gore kiriliyor.
+_STORE_CHANNEL = {
+    "APP_STORE": "ios",
+    "MAC_APP_STORE": "ios",
+    "PLAY_STORE": "android",
+    "AMAZON": "amazon",
+    "STRIPE": "stripe",
+    "RC_BILLING": "rc_billing",
+    "PADDLE": "paddle",
+    "PROMOTIONAL": "promo",
+}
+
+# Magaza adi -> kullaniciya/admine gorunen aciklama metni.
+_STORE_LABEL = {
+    "APP_STORE": "App Store",
+    "MAC_APP_STORE": "App Store",
+    "PLAY_STORE": "Play Store",
+    "AMAZON": "Amazon Appstore",
+    "STRIPE": "Stripe",
+    "RC_BILLING": "RevenueCat Billing",
+    "PADDLE": "Paddle",
+    "PROMOTIONAL": "Promosyon",
+}
+
+
+def channel_and_label(store: str, sandbox: bool) -> tuple[str, str]:
+    """(kanal, magaza adi) dondurur. Sandbox alimlar AYRI bir kanala yazilir
+    ('..._sandbox') cunku gercek para donmez ve ciro toplamina girmemeleri
+    gerekir - bkz. db.get_admin_sales_stats."""
+    store = (store or "UNKNOWN").upper()
+    channel = _STORE_CHANNEL.get(store, store.lower())
+    label = _STORE_LABEL.get(store, store.title())
+    return (channel + "_sandbox" if sandbox else channel), label
+
+
+def is_sandbox_channel(channel: str) -> bool:
+    """Ciro raporlarinin disladigi kanal mi (gercek para donmemis)."""
+    return (channel or "").endswith("_sandbox")
