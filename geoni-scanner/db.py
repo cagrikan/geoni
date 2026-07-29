@@ -149,7 +149,10 @@ async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str
         "result_json": result,
         # Gercek dusumle ayni olmali (asagida deduct_credits 5 dusuyor) -
         # eskiden 10 yaziliyordu, kullanici gercekte harcadigindan fazlasini goruyordu.
-        "credits_spent": 5 if deduct else 0,
+        # user_id kosulu da SART: anonim/ucretsiz taramada dusum yapilmiyor
+        # (asagida `if user_id and deduct`), ama satira 5 yaziliyordu -> admin
+        # raporu odenmemis krediyi harcanmis sayiyordu.
+        "credits_spent": 5 if (deduct and user_id) else 0,
         "status": "complete",
         "completed_at": result.get("created_at"),
     }
@@ -188,7 +191,9 @@ async def save_brand_check(job_id: str, request_data: dict, result: dict, user_i
         return False
 
     entity_type = request_data.get("type", "person")
-    credits = 10 if deduct else 0
+    # save_audit ile ayni kural: dusum `if user_id and deduct` ile yapiliyor,
+    # yazilan maliyet de ayni kosula bagli olmali (anonim taramada 0).
+    credits = 10 if (deduct and user_id) else 0
 
     payload = {
         "id": job_id,
