@@ -133,6 +133,38 @@ async def get_audit_row(job_id: str) -> dict | None:
         return None
 
 
+async def _maliyeti_sifirla(client, job_id: str, user_id: str, amount: int, ne: str):
+    """Dusum BASARISIZ olduysa satirdaki maliyeti gercege cek (0).
+
+    Satir dusumden ONCE yaziliyor ve bu sira bilincli: once dusup sonra yazsak,
+    yazma hatasinda kullanici hem kredisini hem raporunu kaybederdi. Bunun
+    bedeli, dusum patlarsa satirin "odendi" demesi - defterde karsiligi olmayan
+    hayali maliyet (bkz. 2026-07-12'deki 3 satir). O yuzden dusum sonucuna gore
+    satiri DUZELTIYORUZ.
+
+    ERROR seviyesinde loglanir: Sentry'de gorunmesi gerekir, cunku bu noktaya
+    gelinmesi ya bakiye yaris kosulu ya da DB hatasi demektir."""
+    logger.error(
+        "kontor dusumu BASARISIZ (%s): job=%s user=%s amount=%s - satirdaki "
+        "maliyet 0'a cekiliyor", ne, job_id, user_id, amount,
+    )
+    try:
+        r = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/audits",
+            headers={**_headers(), "Prefer": "return=minimal"},
+            params={"id": f"eq.{job_id}"},
+            json={"credits_spent": 0},
+            timeout=10,
+        )
+        if r.status_code not in (200, 204):
+            logger.error(
+                "maliyet sifirlama da basarisiz: job=%s %s %s",
+                job_id, r.status_code, r.text[:200],
+            )
+    except Exception as e:
+        logger.error("maliyet sifirlama hatasi: job=%s %s", job_id, e)
+
+
 async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str = None, deduct: bool = True) -> bool:
     """Save domain audit result to Supabase audits table.
     deduct=False: otomatik izleme taramalari kontor dusmez (izleme ucretsiz)."""
@@ -170,7 +202,10 @@ async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str
                 logger.info(f"Audit {job_id} saved to Supabase")
                 # Deduct credits if user is logged in
                 if user_id and deduct:
-                    await deduct_credits(user_id, 5, "web_audit", job_id)
+                    # Donus DEGERI kontrol edilir: False donerse satir "5 kredi
+                    # harcandi" demeye devam edemez.
+                    if not await deduct_credits(user_id, 5, "web_audit", job_id):
+                        await _maliyeti_sifirla(client, job_id, user_id, 5, "web_audit")
                 # (C) Ayni hedefin ESKI tam raporunu hemen sadelestir (skor kalir).
                 if user_id:
                     asyncio.create_task(run_audit_retention(user_id))
@@ -223,7 +258,8 @@ async def save_brand_check(job_id: str, request_data: dict, result: dict, user_i
             if r.status_code in (200, 201):
                 logger.info(f"Brand check {job_id} saved to Supabase")
                 if user_id and deduct:
-                    await deduct_credits(user_id, credits, f"{entity_type}_check", job_id)
+                    if not await deduct_credits(user_id, credits, f"{entity_type}_check", job_id):
+                        await _maliyeti_sifirla(client, job_id, user_id, credits, f"{entity_type}_check")
                 # (C) Ayni kisi/marka'nin ESKI tam raporunu hemen sadelestir.
                 if user_id:
                     asyncio.create_task(run_audit_retention(user_id))
@@ -389,7 +425,7 @@ async def deduct_credits(user_id: str, amount: int, description: str, reference_
                 return False
 
             # Record transaction
-            await client.post(
+            tx = await client.post(
                 f"{SUPABASE_URL}/rest/v1/credit_transactions",
                 headers=_headers(),
                 json={
@@ -401,6 +437,19 @@ async def deduct_credits(user_id: str, amount: int, description: str, reference_
                 },
                 timeout=10,
             )
+            if tx.status_code not in (200, 201, 204):
+                # Bakiye ZATEN dusuldu (RPC atomik ve donmus durumda) ama defter
+                # satiri yazilamadi. Donusu False yapmak YANLIS olur: para
+                # gercekten alindi, cagiran maliyeti 0'a cekerse bu sefer ters
+                # yonde yalan soyleriz. Yapilacak sey durumu GORUNUR kilmak -
+                # bu imza tam olarak "bakiye dusmus, defterde karsiligi yok"
+                # gizemli satirlarini uretir. Ayrica idempotency bu satira
+                # bakiyor: yazilamazsa yeniden teslimde IKINCI kez dusulur.
+                logger.error(
+                    "kontor defter satiri YAZILAMADI (bakiye dusuldu!): user=%s "
+                    "amount=%s ref=%s %s %s - manuel mutabakat gerekir",
+                    user_id, amount, reference_id, tx.status_code, tx.text[:200],
+                )
             logger.info(f"Deducted {amount} credits from user {user_id}")
             return True
     except Exception as e:
