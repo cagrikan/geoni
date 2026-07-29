@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="GEONI hesabınızı ve verilerinizi nasıl silersiniz — uygulama içinden veya e-posta ile. How to delete your GEONI account and data.">
+<title>Hesap Silme — GEONI / Account Deletion</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+/* Tasarim sistemi v2 - geoni.ai / app.geoni.ai ile ayni token seti */
+:root{
+  --bg:#0A0B10;
+  --surface:#10121A;
+  --border:rgba(255,255,255,.07);
+  --border-mid:rgba(255,255,255,.13);
+  --accent:#7C86F5;
+  --text:#EDEFF5;
+  --text-sub:#9BA3B5;
+  --text-muted:#697083;
+  --body:'Inter',sans-serif;
+}
+:root[data-theme="light"]{
+  --bg:#F7F8FA;
+  --surface:#FFFFFF;
+  --border:rgba(22,24,29,.08);
+  --border-mid:rgba(22,24,29,.16);
+  --accent:#5B63E8;
+  --text:#16181D;
+  --text-sub:#4D5464;
+  --text-muted:#8A90A0;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#F7F8FA;
+    --surface:#FFFFFF;
+    --border:rgba(22,24,29,.08);
+    --border-mid:rgba(22,24,29,.16);
+    --accent:#5B63E8;
+    --text:#16181D;
+    --text-sub:#4D5464;
+    --text-muted:#8A90A0;
+  }
+}
+body{background:var(--bg);color:var(--text);font-family:var(--body);line-height:1.7;-webkit-font-smoothing:antialiased}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:18px 48px;border-bottom:1px solid var(--border)}
+.topbar .logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+.topbar .logo-text{font-family:var(--body);font-weight:600;font-size:1rem;letter-spacing:.14em;color:var(--text-sub)}
+.topbar .back{font-weight:500;font-size:.875rem;color:var(--text-sub);text-decoration:none}
+.topbar .back:hover{color:var(--accent)}
+@media (max-width:600px){.topbar{padding:14px 20px}}
+main{max-width:720px;margin:0 auto;padding:56px 24px 96px}
+.eyebrow{font-size:.75rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+h1{font-size:1.75rem;font-weight:700;line-height:1.25;margin-bottom:8px}
+.updated{font-size:.8125rem;color:var(--text-muted);margin-bottom:40px}
+h2{font-size:1.25rem;font-weight:600;margin:40px 0 12px}
+p{font-size:.875rem;color:var(--text-sub);margin-bottom:12px}
+ul{margin:0 0 12px 20px}
+li{font-size:.875rem;color:var(--text-sub);margin-bottom:6px}
+li strong,p strong{color:var(--text);font-weight:600}
+a{color:var(--accent)}
+.note{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:.8125rem;color:var(--text-sub);margin:16px 0}
+footer{max-width:720px;margin:0 auto;padding:24px;border-top:1px solid var(--border);font-size:.8125rem;color:var(--text-muted);display:flex;flex-wrap:wrap;gap:16px}
+footer a{color:var(--text-muted);text-decoration:none}
+footer a:hover{color:var(--accent)}
+</style>
+<script>
+(function(){
+  var t = localStorage.getItem('geoni_site_theme');
+  if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","name":"Hesap Silme — GEONI","url":"https://geoni.ai/hesap-sil","description":"GEONI hesabınızı ve verilerinizi nasıl silersiniz.","inLanguage":"tr","isPartOf":{"@id":"https://geoni.ai/#website"}}
+</script>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="logo" href="/"><svg viewBox="0 0 80 80" width="36" height="36" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+    <line x1="38" y1="12" x2="25" y2="22" stroke="#7C86F5" stroke-width="1" opacity=".4"/>
+    <line x1="10" y1="40" x2="20" y2="25" stroke="#7C86F5" stroke-width="1" opacity=".4"/>
+    <line x1="10" y1="40" x2="18" y2="56" stroke="#7C86F5" stroke-width="1" opacity=".4"/>
+    <line x1="38" y1="68" x2="25" y2="58" stroke="#7C86F5" stroke-width="1" opacity=".5"/>
+    <line x1="60" y1="40" x2="70" y2="24" stroke="#7C86F5" stroke-width="1" opacity=".5"/>
+    <line x1="38" y1="12" x2="52" y2="8" stroke="#7C86F5" stroke-width="1" opacity=".5"/>
+    <line x1="52" y1="8" x2="70" y2="24" stroke="#7C86F5" stroke-width="1" opacity=".5"/>
+    <path d="M 38 12 A 30 30 0 1 0 38 68" fill="none" stroke="#7C86F5" stroke-width="5.5" stroke-linecap="round"/>
+    <path d="M 50 40 L 62 40" fill="none" stroke="#7C86F5" stroke-width="5.5" stroke-linecap="round"/>
+    <path d="M 62 40 L 62 58" fill="none" stroke="#7C86F5" stroke-width="5.5" stroke-linecap="round"/>
+    <circle cx="38" cy="12" r="2.5" fill="#7C86F5"/>
+    <circle cx="10" cy="40" r="2" fill="#7C86F5"/>
+    <circle cx="38" cy="68" r="2.5" fill="#7C86F5"/>
+    <circle cx="62" cy="40" r="3.5" fill="#F59E0B"/>
+    <circle cx="62" cy="40" r="1.8" fill="#07070F"/>
+    <circle cx="62" cy="40" r="0.9" fill="#F59E0B"/>
+    <circle cx="50" cy="40" r="2" fill="#7C86F5"/>
+    <circle cx="62" cy="58" r="2" fill="#7C86F5"/>
+    <circle cx="70" cy="24" r="2" fill="#7C86F5"/>
+    <circle cx="52" cy="8" r="1.8" fill="#7C86F5"/>
+  </svg><span class="logo-text">geoni</span></a>
+  <a class="back" href="/">← Ana sayfa</a>
+</div>
+
+<main>
+  <div class="eyebrow">Hesap · Account</div>
+  <h1>Hesap ve veri silme</h1>
+  <div class="updated">Account &amp; data deletion — GEONI (ai.geoni.app)</div>
+
+  <h2>Uygulama içinden silme</h2>
+  <p>GEONI uygulamasında <strong>Hesap</strong> sekmesini açın ve en alttaki
+     <strong>Hesabı sil</strong> seçeneğine dokunun. Onayladığınızda hesabınız ve kişisel
+     verileriniz kalıcı olarak silinir. Bu işlem geri alınamaz.</p>
+
+  <h2>Uygulamaya erişemiyorsanız</h2>
+  <p>Hesabınızla ilişkili e-posta adresinden
+     <a href="mailto:destek@geoni.ai?subject=Hesap%20silme%20talebi">destek@geoni.ai</a>
+     adresine yazın, konuya <strong>“Hesap silme talebi”</strong> yazmanız yeterli. Talebi
+     kimliğinizi doğruladıktan sonra <strong>30 gün içinde</strong> sonuçlandırırız.</p>
+
+  <h2>Silinen veriler</h2>
+  <ul>
+    <li>Hesap kaydınız ve oturum açma kimliğiniz (Google / Apple / LinkedIn bağlantısı dâhil)</li>
+    <li>Profil bilgileriniz: ad, avatar, LinkedIn/Instagram kullanıcı adı, yönlendirme kodu</li>
+    <li>Tarama geçmişiniz, izleme listeniz ve kayıtlı raporlarınız</li>
+    <li>Token bakiyeniz ve harcama geçmişiniz</li>
+    <li>Destek talepleriniz, mesajlarınız ve bunlara eklenen dosyalar</li>
+    <li>Bildirim (push) kaydınız</li>
+  </ul>
+
+  <h2>Saklanan veriler ve nedeni</h2>
+  <p>Aşağıdakiler hesabınız silindikten sonra da <strong>kimliğinizle ilişkilendirilemeyecek
+     biçimde</strong> saklanır:</p>
+  <ul>
+    <li><strong>Fatura ve ödeme kayıtları</strong> — vergi ve muhasebe mevzuatı gereği
+        (Türkiye’de 10 yıl). Bu kayıtlarda ad veya e-posta bulunmaz.</li>
+    <li><strong>Uzman ödeme ve sözleşme kayıtları</strong> — yalnızca uygulamada uzman olarak
+        hizmet verdiyseniz; finansal ve hukuki saklama yükümlülüğü nedeniyle.</li>
+  </ul>
+  <div class="note">Uzman olarak size atanmış ve <strong>başka müşterilere</strong> ait açık
+    destek talepleri silinmez; bu talepler o müşterilerin verisidir ve yeniden atanmak üzere
+    yönetim kuyruğuna aktarılır.</div>
+
+  <h2>English</h2>
+  <p>To delete your GEONI account: open the app, go to the <strong>Account</strong> tab and tap
+     <strong>Delete account</strong>. This permanently removes your account and personal data
+     and cannot be undone.</p>
+  <p>If you cannot access the app, email
+     <a href="mailto:destek@geoni.ai?subject=Account%20deletion%20request">destek@geoni.ai</a>
+     from the address linked to your account with the subject
+     <strong>“Account deletion request”</strong>. We complete verified requests within
+     <strong>30 days</strong>.</p>
+  <p><strong>Deleted:</strong> account and sign-in identity, profile details, scan history,
+     watchlist, saved reports, token balance and spending history, support tickets with their
+     messages and files, push notification registration.</p>
+  <p><strong>Retained (no longer linked to you):</strong> invoice and payment records, kept for
+     tax and accounting law (10 years in Türkiye); expert payout and contract records, only if
+     you provided expert services, kept for financial and legal obligations.</p>
+</main>
+
+<footer>
+  <span>© 2026 GEONI</span>
+  <a href="/privacy">Gizlilik Politikası</a>
+  <a href="/terms">Kullanım Şartları</a>
+  <a href="mailto:mail@geoni.ai">mail@geoni.ai</a>
+</footer>
+
+</body>
+</html>
