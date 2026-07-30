@@ -153,3 +153,29 @@ def test_anonimde_duzeltme_yolu_hic_calismaz(monkeypatch):
                               {"score": 80}, user_id=None))
     assert dusumler == []
     assert yamalar == []
+
+
+# --- Süre ölçümü (K3, 2026-07-29) ------------------------------------------
+# `audits` satırı kişi/marka/sosyal taramada işin SONUNDA oluşuyor; created_at
+# DB varsayılanına (now()) bırakılınca bitiş anını yazıyor ve
+# `completed_at - created_at` NEGATİF çıkıyordu. Ölçüm: social 54/54,
+# person 20/20, brand 2/2 negatif. Web etkilenmiyor (SQS 'queued' satırı önce).
+
+def test_baslangic_verilirse_created_at_yazilir(monkeypatch):
+    kutu, _d, _y = _kur(monkeypatch)
+    asyncio.run(db.save_brand_check("job-sure", {"type": "person", "name": "X"},
+                                    {"score": 50, "created_at": "2026-07-29T21:05:00+00:00"},
+                                    user_id="u1",
+                                    started_at="2026-07-29T21:00:00+00:00"))
+    satir = kutu[0]
+    assert satir["created_at"] == "2026-07-29T21:00:00+00:00"
+    assert satir["completed_at"] == "2026-07-29T21:05:00+00:00"
+    assert satir["created_at"] < satir["completed_at"], "süre negatif olmamalı"
+
+
+def test_baslangic_verilmezse_created_at_yazilmaz(monkeypatch):
+    """Geriye dönük uyumluluk: eski çağıranlar bozulmamalı (DB varsayılanı)."""
+    kutu, _d, _y = _kur(monkeypatch)
+    asyncio.run(db.save_brand_check("job-eski", {"type": "person", "name": "X"},
+                                    {"score": 50}, user_id="u1"))
+    assert "created_at" not in kutu[0]

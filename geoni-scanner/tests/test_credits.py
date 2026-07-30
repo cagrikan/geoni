@@ -1,10 +1,17 @@
 """Kredi düşümü — çifte-tahsilat kanıtı (denetim #9, KRİTİK).
 
 deduct_credits Supabase REST'e httpx ile gider; burada httpx.AsyncClient
-sahtelenip DB'siz test edilir. Kilitlenen davranışlar:
-- reference_id (job_id) için 'spend' zaten varsa TEKRAR DÜŞME (SQS yeniden
-  teslimi = çifte tahsilat açığının kanıtı),
-- atomik RPC boş dönerse (yetersiz bakiye) False,
+sahtelenip DB'siz test edilir.
+
+⚠️ 2026-07-29 (K1): düşüm TEK atomik RPC'ye (`spend_credits_atomic`) taşındı.
+Eskiden üç ayrı çağrı vardı (defter SELECT → bakiye RPC → defter INSERT) ve
+idempotanslık uygulama seviyesindeki ön-kontrole dayanıyordu; iki eşzamanlı
+çağrı o kontrolü aynı anda geçip bakiyeyi İKİ KEZ düşürebiliyordu. Artık
+ikinci ücretlendirmeyi DB kısıtı durduruyor, bu yüzden testler de tek çağrı
+üzerinden yazıldı. Kilitlenen davranışlar:
+- aynı reference_id ikinci kez gelirse (SQS yeniden teslimi) bakiyeye
+  DOKUNULMAZ ama iş ücretli sayılır → True,
+- yetersiz bakiye → False (çağıran maliyeti 0'a çeker),
 - yapılandırma yoksa fail-closed.
 """
 import asyncio
@@ -19,6 +26,10 @@ class FakeResp:
 
     def json(self):
         return self._json
+
+    @property
+    def text(self):
+        return ""
 
 
 class FakeClient:
@@ -50,41 +61,38 @@ def _install(monkeypatch, router):
 
 
 def test_deduct_idempotent_noop(monkeypatch):
-    """Aynı reference_id için önceden 'spend' varsa: no-op True, RPC ÇAĞRILMAZ."""
+    """Aynı reference_id ikinci kez: True döner, bakiyeye dokunulmaz.
+
+    Artık bunu DB söylüyor (`reason: duplicate`), uygulama ön-kontrolü değil —
+    yarış penceresi bu yüzden kapandı.
+    """
     def router(method, url, kw):
-        if method == "GET" and "credit_transactions" in url:
-            return FakeResp(200, [{"id": "existing-spend"}])
-        raise AssertionError(f"idempotent no-op'ta RPC/insert çağrılmamalı: {method} {url}")
+        assert method == "POST" and "spend_credits_atomic" in url, f"{method} {url}"
+        return FakeResp(200, {"applied": False, "reason": "duplicate"})
 
     client = _install(monkeypatch, router)
     ok = asyncio.run(db.deduct_credits("u1", 5, "web_audit_private", reference_id="job1"))
     assert ok is True
+    # Eski desen geri gelirse bu iddia patlar: ayrı bir bakiye RPC'si olmamalı.
     assert not any("deduct_credits_if_enough" in u for _, u in client.calls)
 
 
 def test_deduct_fresh_sufficient(monkeypatch):
-    """Önceden düşülmemiş + yeterli bakiye: RPC çağrılır, True döner."""
+    """Önceden düşülmemiş + yeterli bakiye: tek RPC çağrılır, True döner."""
     def router(method, url, kw):
-        if method == "GET" and "credit_transactions" in url:
-            return FakeResp(200, [])
-        if method == "POST" and "deduct_credits_if_enough" in url:
-            return FakeResp(200, [True])
-        return FakeResp(201, [{"id": "txn"}])
+        assert method == "POST" and "spend_credits_atomic" in url, f"{method} {url}"
+        return FakeResp(200, {"applied": True, "balance": 95})
 
     client = _install(monkeypatch, router)
     ok = asyncio.run(db.deduct_credits("u1", 5, "web_audit_private", reference_id="job2"))
     assert ok is True
-    assert any("deduct_credits_if_enough" in u for _, u in client.calls)
+    assert len(client.calls) == 1, "düşüm tek HTTP çağrısında bitmeli (atomiklik)"
 
 
 def test_deduct_insufficient(monkeypatch):
-    """Atomik RPC boş liste dönerse (yetersiz bakiye) False."""
+    """Bakiye yetmezse False — RPC defter satırını da geri almış olur."""
     def router(method, url, kw):
-        if method == "GET" and "credit_transactions" in url:
-            return FakeResp(200, [])
-        if method == "POST" and "deduct_credits_if_enough" in url:
-            return FakeResp(200, [])
-        return FakeResp(201, [])
+        return FakeResp(200, {"applied": False, "reason": "insufficient"})
 
     _install(monkeypatch, router)
     ok = asyncio.run(db.deduct_credits("u1", 5, "web_audit_private", reference_id="job3"))

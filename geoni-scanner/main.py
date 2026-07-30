@@ -19,7 +19,7 @@ import secrets
 import json
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import httpx
 
@@ -559,6 +559,14 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
     """
     queue = brand_check_events.get(job_id)
 
+    # Isin GERCEK baslangici. audits satiri kisi/marka/sosyal taramada isin
+    # SONUNDA olusuyor, yani created_at (DB varsayilani now()) bitis anini
+    # gosteriyordu ve `completed_at - created_at` sistematik olarak NEGATIF
+    # cikiyordu -- 2026-07-29 olcumu: social 54/54, person 20/20, brand 2/2
+    # negatif. Web'de sorun yok cunku SQS modunda 'queued' satiri onceden
+    # aciliyor. Baslangici burada yakalayip save_brand_check'e veriyoruz.
+    baslangic = datetime.now(timezone.utc)
+
     def emit(message: str):
         if queue is not None:
             queue.put_nowait(message)
@@ -652,7 +660,9 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
             logger.info(f"Private brand check job {job_id} completed for '{request.name}', not saved")
         else:
             # Sosyal taramalar ucretsiz (website audit gibi) - kaydet ama kredi dusme.
-            await save_brand_check(job_id, request.__dict__, brand_checks_store[job_id]["result"], user_id, deduct=not bool(getattr(request, "social", False)))
+            await save_brand_check(job_id, request.__dict__, brand_checks_store[job_id]["result"], user_id,
+                                   deduct=not bool(getattr(request, "social", False)),
+                                   started_at=baslangic.isoformat())
             logger.info(f"Brand check job {job_id} completed for '{request.name}'"  )
     except Exception as e:
         logger.error(f"Brand check job {job_id} failed: {str(e)}")

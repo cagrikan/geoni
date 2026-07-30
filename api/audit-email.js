@@ -1,7 +1,79 @@
+import crypto from 'node:crypto';
+
 const ALLOWED_ORIGINS = new Set([
   'https://geoni.ai',
   'https://www.geoni.ai',
 ]);
+
+// Hiz siniri: ayni IP'den saatte 5 talep.
+//
+// NEDEN GEREKLI: bu ucun kimlik dogrulamasi yok ve CORS yalnizca TARAYICIYI
+// baglar — curl/script ile dogrudan POST atmak CORS'u hic gormez. Sinirsizken
+// kurucunun kisisel gelen kutusuna ve Resend kotasina sinirsiz mail
+// gonderilebiliyordu (2026-07-29 denetimi, K4).
+//
+// NEDEN BELLEK-ICI DEGIL: Vercel serverless'ta her instance kendi sayacini
+// tutar; 10 instance = 10 kat limit. Defter DB'de (api_rate_limits), tum
+// instance'lar ayni sayiyi gorur.
+const RATE_BUCKET = 'audit_email';
+const RATE_MAX = 5;
+const RATE_WINDOW_MS = 3600e3;
+
+function clientIp(req) {
+  const xf = req.headers['x-forwarded-for'];
+  return (Array.isArray(xf) ? xf[0] : String(xf || '')).split(',')[0].trim() || 'yok';
+}
+
+/** IP duz saklanmaz — biber (pepper) ile hash. Amac yalniz hiz siniri. */
+function hashIp(ip) {
+  const pepper = process.env.IP_HASH_PEPPER || process.env.SUPABASE_SERVICE_ROLE_KEY || 'geoni';
+  return crypto.createHmac('sha256', pepper).update(ip).digest('hex').slice(0, 32);
+}
+
+function sb(path, init = {}) {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  return fetch(`${process.env.SUPABASE_URL}/rest/v1/${path}`, {
+    ...init,
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+      ...(init.headers || {}),
+    },
+  });
+}
+
+/**
+ * true -> istek REDDEDILMELI (limit asildi).
+ *
+ * FAIL-OPEN bilincli: Supabase erisilemezse mesru kullanicinin formunu
+ * kaybetmektense limiti gecici olarak uygulamiyoruz. Buradaki zarar spam maili,
+ * veri/para kaybi degil; ters tercih (fail-closed) gercek talepleri dusururdu.
+ */
+async function rateLimited(ipHash) {
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) return false;
+  try {
+    const since = new Date(Date.now() - RATE_WINDOW_MS).toISOString();
+    const r = await sb(
+      `api_rate_limits?select=id&bucket=eq.${RATE_BUCKET}&ip_hash=eq.${ipHash}` +
+      `&created_at=gte.${since}&limit=${RATE_MAX + 1}`
+    );
+    if (r.ok) {
+      const rows = await r.json().catch(() => []);
+      if (Array.isArray(rows) && rows.length >= RATE_MAX) return true;
+    }
+    // Sayaci ISTEK BASINDA yaz: mail gonderimi basarisiz olsa da deneme
+    // sayilir, yoksa hatali istekler limitsiz tekrarlanabilirdi.
+    await sb('api_rate_limits', {
+      method: 'POST',
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({ bucket: RATE_BUCKET, ip_hash: ipHash }),
+    });
+  } catch {
+    /* fail-open (yukaridaki gerekce) */
+  }
+  return false;
+}
 
 // HTML-escape: alan değerleri e-posta gövdesine ham gömülüyordu (XSS/HTML
 // enjeksiyonu — kurucunun gelen kutusuna sahte içerik). Tüm dinamik değerler
@@ -33,6 +105,10 @@ export default async function handler(req, res) {
 
   const { data } = req.body || {};
   if (!data || typeof data !== 'object') return res.status(400).json({ error: 'Data required' });
+
+  if (await rateLimited(hashIp(clientIp(req)))) {
+    return res.status(429).json({ error: 'rate' });
+  }
 
   const replyTo = isValidEmail(data.email) ? data.email : undefined;
 

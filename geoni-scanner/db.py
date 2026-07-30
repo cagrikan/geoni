@@ -218,9 +218,17 @@ async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str
     return False
 
 
-async def save_brand_check(job_id: str, request_data: dict, result: dict, user_id: str = None, deduct: bool = True) -> bool:
+async def save_brand_check(job_id: str, request_data: dict, result: dict, user_id: str = None,
+                           deduct: bool = True, started_at: str = None) -> bool:
     """Save brand check result to Supabase audits table.
-    deduct=False: otomatik izleme taramalari kontor dusmez (izleme ucretsiz)."""
+    deduct=False: otomatik izleme taramalari kontor dusmez (izleme ucretsiz).
+
+    started_at: isin GERCEK baslangici (ISO). Bu satir isin SONUNDA olustugu
+    icin created_at'in DB varsayilanina (now()) birakilmasi bitis anini yaziyor
+    ve `completed_at - created_at` NEGATIF cikiyordu -- yani kisi/marka/sosyal
+    taramalarda sure hic olculemiyordu (2026-07-29: social 54/54, person 20/20,
+    brand 2/2 negatif). Verilmezse eski davranis korunur (geriye donuk uyumlu).
+    """
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         logger.warning("Supabase not configured, skipping brand check save")
         return False
@@ -246,6 +254,8 @@ async def save_brand_check(job_id: str, request_data: dict, result: dict, user_i
         "status": "complete",
         "completed_at": result.get("created_at"),
     }
+    if started_at:
+        payload["created_at"] = started_at
 
     try:
         async with httpx.AsyncClient() as client:
@@ -386,72 +396,65 @@ async def get_pinned_sov_queries(name: str, entity_type: str, lang: str, topic: 
 
 
 async def deduct_credits(user_id: str, amount: int, description: str, reference_id: str = None) -> bool:
-    """Deduct credits from user balance and record transaction."""
+    """Kontor duser ve defter satirini yazar. TEK transaction, atomik.
+
+    🔴 Neden tek RPC: eski surum uc ayri HTTP cagrisi yapiyordu (defterde var mi
+    SELECT -> bakiyeyi dus RPC -> defter satirini yaz POST). Bu bir
+    check-then-act desenidir ve DB'deki kismi UNIQUE yalnizca IKINCI DEFTER
+    SATIRINI engelliyor, ikinci BAKIYE DUSUMUNU degil. Iki es zamanli cagri
+    (SQS yeniden teslimi, heartbeat gecikmesi) ilk SELECT'te ikisi de bos
+    goruyor, bakiye IKI KEZ dusuyor, defterde tek satir kaliyor ve iki cagri da
+    True donuyordu. 2026-07-29 denetiminde calistirilarak uretildi:
+    100 -> 90 (5 yerine 10), defterde 1 satir.
+
+    `spend_credits_atomic` defter satirini ONCE yaziyor; ikinci kez
+    ucretlendirme uygulama kodunda degil DB kisitinda duruyor, yani yaris
+    penceresi yok. Bakiye yetmezse defter satiri geri aliniyor.
+
+    Donus: True = bu is icin ucretlendirme GECERLI (yeni dusuldu ya da zaten
+    dusulmustu). False = dusulmedi; cagiran maliyeti 0 yazmali.
+    """
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return False
     try:
         async with httpx.AsyncClient() as client:
-            # Idempotency (F-KRITIK-1): ayni reference_id (job_id) icin daha once
-            # 'spend' islendiyse tekrar DUSME. SQS worker crash/timeout'ta mesaj
-            # yeniden teslim edilir ve ayni job bastan islenir; bu kontrol olmadan
-            # kullanicidan 2-3 kat fazla tahsilat oluyordu. Yeniden teslimler
-            # visibility timeout (900s) sonrasi SIRALI geldiginden pre-check yeterli.
-            if reference_id:
-                chk = await client.get(
-                    f"{SUPABASE_URL}/rest/v1/credit_transactions",
-                    headers=_headers(),
-                    params={
-                        "reference_id": f"eq.{reference_id}",
-                        "type": "eq.spend",
-                        "select": "id",
-                        "limit": "1",
-                    },
-                    timeout=10,
-                )
-                if chk.status_code == 200 and chk.json():
-                    logger.info(f"deduct_credits idempotent no-op: reference_id={reference_id} zaten dusuldu")
-                    return True
-
-            # Atomik kosullu dusum (yaris/double-spend guvenli): yeterli bakiye
-            # varsa TEK UPDATE ile duser ve doner, yoksa satir donmez.
-            rpc_r = await client.post(
-                f"{SUPABASE_URL}/rest/v1/rpc/deduct_credits_if_enough",
-                headers=_headers(),
-                json={"p_user_id": user_id, "p_amount": amount},
-                timeout=10,
-            )
-            if rpc_r.status_code != 200 or not rpc_r.json():
-                logger.warning(f"Insufficient credits (atomic) for user {user_id}: amount {amount}")
-                return False
-
-            # Record transaction
-            tx = await client.post(
-                f"{SUPABASE_URL}/rest/v1/credit_transactions",
+            r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/spend_credits_atomic",
                 headers=_headers(),
                 json={
-                    "user_id": user_id,
-                    "amount": -amount,
-                    "type": "spend",
-                    "description": description,
-                    "reference_id": reference_id,
+                    "p_user_id": user_id,
+                    "p_amount": amount,
+                    "p_description": description,
+                    "p_reference_id": reference_id,
                 },
                 timeout=10,
             )
-            if tx.status_code not in (200, 201, 204):
-                # Bakiye ZATEN dusuldu (RPC atomik ve donmus durumda) ama defter
-                # satiri yazilamadi. Donusu False yapmak YANLIS olur: para
-                # gercekten alindi, cagiran maliyeti 0'a cekerse bu sefer ters
-                # yonde yalan soyleriz. Yapilacak sey durumu GORUNUR kilmak -
-                # bu imza tam olarak "bakiye dusmus, defterde karsiligi yok"
-                # gizemli satirlarini uretir. Ayrica idempotency bu satira
-                # bakiyor: yazilamazsa yeniden teslimde IKINCI kez dusulur.
+            if r.status_code != 200:
                 logger.error(
-                    "kontor defter satiri YAZILAMADI (bakiye dusuldu!): user=%s "
-                    "amount=%s ref=%s %s %s - manuel mutabakat gerekir",
-                    user_id, amount, reference_id, tx.status_code, tx.text[:200],
+                    "spend_credits_atomic HATA: user=%s amount=%s ref=%s %s %s",
+                    user_id, amount, reference_id, r.status_code, r.text[:200],
                 )
-            logger.info(f"Deducted {amount} credits from user {user_id}")
-            return True
+                return False
+
+            sonuc = r.json() or {}
+            if sonuc.get("applied"):
+                logger.info(f"Deducted {amount} credits from user {user_id}")
+                return True
+
+            neden = sonuc.get("reason")
+            if neden == "duplicate":
+                # Ayni is zaten ucretlendirilmis (SQS yeniden teslimi). Bakiyeye
+                # dokunulmadi ve DOKUNULMAMALI - ama is ucretli sayilir.
+                logger.info(
+                    "deduct_credits idempotent no-op: reference_id=%s zaten dusuldu",
+                    reference_id,
+                )
+                return True
+
+            logger.warning(
+                "Kontor dusulemedi (%s): user=%s amount=%s", neden, user_id, amount,
+            )
+            return False
     except Exception as e:
         logger.warning(f"Credit deduction error: {e}")
     return False
