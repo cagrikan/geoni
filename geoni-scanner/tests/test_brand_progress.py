@@ -9,11 +9,13 @@ Bu testler iki kirilma noktasini korur:
    KAYMASIN (biri yeniden adlandirilirsa ilerleme sessizce olur).
 2. Ilerleme MONOTONIK kalsin (kullanici "tarama bastan basladi" sanmasin).
 """
-import pytest
-
 import brand_recall
-from main import (BRAND_MODEL_COUNT, BRAND_PROGRESS_STEPS, BRAND_STEP_ALIAS,
-                  brand_ilerleme_guncelle, yeni_brand_ilerlemesi)
+# DIKKAT: `main` import EDILMEZ. Deploy kapisi testleri minimal ortamda kosuyor
+# (pytest/httpx/cbor2/cryptography); main.py fastapi cektigi icin orada
+# import edilemez ve tum suite collection'da patlar. Saf mantik brand_progress'te.
+from brand_progress import (BRAND_MODEL_COUNT, BRAND_PROGRESS_STEPS,
+                            BRAND_STEP_ALIAS, brand_ilerleme_guncelle,
+                            yeni_brand_ilerlemesi)
 
 
 def test_faz_anahtarlari_brand_recall_ile_ayni():

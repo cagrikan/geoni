@@ -223,34 +223,44 @@ def test_bedel_varsayilani_sifir_eski_davranis(monkeypatch):
 
 
 # ── Bedel surukleme korumasi ────────────────────────────────────────────
+# NOT: `main` IMPORT EDILMEZ — deploy kapisi testleri minimal ortamda kosuyor
+# (pytest/httpx/cbor2/cryptography, fastapi YOK). Kaynak dosyalar METIN olarak
+# okunur; boylece bu korumalar tam da onemli olduklari yerde, CI'da kosar.
+import pathlib
+import re
+
+_KOK = pathlib.Path(__file__).resolve().parent.parent
+
+
+def _sabit(kaynak: str, ad: str) -> int:
+    m = re.search(rf"^{ad} = (\d+)$", kaynak, re.M)
+    assert m, f"{ad} sabiti main.py'de bulunamadi (yeniden adlandirilmis?)"
+    return int(m.group(1))
+
+
 def test_kapinin_bildigi_bedel_gercek_dusumle_ayni():
     """Kapi "bu tarama odenecek mi" kararini main.py'deki sabitlere gore veriyor,
     gercek dusum ise db.py icinde. Ikisi ayrisirsa kapi YANLIS karar verir:
     bedel dususe (or. 5->3) tavan gereksiz uygulanir; artarsa bakiyesi yetmeyen
     kullanici tavani atlar ve odemeden tarar."""
-    import pathlib
-    import re
+    main_kaynak = (_KOK / "main.py").read_text(encoding="utf-8")
+    db_kaynak = (_KOK / "db.py").read_text(encoding="utf-8")
 
-    import main
+    web = _sabit(main_kaynak, "WEB_SCAN_COST")
+    assert f'deduct_credits(user_id, {web}, "web_audit"' in db_kaynak, \
+        f"save_audit'teki web bedeli WEB_SCAN_COST ({web}) ile ayni degil"
 
-    db_kaynak = (pathlib.Path(main.__file__).parent / "db.py").read_text(encoding="utf-8")
-    assert f'deduct_credits(user_id, {main.WEB_SCAN_COST}, "web_audit"' in db_kaynak, \
-        "save_audit'teki web bedeli main.WEB_SCAN_COST ile ayni degil"
-    # save_brand_check: `credits = 10 if (deduct and user_id) else 0`
-    marka = re.search(r"credits = (\d+) if \(deduct and user_id\) else 0", db_kaynak)
-    assert marka, "save_brand_check'teki bedel satiri bulunamadi (yeniden yazilmis?)"
-    assert int(marka.group(1)) == main.BRAND_SCAN_COST, \
-        f"marka bedeli db.py'de {marka.group(1)}, main.py'de {main.BRAND_SCAN_COST}"
+    marka = _sabit(main_kaynak, "BRAND_SCAN_COST")
+    m = re.search(r"credits = (\d+) if \(deduct and user_id\) else 0", db_kaynak)
+    assert m, "save_brand_check'teki bedel satiri bulunamadi (yeniden yazilmis?)"
+    assert int(m.group(1)) == marka, \
+        f"marka bedeli db.py'de {m.group(1)}, main.py'de {marka}"
 
 
 def test_sosyal_tarama_hala_dusumsuz():
-    """Sosyal taramaya bedel gelirse `scan_cost=0` varsayimi cokerdi."""
-    import pathlib
-
-    import main
-
-    db_kaynak = (pathlib.Path(main.__file__).parent / "db.py").read_text(encoding="utf-8")
-    assert "deduct=not bool(getattr(request, \"social\", False))" in \
-        (pathlib.Path(main.__file__)).read_text(encoding="utf-8"), \
-        "sosyal taramanin deduct=False kurali degismis"
-    assert "credits = 10 if (deduct and user_id) else 0" in db_kaynak
+    """Sosyal taramaya bedel gelirse kapiya verilen `scan_cost=0` cokerdi:
+    bakiyesi olan herkes sinirsiz bedava sosyal tarama yapardi."""
+    main_kaynak = (_KOK / "main.py").read_text(encoding="utf-8")
+    assert 'deduct=not bool(getattr(request, "social", False))' in main_kaynak, \
+        "sosyal taramanin deduct=False kurali degismis — scan_cost=0 varsayimi gecersiz"
+    assert "scan_cost=0)  # sosyal tarama token DUSMEZ" in main_kaynak

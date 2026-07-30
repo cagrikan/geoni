@@ -320,6 +320,30 @@ async def send_audit_report_email(to_email: str, domain: str, result: dict, lang
         return False
 
 
+# Web istemcisi kisi/marka taramasinda adres yoksa BU yer tutucuyu gonderiyor
+# (App.jsx: `payload.email || user?.email || 'anonymous@geoni.ai'`). Gercek bir
+# kutu degil; rapor postasi buraya gitmemeli.
+ANONIM_EPOSTA_YERTUTUCU = "anonymous@geoni.ai"
+
+
+async def rapor_adresi(istek_eposta: "str | None", user_id: "str | None") -> str:
+    """Rapor e-postasinin gidecegi adres.
+
+    Mobil kisi/marka taramasi govdede HIC e-posta gondermiyor (giris zorunlu
+    oldugu icin gerek gorulmemis), web ise adres yoksa yer tutucu koyuyor.
+    Ikisinde de hesabin auth adresine dusulur -- yoksa "sonucu e-postana
+    gondereceğiz" sozu sessizce tutulmazdi.
+    """
+    adres = (istek_eposta or "").strip()
+    if adres and adres.lower() != ANONIM_EPOSTA_YERTUTUCU:
+        return adres
+    if not user_id:
+        return ""
+    # Tembel import: db.py dosya sonunda mailer'i import ediyor (dairesel olmasin).
+    from db import get_auth_email
+    return (await get_auth_email(user_id) or "").strip()
+
+
 async def send_brand_report_email(to_email: str, name: str, result: dict, lang: str = "tr") -> bool:
     """Kisi/marka/sosyal tarama raporunu e-postayla gonderir.
 

@@ -30,8 +30,9 @@ from indexing import check_indexing_status
 from scoring import compute_ai_visibility_score
 from topics import generate_topics_and_opportunities
 from ratelimit import enforce_audit_rate_limits, RateLimitExceeded
-from mailer import (send_audit_report_email, send_brand_report_email,
-                    send_purchase_email, send_refund_email)
+from mailer import (rapor_adresi, send_audit_report_email,
+                    send_brand_report_email, send_purchase_email,
+                    send_refund_email)
 from brand_recall import check_brand_recall, infer_brand_identity, SCORING_VERSION
 from devicecheck import MAX_FREE_SCANS as FREE_SCAN_LIMIT
 
@@ -145,6 +146,9 @@ from monitor import monitor_loop
 from content_gen import content_loop
 from stability import build_stability
 from result_contract import build_brand_payload
+# Ilerleme mantigi ayri, HAFIF modulde: deploy kapisi testleri minimal
+# ortamda kosuyor (fastapi yok), main.py import edilemiyor.
+from brand_progress import brand_ilerleme_guncelle, yeni_brand_ilerlemesi
 from api_errors import ApiHata, BILET_HATA_KODLARI, coz_dil
 from scanqueue import acquire_scan_slot, release_scan_slot, estimate_wait_seconds, sqs_enabled, enqueue_scan, enqueue_prewarm
 
@@ -210,40 +214,6 @@ jobs_store = {}
 brand_checks_store = {}
 brand_check_events: dict[str, asyncio.Queue] = {}
 audit_events: dict[str, asyncio.Queue] = {}
-
-# Marka/kisi/sosyal taramada istemciye bildirilen FAZLAR (sirali). Kaynak,
-# brand_recall'un on_step anahtarlaridir; buradaki sira ilerleme yuzdesini uretir.
-# `sov` KENDI fazi degildir -- SOV arka planda create_task ile baslatilir ve
-# aninda querying_models'e gecilir, ayri faz gosterilse ekranda milisaniye
-# gorunurdu. `model_answered`/`model_no_answer` faz degil, faz-ici sayactir.
-BRAND_PROGRESS_STEPS = ["web_search", "verifying_identity", "querying_models",
-                        "comparing", "scoring"]
-BRAND_STEP_ALIAS = {"sov": "querying_models"}
-# Paralel sorgulanan motor sayisi (claude/openai/gemini/perplexity + golge grok).
-BRAND_MODEL_COUNT = 5
-
-
-def yeni_brand_ilerlemesi() -> dict:
-    return {"step": None, "index": 0, "total": len(BRAND_PROGRESS_STEPS),
-            "models_done": 0, "models_total": BRAND_MODEL_COUNT}
-
-
-def brand_ilerleme_guncelle(p: dict, anahtar: str) -> dict:
-    """brand_recall'un adim anahtarini ilerleme sozlugune isler (saf, yerinde).
-    MONOTONIK: verifying_identity kosula bagli oldugu ve `sov` faz degistirmedigi
-    icin indeks ASLA geri gitmez -- ilerleme cubugunun geri kaymasi kullanicida
-    'tarama bastan basladi' izlenimi yaratirdi."""
-    if anahtar in ("model_answered", "model_no_answer"):
-        p["models_done"] = min(p["models_total"], p["models_done"] + 1)
-        return p
-    faz = BRAND_STEP_ALIAS.get(anahtar, anahtar)
-    if faz not in BRAND_PROGRESS_STEPS:
-        return p
-    i = BRAND_PROGRESS_STEPS.index(faz)
-    if p["step"] is None or i > p["index"]:
-        p["index"] = i
-        p["step"] = faz
-    return p
 
 # Canli SSE ilerleme mesajlari (dil secimine gore, bkz. run_audit_job)
 AUDIT_PROGRESS_MESSAGES = {
@@ -596,28 +566,6 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
         emit("__done__")
 
 
-# Web istemcisi kisi/marka taramasinda adres yoksa BU yer tutucuyu gonderiyor
-# (App.jsx: `payload.email || user?.email || 'anonymous@geoni.ai'`). Gercek bir
-# kutu degil; rapor postasi buraya gitmemeli.
-ANONIM_EPOSTA_YERTUTUCU = "anonymous@geoni.ai"
-
-
-async def _rapor_adresi(istek_eposta: str | None, user_id: str | None) -> str:
-    """Rapor e-postasinin gidecegi adres.
-
-    Mobil kisi/marka taramasi govdede HIC e-posta gondermiyor (giris zorunlu
-    oldugu icin gerek gorulmemis), web ise adres yoksa yer tutucu koyuyor.
-    Ikisinde de hesabin auth adresine dusulur -- yoksa "sonucu e-postana
-    gondereceğiz" sozu sessizce tutulmazdi.
-    """
-    adres = (istek_eposta or "").strip()
-    if adres and adres.lower() != ANONIM_EPOSTA_YERTUTUCU:
-        return adres
-    if user_id:
-        return (await get_auth_email(user_id) or "").strip()
-    return ""
-
-
 async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: str = ''):
     """
     Standalone brand-recall-only check for people/brands without a website
@@ -753,7 +701,7 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
         # Ozel taramada da gonderilir: web tarafinda da oyle, ve "ozel" demek
         # gecmise KAYDETME demek -- kullanicinin kendi adresi haric tutulmaz.
         brand_checks_store[job_id]["email_sent"] = await send_brand_report_email(
-            await _rapor_adresi(request.email, user_id), request.name,
+            await rapor_adresi(request.email, user_id), request.name,
             brand_checks_store[job_id]["result"], lang=request.lang or "tr")
     except Exception as e:
         logger.error(f"Brand check job {job_id} failed: {str(e)}")

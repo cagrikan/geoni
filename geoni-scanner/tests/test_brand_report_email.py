@@ -90,30 +90,30 @@ def test_konu_basligi_kacislanir():
 # Mobil kisi/marka taramasi govdede HIC e-posta gondermiyor; web ise adres
 # yoksa 'anonymous@geoni.ai' yer tutucusunu koyuyor. Ikisi de duzeltilmezse
 # rapor postasi ya hic gitmez ya da olmayan bir kutuya gider.
-import main
+# NOT: `main` import EDILMEZ (deploy kapisi minimal ortamda kosuyor, fastapi yok).
 
 
 def test_gercek_adres_oldugu_gibi_kullanilir():
-    assert asyncio.run(main._rapor_adresi(" a@b.com ", "u1")) == "a@b.com"
+    assert asyncio.run(mailer.rapor_adresi(" a@b.com ", "u1")) == "a@b.com"
 
 
 def test_yer_tutucu_hesap_adresine_duser(monkeypatch):
     async def sahte(uid):
         assert uid == "u1"
         return "hesap@ornek.com"
-    monkeypatch.setattr(main, "get_auth_email", sahte)
-    assert asyncio.run(main._rapor_adresi("anonymous@geoni.ai", "u1")) == "hesap@ornek.com"
-    assert asyncio.run(main._rapor_adresi("ANONYMOUS@GEONI.AI", "u1")) == "hesap@ornek.com"
+    monkeypatch.setattr("db.get_auth_email", sahte)
+    assert asyncio.run(mailer.rapor_adresi("anonymous@geoni.ai", "u1")) == "hesap@ornek.com"
+    assert asyncio.run(mailer.rapor_adresi("ANONYMOUS@GEONI.AI", "u1")) == "hesap@ornek.com"
 
 
 def test_bos_adres_hesap_adresine_duser(monkeypatch):
     async def sahte(uid):
         return "hesap@ornek.com"
-    monkeypatch.setattr(main, "get_auth_email", sahte)
-    assert asyncio.run(main._rapor_adresi(None, "u1")) == "hesap@ornek.com"
+    monkeypatch.setattr("db.get_auth_email", sahte)
+    assert asyncio.run(mailer.rapor_adresi(None, "u1")) == "hesap@ornek.com"
 
 
 def test_anonim_kullanicida_bos_doner():
     """Giris yoksa (anonim sosyal tarama) gidecek adres YOK -- posta atlanir."""
-    assert asyncio.run(main._rapor_adresi("", None)) == ""
-    assert asyncio.run(main._rapor_adresi("anonymous@geoni.ai", None)) == ""
+    assert asyncio.run(mailer.rapor_adresi("", None)) == ""
+    assert asyncio.run(mailer.rapor_adresi("anonymous@geoni.ai", None)) == ""

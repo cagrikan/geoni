@@ -12,10 +12,6 @@ import re
 import pathlib
 
 import pytest
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
-from fastapi.testclient import TestClient
-from starlette.requests import Request
 
 import api_errors
 from api_errors import (BILET_HATA_KODLARI, BILET_SUNUCU_HATALARI,
@@ -110,7 +106,19 @@ def test_desteklenmeyen_dil_varsayilana_duser():
 # ── Handler entegrasyonu ────────────────────────────────────────────────
 @pytest.fixture
 def istemci():
-    """main.py'nin handler'inin AYNISI: kod -> dile gore metin + X-Error-Code."""
+    """main.py'nin handler'inin AYNISI: kod -> dile gore metin + X-Error-Code.
+
+    fastapi GEREKIR. Deploy kapisi (.github/workflows) testleri BILEREK minimal
+    ortamda kosuyor (pytest/httpx/cbor2/cryptography) -> bu dosyadaki entegrasyon
+    testleri orada ATLANIR, yukaridaki surukleme korumalari KOSAR. Entegrasyon
+    yerelde tam suite ile dogrulanir.
+    """
+    fastapi = pytest.importorskip("fastapi")
+    from fastapi.responses import JSONResponse
+    from fastapi.testclient import TestClient
+    from starlette.requests import Request
+
+    FastAPI = fastapi.FastAPI
     app = FastAPI()
 
     @app.exception_handler(ApiHata)

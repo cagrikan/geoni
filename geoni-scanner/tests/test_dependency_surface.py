@@ -61,3 +61,29 @@ def test_request_url_uzerinden_guvenlik_karari_yok():
         "starlette >=1.0.1 gerekir (fastapi major yukseltmesi, kurucu onayi):\n"
         + "\n".join(bulunan)
     )
+
+
+# ── Deploy kapisinin ORTAMINI koruyan test ──────────────────────────────
+# .github/workflows deploy kapisi testleri BILEREK minimal ortamda kosuyor:
+#   pip install pytest httpx cbor2 cryptography     (fastapi/pydantic YOK)
+# Bir test modulu MODUL SEVIYESINDE fastapi'yi (ya da onu ceken main.py'yi)
+# import ederse pytest COLLECTION'da patlar ve TUM suite duser -> deploy bloke.
+# 2026-07-30'da tam bu oldu: uc yeni test modulu `main`i import etti, deploy
+# 22 saniyede dustu. Yerelde fark edilmedi cunku yerel venv'de fastapi vardi.
+# Gereken yerde `pytest.importorskip("fastapi")` ile FONKSIYON ICINDE import et.
+_AGIR_MODULLER = ("fastapi", "pydantic", "starlette", "main")
+
+
+def test_test_modulleri_agir_bagimliligi_modul_seviyesinde_import_etmiyor():
+    ihlal = []
+    for yol in sorted((KOK / "tests").glob("test_*.py")):
+        for no, satir in enumerate(yol.read_text(encoding="utf-8").splitlines(), 1):
+            m = re.match(r"^(?:import|from)\s+([A-Za-z_][\w.]*)", satir)
+            if m and m.group(1).split(".")[0] in _AGIR_MODULLER:
+                ihlal.append(f"{yol.name}:{no}: {satir.strip()}")
+    assert not ihlal, (
+        "Bu import'lar deploy kapisini kirar (minimal ortamda fastapi yok):\n  "
+        + "\n  ".join(ihlal)
+        + "\nCozum: saf mantigi hafif bir module tasi (or. brand_progress.py) ya da"
+          " testin ICINDE pytest.importorskip('fastapi') kullan."
+    )
