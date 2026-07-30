@@ -1229,7 +1229,9 @@ async def _void_referral_commission(client, buyer_id: str,
             # boylece cok-alimli durumda dogru satira daha yakin isabet eder.
             # Kesin cozum RevenueCat alim satirina transaction_id yazmak — bu
             # bir sema/sozlesme isi, ayri maddede duruyor.
-            pencere = (datetime.now(timezone.utc) - timedelta(days=180)).isoformat()
+            # isoformat() "+00:00" uretiyordu; sorgu dizesinde "+" bosluga
+            # cozulup 180 gunluk pencere filtresi bozuluyordu (2026-07-30).
+            pencere = _pgrest_ts(datetime.now(timezone.utc) - timedelta(days=180))
             find = await client.get(
                 f"{SUPABASE_URL}/rest/v1/expert_payouts"
                 f"?customer_id=eq.{buyer_id}&kind=eq.referral&status=eq.pending"
@@ -3108,20 +3110,21 @@ async def get_ticket_type_by_apple_product_id(product_id: str) -> dict | None:
 
 
 async def create_iap_intent(user_id: str, product_id: str, target: str = "") -> bool:
-    """Records what a user is about to buy directly via IAP (product + target)
-    just before the store purchase, so the webhook can attach the resulting
-    ticket to the right target. Older pending intents for the same product are
-    superseded, keeping the lookup to the freshest one."""
+    """Kullanicinin IAP ile birazdan ne alacagini (urun + hedef) magaza
+    satin almasindan hemen once kaydeder; webhook bileti dogru hedefe acsin.
+
+    K5 (2026-07-30): eskiden ayni urunun bekleyen niyetlerini `superseded`
+    yapiyordu ("aramayi en tazeye indir"). Bu, gecikmis bir webhook'un KENDI
+    niyetini bulmasini imkansiz kiliyordu: 1. alim teslim edilmeden 2. alim
+    yapilirsa 1. niyet superseded olup aramadan dusuyor, 1. bilet 2. hedefe
+    aciliyordu. Artik satirlar oldugu gibi birakilir; dogru satiri
+    `consume_iap_intent` SATIN ALMA zamanina gore secer (created_at <=
+    purchased_at) ve tuketilmeyenler IAP_INTENT_TTL_SECONDS ile yaslanip duser.
+    """
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return False
     try:
         async with httpx.AsyncClient() as client:
-            await client.patch(
-                f"{SUPABASE_URL}/rest/v1/iap_intents?user_id=eq.{user_id}&product_id=eq.{product_id}&status=eq.pending",
-                headers=_headers(),
-                json={"status": "superseded", "consumed_at": datetime.now(timezone.utc).isoformat()},
-                timeout=10,
-            )
             r = await client.post(
                 f"{SUPABASE_URL}/rest/v1/iap_intents",
                 headers=_headers(),
@@ -3134,16 +3137,57 @@ async def create_iap_intent(user_id: str, product_id: str, target: str = "") -> 
     return False
 
 
-async def consume_iap_intent(user_id: str, product_id: str) -> str | None:
-    """Claims the freshest pending intent for (user, product), marks it
-    consumed and returns its target (empty string if none was recorded)."""
+# K5 (2026-07-30): bir niyet en fazla bu kadar sure "o satin almaya ait"
+# sayilir. Kullanici magaza ekraninda VAZGECERSE niyet pending kalir (mobil
+# niyeti satin almadan ONCE yazar, bkz. lib/iap.ts) ve TTL olmadan sonsuza dek
+# bekler; aylar sonraki ilgisiz bir alim o bayat hedefi tuketebilir. Odeme
+# akisinin makul ust siniri: kart/3DS/mağaza onayi dakikalar surer, saatler degil.
+IAP_INTENT_TTL_SECONDS = 30 * 60
+
+
+def _pgrest_ts(dt: "datetime") -> str:
+    """PostgREST sorgu dizesi icin URL-guvenli UTC zaman damgasi.
+
+    `datetime.isoformat()` "+00:00" uretir; sorgu dizesinde "+" BOSLUK olarak
+    cozulur ve filtre bozulur. Depoda dogru kalip zaten vardi (bkz. istatistik
+    sorgularindaki `strftime("%Y-%m-%dT%H:%M:%SZ")`), tek yerde tekrar edilmesin
+    diye buraya alindi. Naive datetime UTC varsayilir."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+async def consume_iap_intent(user_id: str, product_id: str,
+                             purchased_at: "datetime | None" = None) -> str | None:
+    """Bu satin almaya ait niyeti alir, consumed isaretler ve hedefini doner
+    (niyet yoksa bos dize).
+
+    K5: eskiden yalniz `(user_id, product_id)`'nin EN TAZE pending satirini
+    aliyordu — webhook hangi satin almaya ait oldugunu bilmiyordu. Gecikmis
+    bir webhook (RevenueCat retry/ag) daha SONRA olusturulmus bir niyeti
+    tuketip bileti YANLIS hedefe aciyor, ardindan gelen ikinci webhook ise
+    hedefsiz kaliyordu (target="" -> main.py'deki oto-teslimat kosulu da
+    dusuyor: musteri odedi, hicbir sey olmuyor).
+
+    Cozum: eslesme teslim anina degil SATIN ALMA anina gore yapilir —
+    `created_at <= purchased_at` olan en taze niyet. `purchased_at` yoksa
+    (magaza vermedi) eski davranisa duser; TTL her iki durumda da uygulanir.
+    """
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return None
     try:
+        # TTL alt siniri satin alma anina gore hesaplanir; webhook saatler sonra
+        # gelse bile o an gecerli olan niyet hala esleşebilsin.
+        ref = purchased_at or datetime.now(timezone.utc)
+        en_eski = _pgrest_ts(ref - timedelta(seconds=IAP_INTENT_TTL_SECONDS))
+        # Satin almadan SONRA olusturulan niyet bu satin almaya ait OLAMAZ.
+        ust_sinir = (f"&created_at=lte.{_pgrest_ts(purchased_at)}"
+                     if purchased_at else "")
         async with httpx.AsyncClient() as client:
             r = await client.get(
                 f"{SUPABASE_URL}/rest/v1/iap_intents?user_id=eq.{user_id}&product_id=eq.{product_id}"
-                f"&status=eq.pending&select=id,target&order=created_at.desc&limit=1",
+                f"&status=eq.pending&created_at=gte.{en_eski}{ust_sinir}"
+                f"&select=id,target&order=created_at.desc&limit=1",
                 headers=_headers(), timeout=10,
             )
             if r.status_code != 200 or not r.json():

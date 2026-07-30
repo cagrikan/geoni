@@ -28,6 +28,7 @@ crediting endpoint.
 import os
 import hmac
 import logging
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ def parse_event(payload: dict) -> dict | None:
     None if it's an event type we ignore (renewals, test pings, etc.).
 
     Returns: {kind, user_id, product_id, external_id, price, currency,
-    environment, store} where kind is "grant" or "refund".
+    environment, store, purchased_at} where kind is "grant" or "refund".
     """
     event = (payload or {}).get("event") or {}
     etype = event.get("type")
@@ -99,7 +100,25 @@ def parse_event(payload: dict) -> dict | None:
         # tam olarak 2026-07-29'da yasanan hataydi (Play alimi "ios_sandbox"
         # olarak deftere gecti).
         "store": event.get("store") or "UNKNOWN",
+        # K5 (2026-07-30): satin almanin MAGAZADAKI zamani. Webhook gecikebilir
+        # (retry/ag), bu yuzden "hangi niyet bu satin almaya ait" sorusu teslim
+        # anina degil SATIN ALMA anina gore cevaplanmali — yoksa gecikmis webhook
+        # daha yeni bir niyeti tuketip bileti yanlis hedefe aciyor.
+        # None = magaza vermedi -> cagiran eski (zamansiz) davranisa duser.
+        "purchased_at": _ms_to_dt(event.get("purchased_at_ms")),
     }
+
+
+def _ms_to_dt(ms) -> datetime | None:
+    """RevenueCat epoch-ms -> timezone-aware UTC datetime. Bozuk/eksik deger
+    sessizce None doner: zaman bilgisi olmadan da webhook islenebilmeli."""
+    try:
+        if ms is None:
+            return None
+        return datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc)
+    except (TypeError, ValueError, OSError, OverflowError):
+        logger.warning("revenuecat purchased_at_ms cozulemedi: %r", ms)
+        return None
 
 
 # RevenueCat magaza adi -> bizim kanal etiketimiz (credit_transactions.channel).

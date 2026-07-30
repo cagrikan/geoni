@@ -2223,8 +2223,11 @@ async def revenuecat_webhook(http_request: Request):
             # admin degerlendirir. Sadece logla.
             logger.info("revenuecat: service refund for %s, needs admin review", event["product_id"])
             return {"ignored": True, "reason": "service_refund_manual"}
-        # Uygulamanin satin almadan once biraktigi hedefi al.
-        target = await consume_iap_intent(event["user_id"], event["product_id"]) or ""
+        # Uygulamanin satin almadan once biraktigi hedefi al. K5: eslesme
+        # SATIN ALMA anina gore yapilir (teslim anina degil) — gecikmis webhook
+        # daha yeni bir niyeti tuketip bileti yanlis hedefe acmasin.
+        target = await consume_iap_intent(event["user_id"], event["product_id"],
+                                          event.get("purchased_at")) or ""
         result = await create_paid_ticket(
             user_id=event["user_id"], ticket_type_id=service["id"], target=target,
             external_id=event["external_id"], amount_paid=event["price"],
