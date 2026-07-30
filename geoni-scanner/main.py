@@ -34,6 +34,13 @@ from mailer import (send_audit_report_email, send_brand_report_email,
                     send_purchase_email, send_refund_email)
 from brand_recall import check_brand_recall, infer_brand_identity, SCORING_VERSION
 from devicecheck import MAX_FREE_SCANS as FREE_SCAN_LIMIT
+
+# Tarama basina dusen token. TEK KAYNAK DEGIL — gercek dusum db.save_audit
+# (5) ve db.save_brand_check (10) icinde; buradaki degerler ucretsiz-tarama
+# kapisinin "bu tarama odenecek mi" kararini vermesi icin. tests/test_free_scan.py
+# ikisinin AYNI kaldigini dogruluyor (ayrisirsa kapi yanlis karar verir).
+WEB_SCAN_COST = 5
+BRAND_SCAN_COST = 10
 from free_scan import free_scan_gate, record_free_scan
 import attest  # Apple App Attest: mobil muafiyetini imzaya baglar (bkz. _mobile_exempt)
 from db import (
@@ -988,7 +995,8 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
     # ic taramalar muaf. Sayac SUBMIT'te dusulur (masrafa girmeden hemen once) —
     # buraya gelen her tarama gercek API $ yakar. Kayit background'da (submit hizli).
     if not request.private and not is_premium and not _is_internal_scan(http_request):
-        allowed, gate_info = await free_scan_gate(user_id_rl, request.device_token)
+        allowed, gate_info = await free_scan_gate(user_id_rl, request.device_token,
+                                                  scan_cost=WEB_SCAN_COST)
         if not allowed:
             raise HTTPException(status_code=402, detail={
                 "error": "free_limit_reached",
@@ -1178,7 +1186,8 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
 
     # Ucretsiz-tarama tavani (cihaz + hesap). private zaten 10 kredi, premium muaf.
     if not request.private and not is_premium2 and not _is_internal_scan(http_request):
-        allowed, gate_info = await free_scan_gate(user_id_rl2, request.device_token)
+        allowed, gate_info = await free_scan_gate(user_id_rl2, request.device_token,
+                                                  scan_cost=BRAND_SCAN_COST)
         if not allowed:
             raise HTTPException(status_code=402, detail={
                 "error": "free_limit_reached",
@@ -1250,7 +1259,8 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
         sc_uid = await get_user_id_from_token(token) if token else None
         sc_premium = await check_is_premium(sc_uid) if sc_uid else False
         if not sc_premium:
-            allowed, gate_info = await free_scan_gate(sc_uid, request.device_token)
+            allowed, gate_info = await free_scan_gate(sc_uid, request.device_token,
+                                                      scan_cost=0)  # sosyal tarama token DUSMEZ
             if not allowed:
                 raise HTTPException(status_code=402, detail={
                     "error": "free_limit_reached",
