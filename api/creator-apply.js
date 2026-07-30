@@ -188,8 +188,19 @@ export default async function handler(req, res) {
     // Dogrulanmis satirda kimlik/karar alanlari DONDURULUR; yalniz `note`
     // tazelenebilir (mesru basvuran bilgi ekleyebilsin; icerik zaten escape'li
     // ve admin maili tekrar-gonderimi acikca isaretliyor).
+    // NOT: dondurulan alanlar payload'dan CIKARILAMAZ — `name` NOT NULL ve
+    // varsayilansiz; PostgREST upsert'i `INSERT ... ON CONFLICT DO UPDATE`
+    // uretiyor, yani satir zaten varken bile INSERT sekli gecerli olmali.
+    // Cikarinca uc 500 donuyordu; veri bozulmuyordu (guvenli yon) ama meşru
+    // tekrar gonderim hata aliyor ve 500-vs-200 farki "bu handle var ve
+    // dogrulanmis" bilgisini SIZDIRIYORDU (numaralandirma). Bu yuzden alanlar
+    // SAKLANAN degerleriyle yazilir: kisit saglanir, icerik degismez.
     const row = adresKilitli
-      ? { handle, note: note || null, updated_at: new Date().toISOString() }
+      ? {
+          name: mevcut.name, handle, note: note || null,
+          model: mevcut.model, follower_band: mevcut.follower_band,
+          updated_at: new Date().toISOString(),
+        }
       : {
           name, handle, note: note || null, model, follower_band: band,
           ip_hash: ipHash, user_agent: clean(req.headers['user-agent'], 200) || null,
