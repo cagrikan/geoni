@@ -169,7 +169,7 @@ export default async function handler(req, res) {
     let mevcut = null;
     const q = await sb(
       `creator_applications?handle=eq.${encodeURIComponent(handle)}` +
-      `&select=id,email,email_verified&limit=1`
+      `&select=id,email,email_verified,name,model,follower_band&limit=1`
     );
     if (q.ok) mevcut = (await q.json().catch(() => []))[0] || null;
 
@@ -179,11 +179,22 @@ export default async function handler(req, res) {
     const adresKilitli = !!(mevcut && mevcut.email_verified);
     const yeniAdres = adresKilitli ? null : email;
 
-    const row = {
-      name, handle, note: note || null, model, follower_band: band,
-      ip_hash: ipHash, user_agent: clean(req.headers['user-agent'], 200) || null,
-      updated_at: new Date().toISOString(),
-    };
+    // ILK BASVURU HANDLE'I SAHIPLENIR (2026-07-30, canli testte bulundu).
+    // Ilk tur duzeltme yalniz e-postayi kilitlemisti; canli sizma testinde
+    // saldirgan dogrulanmis bir basvurunun ADINI "Saldirgan", MODELINI ise
+    // "expert" yapabildi. Para yolu kapaliydi (user_id e-postadan gelir) ama
+    // bunlar admin'in KARAR VERDIGI yuzey: panelde yanlis ad gorunur ve
+    // "Uzman-Ortak" etiketi uzman yetkisi vermeye yonlendirir.
+    // Dogrulanmis satirda kimlik/karar alanlari DONDURULUR; yalniz `note`
+    // tazelenebilir (mesru basvuran bilgi ekleyebilsin; icerik zaten escape'li
+    // ve admin maili tekrar-gonderimi acikca isaretliyor).
+    const row = adresKilitli
+      ? { handle, note: note || null, updated_at: new Date().toISOString() }
+      : {
+          name, handle, note: note || null, model, follower_band: band,
+          ip_hash: ipHash, user_agent: clean(req.headers['user-agent'], 200) || null,
+          updated_at: new Date().toISOString(),
+        };
 
     // Adres kilitliyse email/verify alanlarina HIC dokunma (payload'da yoksa
     // merge-duplicates onlari korur). Aksi halde yeni adres yazilir ve
@@ -220,6 +231,11 @@ export default async function handler(req, res) {
     // "normal gorunen" bir uzerine-yazma sessizce kabul edilmesin.
     await notify({
       ...row,
+      // Dondurulmus alanlar icin maile SAKLANAN degeri yaz — admin saldirganin
+      // gonderdigi adi/modeli degil, gercek basvuruyu gorsun.
+      name: adresKilitli ? mevcut.name : row.name,
+      model: adresKilitli ? mevcut.model : row.model,
+      follower_band: adresKilitli ? mevcut.follower_band : row.follower_band,
       email: adresKilitli ? mevcut.email : yeniAdres,
       _tekrar: !!mevcut,
       _kilitli: adresKilitli,
