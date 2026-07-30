@@ -5179,38 +5179,82 @@ async def get_credit_balance(user_id: str) -> int:
     return 0
 
 
+def hedef_anahtari(s: str) -> str:
+    """Hedef (ad/alan adi) kimlik anahtari: bosluk ve buyuk-kucuk harf farkini siler.
+
+    "Sabri Çağrı Çakır", "Sabri çağrı çakır", "Sabri Çağrı Çakır " ve
+    "Sabri  Çağrı Çakır" AYNI kisidir. Eskiden `eq.` ile birebir eslesme
+    yapiliyordu; 2026-07-30 olcumunde tek kisi 6 FARKLI yazimla 37 tarama
+    uretmisti. Sonuc: skor gecmisi parcalaniyor (kullanici "onceki taramam
+    nerede" diyor) ve score_stability yanlis/eksik referansa gore hesaplaniyor.
+    casefold() lower()'dan guclu: Almanca ß gibi durumlari da normalize eder.
+
+    BILINEN SINIR: casefold() Turkce yerelini bilmez — "ÇAĞRI" (noktasiz I)
+    "çağri", "Çağrı" ise "çağrı" olur; tamami buyuk harfle yazilmis Turkce ad
+    normal yazimla eslesmez. I/ı/İ/i'yi tek harfe indirmek bunu cozerdi ama
+    "Kıran" ile "Kiran"i AYNI kisi yapardi. Bolme hatasi (gecmis kopar)
+    birlestirme hatasindan (baskasinin skoru sana yazilir) daha ucuz oldugu icin
+    bilincli olarak boyle birakildi (bkz. tests/test_hedef_eslesme.py)."""
+    return " ".join((s or "").split()).casefold()
+
+
+def _ilike_deseni(s: str) -> str:
+    """PostgREST `ilike` degeri: joker karakterleri ETKISIZLESTIR.
+
+    PostgREST'te `*` joker olarak yorumlanir, Postgres LIKE'ta `%` ve `_` de
+    oyle. Kacirilirsa "%" adini tarayan biri TUM kayitlarla eslesir. Yine de
+    tek basina yeterli sayilmaz: donen satirlar Python'da `hedef_anahtari` ile
+    BIREBIR dogrulanir (savunma katmani)."""
+    duz = " ".join((s or "").split())
+    return "".join("\\" + c if c in "*%_\\" else c for c in duz)
+
+
 async def get_previous_audits(kind: str, target: str, limit: int = 2) -> list:
     """
     Ayni hedefin onceki tamamlanmis taramalari (en yeni once) — skor
     istikrari (stability.py) icin. kind: 'web' -> domain esleme,
     digerleri -> name esleme. Donen: [{"score", "breakdown"}, ...]
+
+    Esleme BUYUK-KUCUK HARF ve BOSLUK duyarsizdir (bkz. hedef_anahtari).
+    Alan adlari zaten tanim geregi harf duyarsizdir; kisi/marka adlarinda ise
+    duyarlilik gecmisi bolen bir hataydi.
     """
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not target:
         return []
     col = "domain" if kind == "web" else "name"
+    aranan = hedef_anahtari(target)
+    if not aranan:
+        return []
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(
                 f"{SUPABASE_URL}/rest/v1/audits",
                 headers=_headers(),
                 params={
-                    col: f"eq.{target.strip()}",
+                    col: f"ilike.{_ilike_deseni(target)}",
                     "status": "eq.complete",
                     "score": "not.is.null",
                     "order": "created_at.desc",
-                    "limit": str(limit),
-                    "select": "score,result_json",
+                    # ilike genis eleyebilir (or. farkli ic bosluk); Python
+                    # dogrulamasindan sonra `limit` kadari kalsin diye fazla cek.
+                    "limit": str(max(limit * 5, 10)),
+                    "select": f"score,result_json,{col}",
                 },
                 timeout=10,
             )
             if r.status_code == 200:
                 out = []
                 for row in r.json():
+                    # Savunma katmani: ilike yanlislikla genis eslestiyse burada duser.
+                    if hedef_anahtari(row.get(col)) != aranan:
+                        continue
                     rj = row.get("result_json") or {}
                     out.append({
                         "score": row.get("score"),
                         "breakdown": rj.get("score_breakdown") or {},
                     })
+                    if len(out) >= limit:
+                        break
                 return out
     except Exception as e:
         logger.warning(f"get_previous_audits error: {e}")
