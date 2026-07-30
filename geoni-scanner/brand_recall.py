@@ -2107,8 +2107,16 @@ async def check_brand_recall(
             "telemetry": {
                 # Tarama suresi — SQL'le p50/p90 cikarilabilsin diye ham ms.
                 "duration_ms": int((time.monotonic() - _baslangic) * 1000),
-                "engines_measured": sum(1 for m in model_results.values()
-                                        if isinstance(m, dict) and m.get("recognized") is not None),
+                # 2026-07-30 duzeltmesi: eski kosul `m.get("recognized") is not None`
+                # idi — recognized HER ZAMAN True/False (asla None), yani metrik
+                # model_results'taki KAYIT SAYISINI (4 veya 5) donduruyordu ve
+                # saglayici kesintisinde HIC dusmuyordu. Sessiz bozulmayi yakalamak
+                # icin kurulan olcut, tam da o durumda kor kaliyordu. Artik gercek
+                # olcum bayragini (model_raw[k]["measured"], bkz. Y2/A5) sayar.
+                # `measured` (satir ~1997) agirlik renormalizasyonunun kullandigi
+                # AYNI liste — telemetri ile skor tek kaynaktan beslensin, ikisi
+                # birbirinden ayrisip yine yanlis sinyal vermesin.
+                "engines_measured": len(measured),
                 "sov_checked": sov_checked,
                 "competitors_count": len(sov_result.get("competitors") or []),
                 "competitors_source": sov_result.get("competitors_source", "sov"),

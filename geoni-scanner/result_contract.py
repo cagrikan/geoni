@@ -17,6 +17,12 @@ BRAND_CLIENT_KEYS = {
     "name", "topic", "recognized", "recognition_count", "score",
     "score_breakdown", "model_results", "performing_topics", "opportunity_topics",
     "identity_mismatch", "checked", "scoring_version", "sov",
+    # Saglayici kesintisi uyarisi: web (BrandCheckResultsPage -> <EngineNotice>) ve
+    # mobil (app/brand/[jobId].tsx -> engine_notice) BU ALANI OKUYOR. brand_recall
+    # uretiyordu ama payload'a tasinmiyordu -> 90 gunde 378 taramanin 0'inda vardi,
+    # yani kesinti uyarisi HIC gosterilmedi (2026-07-30 olcumu). Bu satir olmadan
+    # motor coktugunde kullanici sadece aciklamasiz bir ✗ goruyor.
+    "engines_unavailable",
     # Sosyal (@handle) akisi — bu ikisinin dusmesi tam da yakalanan KRITIK bug'di:
     "resolved_identity", "needs_niche",
 }
@@ -64,6 +70,9 @@ def build_brand_payload(result: dict, name, topic, stability, created_at: str, l
         "performing_topics": result.get("performing_topics", []),
         "opportunity_topics": result.get("opportunity_topics", []),
         "checked": result.get("checked", False),
+        # Olculemeyen motorlarin OKUNUR adlari (sebep YAZILMAZ — ic bilgi sizmasin;
+        # sebep yalnizca loga/admin mailine gider, bkz. _provider_health_alert).
+        "engines_unavailable": result.get("engines_unavailable", []),
         "raw_list": result.get("raw_list"),
         "sov": result.get("sov"),
         # Sosyal (@handle) taramada @handle -> gorunen ad (resolved_identity) +

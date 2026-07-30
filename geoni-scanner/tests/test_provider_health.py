@@ -68,3 +68,27 @@ def test_duration_ms_telemetriye_yaziliyor():
     assert '"duration_ms"' in kaynak, "duration_ms telemetriye yazilmiyor"
     # monotonic KULLANILMALI: sistem saati geri alinirsa negatif sure cikmasin
     assert "time.time() - _baslangic" not in kaynak
+
+
+def test_engines_measured_gercek_olcumu_sayar():
+    """2026-07-30: metrik `m.get("recognized") is not None` ile hesaplaniyordu;
+    recognized her zaman True/False oldugundan sonuc DAIMA kayit sayisiydi (4-5)
+    ve saglayici kesintisinde hic dusmuyordu — sessiz bozulmayi yakalamak icin
+    kurulan olcut tam da o anda kordu. Kaynak sabiti: gercek `measured` listesi."""
+    import inspect
+    import brand_recall
+    kaynak = inspect.getsource(brand_recall.check_brand_recall)
+    assert '"engines_measured": len(measured)' in kaynak, \
+        "engines_measured gercek olcum listesini saymiyor"
+    # Yalniz KOD satirlarina bak: kalibi aciklayan yorum (neden kirikti) kalsin,
+    # ama kodda geri gelirse yakalansin.
+    kod = [l.split("#", 1)[0] for l in kaynak.splitlines()]
+    assert not any('m.get("recognized") is not None' in l for l in kod), \
+        "kirik olcut koda geri gelmis (recognized asla None degil)"
+
+
+def test_engines_unavailable_payloada_tasiniyor():
+    """Kesinti uyarisini web <EngineNotice> + mobil engine_notice okur; alan
+    2026-07-30'a kadar payload'a hic tasinmiyordu (90 gun / 378 tarama / 0 kayit)."""
+    from result_contract import BRAND_CLIENT_KEYS
+    assert "engines_unavailable" in BRAND_CLIENT_KEYS

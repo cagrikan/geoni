@@ -60,3 +60,17 @@ def test_missing_source_field_defaults_not_crash():
     assert payload["score"] == 0
     assert payload["needs_niche"] is False
     assert BRAND_CLIENT_KEYS - set(payload.keys()) == set()
+
+
+def test_engines_unavailable_musteriye_tasiniyor():
+    """Saglayici kesintisi uyarisi (web <EngineNotice> + mobil engine_notice) bu
+    alani okur. brand_recall uretiyordu ama payload'a tasinmiyordu: 2026-07-30
+    olcumunde 90 gunluk 378 taramanin 0'inda vardi -> uyari HIC gosterilmedi.
+    Bu test o sessiz dususu commit aninda yakalar."""
+    ham = _sample_result()
+    ham["engines_unavailable"] = ["ChatGPT", "Gemini"]
+    payload = build_brand_payload(ham, "@garyvee", "x", {}, "t")
+    assert payload["engines_unavailable"] == ["ChatGPT", "Gemini"]
+    # Alan hic uretilmediginde de client kirilmasin: bos liste, None degil.
+    ham.pop("engines_unavailable")
+    assert build_brand_payload(ham, "@garyvee", "x", {}, "t")["engines_unavailable"] == []
