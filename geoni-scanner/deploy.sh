@@ -53,11 +53,36 @@ EOF
 fi
 
 echo "3/3 API (App Runner) + worker (ECS) yeni imajla yeniden baslatiliyor..."
-# API artik App Runner'da (ALB+Fargate degil, 2026-07-18 tasima). AutoDeployments
-# kapali; ECR :latest'i cekmesi icin deployment'i elle tetikle.
-aws apprunner start-deployment --region eu-central-1 \
-  --service-arn arn:aws:apprunner:eu-central-1:016031489497:service/geoni-scanner-api/61139b9ae7114ea88304c93458af9ff9 \
-  --query 'OperationId' --output text
+# API artik App Runner'da (ALB+Fargate degil, 2026-07-18 tasima).
+#
+# 2026-07-30 DUZELTME: burada "AutoDeployments kapali" yaziyordu — YANLIS.
+# Serviste AutoDeploymentsEnabled=true; ECR'a :latest push'u deployment'i ZATEN
+# otomatik baslatiyor. Elle start-deployment o otomatik islemle carpisip
+# "isn't in RUNNING state" hatasi veriyor ve `set -e` yuzunden script TAM DA
+# BURADA oluyordu: API deploy oluyor ama ECS WORKER HIC GUNCELLENMIYORDU
+# (yani yeni kod API'de, eski kod worker'da — sessiz surum uyusmazligi).
+# Artik: otomatik deploy varsa ona birak, yoksa elle tetikle; her iki durumda
+# da worker adimina GECILIR.
+API_ARN=arn:aws:apprunner:eu-central-1:016031489497:service/geoni-scanner-api/61139b9ae7114ea88304c93458af9ff9
+DURUM=$(aws apprunner describe-service --region eu-central-1 --service-arn "$API_ARN" \
+  --query 'Service.Status' --output text)
+if [ "$DURUM" = "OPERATION_IN_PROGRESS" ]; then
+  echo "  App Runner: otomatik deployment zaten calisiyor, elle tetiklenmiyor"
+else
+  aws apprunner start-deployment --region eu-central-1 --service-arn "$API_ARN" \
+    --query 'OperationId' --output text || echo "  App Runner elle tetikleme atlandi ($?)"
+fi
+
 # Worker hala ECS Fargate (SQS tuketici) — yeni imajla yeniden baslat.
-aws ecs update-service --cluster geoni-cluster --service geoni-scan-worker --force-new-deployment --query 'service.serviceName' --output text
+# API adimi ne olursa olsun BU CALISMALI (yukaridaki hatanin dersi).
+aws ecs update-service --cluster geoni-cluster --service geoni-scan-worker \
+  --force-new-deployment --query 'service.serviceName' --output text
+
+echo "  App Runner bitmesi bekleniyor..."
+while [ "$(aws apprunner describe-service --region eu-central-1 --service-arn "$API_ARN" \
+      --query 'Service.Status' --output text)" = "OPERATION_IN_PROGRESS" ]; do sleep 20; done
+SON=$(aws apprunner describe-service --region eu-central-1 --service-arn "$API_ARN" \
+  --query 'Service.Status' --output text)
+echo "  App Runner durumu: $SON"
+[ "$SON" = "RUNNING" ] || { echo "UYARI: App Runner RUNNING degil ($SON) — konsoldan bak"; exit 1; }
 echo "Tamam. API sagligi: curl -s https://api.geoni.ai/health"
