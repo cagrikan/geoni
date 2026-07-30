@@ -94,7 +94,8 @@ def test_hesabi_yoksa_kabul_gecer_ama_kod_yok(monkeypatch):
     """Kayitsiz creator kabul EDILEBILIR; kod uretilemez ve bu SESSIZ GECMEZ,
     note='hesap_yok' ile bildirilir (panel 'link nerede' dedirtmesin)."""
     ist = _kur(monkeypatch, {"id": 8, "status": "new", "user_id": None,
-                             "email": "yok@ornek.com", "referral_code": None},
+                             "email": "yok@ornek.com", "email_verified": True,
+                             "referral_code": None},
                emails={})
     r = asyncio.run(db.admin_decide_creator_application(8, "admin-1", "accepted"))
     assert r["success"] is True and r["referral_code"] is None
@@ -106,11 +107,49 @@ def test_kabul_epostadan_hesap_esler(monkeypatch):
     """user_id bos ama ayni e-postali hesap varsa eslenir (buyuk/kucuk harf ve
     bosluk farki eslesmeyi bozmamali)."""
     ist = _kur(monkeypatch, {"id": 9, "status": "interviewed", "user_id": None,
-                             "email": "  Creator@Ornek.COM ", "referral_code": None},
+                             "email": "  Creator@Ornek.COM ", "email_verified": True,
+                             "referral_code": None},
                emails={UUID: "creator@ornek.com"})
     r = asyncio.run(db.admin_decide_creator_application(9, "admin-1", "accepted"))
     assert r["user_id"] == UUID
     assert ist.patch_govde["user_id"] == UUID
+
+
+def test_DOGRULANMAMIS_eposta_hesaba_BAGLANMAZ(monkeypatch):
+    """GUVENLIK (2026-07-30): /api/creator-apply kimliksiz ve upsert
+    on_conflict=handle. Eskiden bir baskasinin @handle'ina POST atip e-postasini
+    uzerine yazmak mumkundu; burasi user_id'yi TAM DA o e-postadan esledigi icin
+    saldirgan referral kodunu, sozlesmeyi ve is_expert yetkisini devralabiliyordu.
+    Dogrulanmamis adres artik hicbir hesaba baglanmaz."""
+    ist = _kur(monkeypatch, {"id": 20, "status": "interviewed", "user_id": None,
+                             "email": "saldirgan@evil.com", "email_verified": False,
+                             "referral_code": None},
+               emails={UUID: "saldirgan@evil.com"})   # hesap VAR ama adres dogrulanmadi
+    r = asyncio.run(db.admin_decide_creator_application(20, "admin-1", "accepted"))
+    assert r["success"] is True                       # kabul yine gecerli
+    assert r["user_id"] is None, "dogrulanmamis adres hesaba baglandi"
+    assert r["referral_code"] is None, "dogrulanmamis adrese davet kodu uretildi"
+    assert r["note"] == "eposta_dogrulanmadi"
+    assert "user_id" not in ist.patch_govde
+
+
+def test_DOGRULANMAMIS_epostaya_uzman_yetkisi_VERILMEZ(monkeypatch):
+    """Zincirin en pahali halkasi: is_expert ucretli bilet teslim yetkisidir.
+    Dogrulanmamis adres uzerinden acilmamali."""
+    cagrildi = []
+
+    async def _sahte_expert(uid, flag, types=None):
+        cagrildi.append(uid)
+        return True
+
+    _kur(monkeypatch, {"id": 21, "status": "interviewed", "user_id": None,
+                       "email": "saldirgan@evil.com", "email_verified": False,
+                       "referral_code": None},
+         emails={UUID: "saldirgan@evil.com"})
+    monkeypatch.setattr(db, "admin_set_is_expert", _sahte_expert, raising=False)
+    asyncio.run(db.admin_decide_creator_application(
+        21, "admin-1", "accepted", make_expert=True))
+    assert cagrildi == [], "dogrulanmamis adrese uzman yetkisi acildi"
 
 
 def test_red_uzman_yetkisi_ACMAZ(monkeypatch):

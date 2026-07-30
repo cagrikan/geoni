@@ -54,6 +54,32 @@ function hashIp(ip) {
   return crypto.createHmac('sha256', pepper).update(ip).digest('hex').slice(0, 32);
 }
 
+/** Dogrulama token'i: duz hali YALNIZ e-postada, DB'de sha256 hash'i durur. */
+function newVerifyToken() {
+  const raw = crypto.randomBytes(32).toString('base64url');
+  return { raw, hash: crypto.createHash('sha256').update(raw).digest('hex') };
+}
+
+async function sendVerifyMail(to, handle, raw) {
+  if (!process.env.RESEND_API_KEY) return;
+  const link = `https://geoni.ai/api/creator-verify?token=${encodeURIComponent(raw)}`;
+  await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: 'GEONI <mail@geoni.ai>',
+      to: [to],
+      subject: 'GEONI creator başvurunuzu doğrulayın',
+      html: `<div style="font:15px/1.6 system-ui;max-width:520px">
+<h2 style="font:600 18px system-ui">Başvurunuzu doğrulayın</h2>
+<p><b>${esc(handle)}</b> için bir GEONI creator başvurusu alındı. Bu adresin size ait olduğunu onaylamak için:</p>
+<p><a href="${esc(link)}" style="display:inline-block;background:#7c3aed;color:#fff;padding:11px 20px;border-radius:9px;text-decoration:none;font-weight:600">Başvurumu doğrula</a></p>
+<p style="color:#666;font-size:13px">Bağlantı 24 saat geçerlidir. Bu başvuruyu siz yapmadıysanız bu e-postayı yok sayın — doğrulanmayan başvuru işleme alınmaz.</p>
+</div>`,
+    }),
+  }).catch(() => {});
+}
+
 function sb(path, init = {}) {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   return fetch(`${process.env.SUPABASE_URL}/rest/v1/${path}`, {
@@ -78,12 +104,14 @@ async function notify(row) {
       to: ['mail@cagricakir.com.tr'],
       // Basvuran metnini reply-to'ya koymuyoruz: dogrulanmamis adres, sahte
       // gonderen izlenimi yaratir. Adres govdede duruyor.
-      subject: `Creator basvurusu: ${row.handle}`,
-      html: `<h2 style="font:600 16px system-ui">Yeni creator basvurusu</h2>
+      subject: `${row._tekrar ? 'Creator TEKRAR gonderim' : 'Creator basvurusu'}: ${row.handle}`,
+      html: `<h2 style="font:600 16px system-ui">${row._tekrar ? 'Var olan basvuru guncellendi' : 'Yeni creator basvurusu'}</h2>
+${row._tekrar ? '<p style="margin:4px 0;padding:8px 10px;background:#fff4e5;border-left:3px solid #e8a33d;font:13px system-ui">Bu handle icin ZATEN basvuru vardi. ' + (row._kilitli ? 'E-posta dogrulanmis oldugu icin DEGISTIRILMEDI.' : 'E-posta guncellendi ve dogrulama sifirlandi.') + '</p>' : ''}
 ${l('Ad', row.name)}${l('Hesap', row.handle)}${l('Takipci', row.follower_band)}
 ${l('Model', row.model === 'expert' ? 'Uzman-Ortak' : 'Barter')}${l('E-posta', row.email)}
+${l('E-posta dogrulandi', row._kilitli ? 'EVET (kilitli)' : 'HAYIR — dogrulama linki gonderildi')}
 ${l('Not', row.note)}
-<p style="margin-top:14px;font:13px system-ui;color:#666">Admin panel -> Creator sekmesinden durumu isaretle.</p>`,
+<p style="margin-top:14px;font:13px system-ui;color:#666">Admin panel -> Creator sekmesinden durumu isaretle. <b>Dogrulanmamis e-posta otomatik hesap eslemesine girmez.</b></p>`,
     }),
   }).catch(() => {});
 }
@@ -129,11 +157,50 @@ export default async function handler(req, res) {
       if (Array.isArray(rows) && rows.length >= 5) return res.status(429).json({ error: 'rate' });
     }
 
+    // GUVENLIK (2026-07-30): bu uc KIMLIKSIZ. Upsert `on_conflict=handle`
+    // oldugu icin eskiden bir baskasinin @handle'ina POST atip E-POSTASINI
+    // uzerine yazmak mumkundu. Zincir kabulde kapaniyordu:
+    // db.admin_decide_creator_application user_id'yi TAM DA bu e-postadan
+    // esler -> saldirgan referral kodunu, sozlesmeyi ve (uzman yapilirsa)
+    // is_expert yetkisini devralirdi. Iki kapi konuldu:
+    //   (1) DOGRULANMIS e-posta bu uctan DEGISTIRILEMEZ (asagida).
+    //   (2) Dogrulanmamis adres kabulde otomatik hesap eslemesine GIREMEZ
+    //       (backend tarafi, db.py).
+    let mevcut = null;
+    const q = await sb(
+      `creator_applications?handle=eq.${encodeURIComponent(handle)}` +
+      `&select=id,email,email_verified&limit=1`
+    );
+    if (q.ok) mevcut = (await q.json().catch(() => []))[0] || null;
+
+    // Dogrulanmis bir basvurunun adresi KILITLIDIR. Degistirmek isteyen
+    // (mesru kullanici dahil) destege yazar; sessizce ok doneriz ki bu uc
+    // "hangi handle basvurmus / dogrulanmis" diye numaralandirilamasin.
+    const adresKilitli = !!(mevcut && mevcut.email_verified);
+    const yeniAdres = adresKilitli ? null : email;
+
     const row = {
-      name, handle, note: note || null, email, model, follower_band: band,
+      name, handle, note: note || null, model, follower_band: band,
       ip_hash: ipHash, user_agent: clean(req.headers['user-agent'], 200) || null,
       updated_at: new Date().toISOString(),
     };
+
+    // Adres kilitliyse email/verify alanlarina HIC dokunma (payload'da yoksa
+    // merge-duplicates onlari korur). Aksi halde yeni adres yazilir ve
+    // dogrulama SIFIRLANIR — adres degisince eski onay gecersizdir.
+    let token = null;
+    if (!adresKilitli) {
+      row.email = yeniAdres;
+      row.email_verified = false;
+      if (yeniAdres) {
+        token = newVerifyToken();
+        row.verify_token_hash = token.hash;
+        row.verify_expires_at = new Date(Date.now() + 24 * 3600e3).toISOString();
+      } else {
+        row.verify_token_hash = null;
+        row.verify_expires_at = null;
+      }
+    }
 
     // Tekrar gonderim yeni satir ACMAZ, mevcut basvuruyu tazeler. status/user_id
     // /referral_code KORUNUR — kabul edilmis bir creator formu tekrar doldurunca
@@ -148,7 +215,15 @@ export default async function handler(req, res) {
       console.error('creator-apply insert', ins.status, txt.slice(0, 200));
       return res.status(500).json({ error: 'save' });
     }
-    await notify(row);
+    if (token && yeniAdres) await sendVerifyMail(yeniAdres, handle, token.raw);
+    // Admin bildirimi: tekrar gonderim ve dogrulama durumu GORUNUR olsun ki
+    // "normal gorunen" bir uzerine-yazma sessizce kabul edilmesin.
+    await notify({
+      ...row,
+      email: adresKilitli ? mevcut.email : yeniAdres,
+      _tekrar: !!mevcut,
+      _kilitli: adresKilitli,
+    });
     return res.status(200).json({ ok: true });
   } catch (e) {
     console.error('creator-apply', e);

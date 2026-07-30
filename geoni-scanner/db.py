@@ -3999,17 +3999,31 @@ async def admin_decide_creator_application(
             code = app.get("referral_code")
             note = None
             if decision == "accepted":
-                # Hesabi e-postadan esle (kayitli degilse user_id bos kalir).
+                # GUVENLIK (2026-07-30): e-postadan otomatik hesap eslemesi
+                # YALNIZ DOGRULANMIS adres icin yapilir.
+                # /api/creator-apply kimliksiz ve upsert on_conflict=handle
+                # calisiyor; eskiden bir baskasinin @handle'ina POST atip
+                # e-postasini uzerine yazmak mumkundu. Burasi user_id'yi tam da
+                # o e-postadan esledigi icin saldirgan referral kodunu,
+                # sozlesmeyi ve (make_expert ise) is_expert yetkisini
+                # devralabiliyordu. Dogrulanmamis adres artik BAGLANMAZ —
+                # kabul yine gecerlidir, yalnizca hesap eslemesi beklemede kalir.
                 if not user_id and app.get("email"):
-                    emails = await _fetch_all_auth_emails()
-                    hedef = str(app["email"]).strip().lower()
-                    for uid, mail in emails.items():
-                        if str(mail).strip().lower() == hedef:
-                            user_id = uid
-                            break
+                    if app.get("email_verified"):
+                        emails = await _fetch_all_auth_emails()
+                        hedef = str(app["email"]).strip().lower()
+                        for uid, mail in emails.items():
+                            if str(mail).strip().lower() == hedef:
+                                user_id = uid
+                                break
+                    else:
+                        logger.warning(
+                            "creator kabul: e-posta DOGRULANMAMIS, otomatik hesap "
+                            "eslemesi atlandi (app=%s)", app_id)
+                        note = "eposta_dogrulanmadi"
                 if user_id and not code:
                     code = await get_or_create_referral_code(user_id)
-                if not user_id:
+                if not user_id and not note:
                     note = "hesap_yok"  # kayit olunca eslenecek
 
             payload = {
