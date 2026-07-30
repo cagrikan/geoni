@@ -66,7 +66,21 @@ _EMAIL_TEXT = {
             "ai_access": "AI Erişimi",
             "engagement": "Etkileşim",
             "brand_recall": "Marka Bilinirliği",
+            # Kisi/marka/sosyal taramanin kirilimi (brand_recall.score_breakdown).
+            # Bu satirlar olmadan e-postada ham anahtar ("yanit_kalitesi") gorunurdu.
+            "claude": "Claude",
+            "chatgpt": "ChatGPT",
+            "gemini": "Gemini",
+            "perplexity": "Perplexity",
+            "yanit_kalitesi": "Yanıt Kalitesi",
+            "konu_uyumu": "Konu Uyumu",
+            "kategori_gorunurlugu": "Kategori Görünürlüğü",
         },
+        # Kisi/marka/sosyal raporu (alan adi yerine AD taranir)
+        "brand_intro": "{date} tarihinde başlattığınız AI görünürlük taraması tamamlandı.",
+        "brand_scanned": "Taranan",
+        "brand_subject": "{domain} için AI Görünürlük Skoru: {score}/100",
+        "brand_footer_note": 'Bu e-posta, <strong style="color:#64748B;">{domain}</strong> için başlattığınız AI görünürlük taramasının sonucudur.',
     },
     "en": {
         "intro": "The AI Visibility Scan you requested on {date} is complete.",
@@ -92,7 +106,18 @@ _EMAIL_TEXT = {
             "ai_access": "AI Access",
             "engagement": "Engagement",
             "brand_recall": "Brand Recall",
+            "claude": "Claude",
+            "chatgpt": "ChatGPT",
+            "gemini": "Gemini",
+            "perplexity": "Perplexity",
+            "yanit_kalitesi": "Answer Quality",
+            "konu_uyumu": "Topic Relevance",
+            "kategori_gorunurlugu": "Category Visibility",
         },
+        "brand_intro": "The AI visibility scan you started on {date} is complete.",
+        "brand_scanned": "Scanned",
+        "brand_subject": "AI Visibility Score for {domain}: {score}/100",
+        "brand_footer_note": 'This email is the result of the AI visibility scan you started for <strong style="color:#64748B;">{domain}</strong>.',
     },
 }
 
@@ -136,13 +161,22 @@ def _render_topic_list(topics: list[dict], empty_text: str) -> str:
     return f'<ul style="padding-left:18px;margin:0;">{items}</ul>'
 
 
-def _build_report_html(domain: str, result: dict, lang: str = "tr") -> str:
+def _build_report_html(domain: str, result: dict, lang: str = "tr", brand: bool = False) -> str:
+    """`brand=True`: kisi/marka/sosyal raporu. Sablon AYNI kalir (tek bakim
+    noktasi); yalnizca 'alan adi' dili 'taranan ad' diline cevrilir ve konu
+    listeleri brand payload'inin adlariyla okunur."""
     text = _EMAIL_TEXT.get(lang, _EMAIL_TEXT["tr"])
+    if brand:
+        text = {**text, "intro": text["brand_intro"],
+                "scanned_domain": text["brand_scanned"],
+                "footer_note": text["brand_footer_note"]}
     score = result.get("score", 0)
     color = _score_color(score)
     breakdown = result.get("breakdown") or result.get("score_breakdown") or {}
-    top_topics = result.get("top_topics", [])
-    opportunities = result.get("opportunities", [])
+    # Web payload'i top_topics/opportunities, brand payload'i performing_topics/
+    # opportunity_topics kullaniyor -- ikisini de kabul et.
+    top_topics = result.get("top_topics") or result.get("performing_topics") or []
+    opportunities = result.get("opportunities") or result.get("opportunity_topics") or []
     formatted_date = _format_datetime(result.get("created_at"), lang)
 
     breakdown_labels = text["breakdown_labels"]
@@ -283,6 +317,49 @@ async def send_audit_report_email(to_email: str, domain: str, result: dict, lang
                 return False
     except Exception as e:
         logger.warning(f"Failed to send report email: {e}")
+        return False
+
+
+async def send_brand_report_email(to_email: str, name: str, result: dict, lang: str = "tr") -> bool:
+    """Kisi/marka/sosyal tarama raporunu e-postayla gonderir.
+
+    NEDEN VAR (2026-07-30): hem mobil (`res_scan_timeout`, `res_email_note`) hem
+    web (`error_query_timeout`) "sonucu e-postana gondereceğiz" DIYORDU, ama bu
+    e-posta yalnizca WEB (site) taramasi icin gonderiliyordu -- kisi/marka/sosyal
+    taramada hicbir posta cikmiyordu. Yani 4 tarama tipinin 3'unde tutulamayan bir
+    soz veriliyordu. Sozu kaldirmak yerine DOGRU yapiliyor: bekleme suresi
+    dakikalar surdugu icin "kapat, sana yollariz" gercek bir deger.
+
+    send_audit_report_email gibi ASLA firlatmaz -> cagiran ates-et-unut kullanir.
+    """
+    if not to_email:
+        return False
+    if not RESEND_API_KEY or RESEND_API_KEY == "your-resend-key-here":
+        logger.warning("RESEND_API_KEY not configured, skipping brand email send")
+        return False
+
+    text = _EMAIL_TEXT.get(lang, _EMAIL_TEXT["tr"])
+    html = _build_report_html(name, result, lang, brand=True)
+    score = result.get("score", 0)
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {RESEND_API_KEY}",
+                         "Content-Type": "application/json"},
+                json={"from": FROM_EMAIL, "to": [to_email],
+                      "subject": text["brand_subject"].format(domain=name, score=score),
+                      "html": html},
+                timeout=15,
+            )
+            if resp.status_code in (200, 201):
+                logger.info(f"Brand report email sent to {to_email} for '{name}'")
+                return True
+            logger.warning(f"Resend API error {resp.status_code}: {resp.text[:300]}")
+            return False
+    except Exception as e:
+        logger.warning(f"Failed to send brand report email: {e}")
         return False
 
 

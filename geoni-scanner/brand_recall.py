@@ -1547,6 +1547,11 @@ async def check_brand_recall(
     website: str = "",
     entity_type: str = "person",
     on_progress=None,  # optional callable(str) -> None, used to stream live status via SSE
+    on_step=None,  # optional callable(str) -> None: on_progress'in YERELLESTIRILMIS
+    # metni yerine KARARLI adim anahtarini ("web_search", "querying_models", ...) verir.
+    # NEDEN AYRI: mobil bekleme ekrani ilerlemeyi gostermek icin adimi bilmek zorunda,
+    # ama SSE metni dile/ifadeye gore degisiyor -> istemcinin metni ayristirmasi kirilgan.
+    # Anahtar sozlesmesi PROGRESS_MESSAGES'in anahtar kumesidir.
     lang: str = "tr",
     custom_queries: list | None = None,  # kullanici tanimli SOV sorgulari (izleme listesi)
     social: bool = False,  # sosyal mod: SOV rakipleri firma degil @handle/hesap olarak cikar
@@ -1583,9 +1588,17 @@ async def check_brand_recall(
 
     msgs = PROGRESS_MESSAGES.get(lang, PROGRESS_MESSAGES["tr"])
 
-    def emit(message: str):
+    def emit(key: str, **fmt):
+        """Ilerleme yayini. Cagiran ARTIK metni degil ANAHTARI verir; boylece
+        yerellestirilmis metin (on_progress) ile makine-okunur adim (on_step)
+        tek noktadan, kaymadan uretilir."""
+        message = msgs.get(key) or msgs["scoring"]
+        if fmt:
+            message = message.format(**fmt)
         if on_progress:
             on_progress(message)
+        if on_step:
+            on_step(key)
 
     if not any([ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY, PERPLEXITY_API_KEY]):
         return {"recognized": False, "score": None, "topic": topic, "raw_list": None,
@@ -1594,7 +1607,7 @@ async def check_brand_recall(
                 "sov": {"checked": False, "score": None, "queries": [], "competitors": []}}
 
     # Step 1: Tavily web search with enriched query
-    emit(msgs["web_search"])
+    emit("web_search")
     tavily_query = _build_tavily_query(name, topic, role, company, sector, location, "", website, entity_type)
     # K1: web araması servis hatasıyla düşerse (tüm Tavily anahtarları) bunu
     # "sonuç yok" (=0 puan) ile karıştırma; web_search_failed ile işaretle ki
@@ -1653,7 +1666,7 @@ async def check_brand_recall(
     # olduruyordu. Guclu baglam (unvan/sirket/sektor) sart.
     has_context = any([role, company, sector])
     if web_results and has_context and OPENAI_API_KEY:
-        emit(msgs["verifying_identity"])
+        emit("verifying_identity")
         context_parts = []
         if role:     context_parts.append(f"Unvan: {role}")
         if company:  context_parts.append(f"Şirket: {company}")
@@ -1746,20 +1759,20 @@ async def check_brand_recall(
         )
         return sov_topic_, result_
 
-    emit(msgs.get("sov", msgs["scoring"]))
+    emit("sov")
     sov_task = asyncio.create_task(_run_sov())
 
     # Step 2: Her model icin 3-formulasyonlu iki asamali tanima (paralel)
     async def _tracked(coro, label):
         try:
             data = await coro
-            emit(msgs["model_answered"].format(label=label))
+            emit("model_answered", label=label)
             return data
         except Exception:
-            emit(msgs["model_no_answer"].format(label=label))
+            emit("model_no_answer", label=label)
             raise
 
-    emit(msgs["querying_models"])
+    emit("querying_models")
     # Grok SHADOW: 5. motor olarak paralel sorgulanir; skoru model_results'e girer
     # (self_improve guvenilirlik verisi toplar) AMA WEIGHTS['grok']=0 -> manseti
     # ETKILEMEZ ve recognition_count/score_breakdown'a KATILMAZ. Anahtar yoksa
@@ -1793,7 +1806,7 @@ async def check_brand_recall(
     }
 
     # Step 3: Tek toplu judge cagrisi (Madde 2.1)
-    emit(msgs["comparing"])
+    emit("comparing")
     person_info = {"isim": name, "unvan": role, "sirket": company, "sehir": location, "alan": topic}
     representative_texts = {k: v["representative_text"] for k, v in model_raw.items() if v["representative_text"]}
     # SIFIR-ETKI (Fable 2026-07-23): golge motorlar (grok) CANLI motorlarin
@@ -1827,7 +1840,7 @@ async def check_brand_recall(
             judge_results = {**judge_results, **await judge_batch_accuracy(shadow_texts, web_results, person_info)}
         except Exception as e:
             logger.warning(f"shadow judge (grok) error: {_hata(e)}")
-    emit(msgs["scoring"])
+    emit("scoring")
 
     model_results = {}
     per_model_final_score = {}
