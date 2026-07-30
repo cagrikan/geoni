@@ -138,6 +138,7 @@ from monitor import monitor_loop
 from content_gen import content_loop
 from stability import build_stability
 from result_contract import build_brand_payload
+from api_errors import ApiHata, BILET_HATA_KODLARI, coz_dil
 from scanqueue import acquire_scan_slot, release_scan_slot, estimate_wait_seconds, sqs_enabled, enqueue_scan, enqueue_prewarm
 
 # Interaktif API dokumani (/docs, /redoc, /openapi.json) tum uc yuzeyini
@@ -178,6 +179,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Hata KODU (metinden bagimsiz, kararli) tarayici JS'inden okunabilsin.
+    # expose_headers olmadan CORS bu basligi istemciden GIZLER.
+    expose_headers=["X-Error-Code"],
 )
 
 @app.middleware("http")
@@ -955,14 +959,14 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
     # F-Y4 (Fable 2026-07-19): geçersiz domain (boşluk/@/bozuk yapı) submit'te reddedilir.
     # Yoksa crawler 0 sayfa tarayıp "complete" + uydurma skor (34) üretir + LLM parası yakar.
     if not _valid_domain(request.domain):
-        raise HTTPException(status_code=422, detail="Geçersiz web sitesi adresi. Örnek: example.com")
+        raise ApiHata(422, "gecersiz_alan_adi")
 
     # SSRF: ic/ozel adrese cozulen hedefleri erken reddet (crawler'da da guard
     # var; buradaki kontrol kullaniciya bozuk tarama beklemeden 400 dondurur).
     try:
         await asyncio.to_thread(assert_public_host, normalize_domain(request.domain))
     except BlockedHostError:
-        raise HTTPException(status_code=400, detail="Geçersiz hedef: yalnızca herkese açık siteler taranabilir.")
+        raise ApiHata(400, "gecersiz_hedef")
 
     job_id = str(uuid.uuid4())
     # Extract user_id from Authorization header if present
@@ -975,7 +979,7 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
     if request.private:
         pre_uid = await get_user_id_from_token(token) if token else None
         if not pre_uid:
-            raise HTTPException(status_code=401, detail="Özel tarama için giriş gerekli.")
+            raise ApiHata(401, "ozel_tarama_giris_gerekli")
         if await get_credit_balance(pre_uid) < 5:
             raise HTTPException(status_code=402, detail="insufficient_credits")
 
@@ -1003,14 +1007,14 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
         # user_id'siz kalir -> kullanici gecmisinde asla gorunmez.
         row_user_id = None if request.private else (await get_user_id_from_token(token) if token else None)
         if not await create_pending_audit(job_id, "web", request.domain, row_user_id):
-            raise HTTPException(status_code=503, detail="Scan could not be queued, please retry")
+            raise ApiHata(503, "tarama_baslatilamadi")
         try:
             await enqueue_scan({"kind": "web_audit", "job_id": job_id,
                                 "request": request.model_dump(), "token": token})
         except Exception as e:
             logger.error(f"SQS enqueue failed for {job_id}: {e}")
             await update_audit_status(job_id, "failed")
-            raise HTTPException(status_code=503, detail="Scan could not be queued, please retry")
+            raise ApiHata(503, "tarama_baslatilamadi")
         logger.info(f"Audit job {job_id} queued to SQS for {request.domain} (ip={client_ip})")
         return AuditResponse(job_id=job_id, status="queued", estimated_time=300)
 
@@ -1054,11 +1058,11 @@ async def get_audit_status(job_id: str):
         # Bu ayni zamanda API yeniden baslasa bile eski islerin sonucunu verir.
         row = await get_audit_row(job_id) if sqs_enabled() else None
         if row is None:
-            raise HTTPException(status_code=404, detail="Audit job not found")
+            raise ApiHata(404, "tarama_bulunamadi")
         if row["status"] == "complete":
             return {"job_id": job_id, "status": "complete", "result": row.get("result_json"), "email_sent": True}
         if row["status"] == "failed":
-            raise HTTPException(status_code=500, detail="Audit failed")
+            raise ApiHata(500, "tarama_basarisiz")
         if row["status"] == "partial":
             # Progressive result (Fable 2026-07-24): SOV hala hesaplaniyor ama
             # crawl+recall+judge'a dayali TAM SEKILLI bir ara skor hazir. Eski
@@ -1072,7 +1076,9 @@ async def get_audit_status(job_id: str):
     if job["status"] == "complete":
         return {"job_id": job_id, "status": "complete", "result": job["result"], "email_sent": job.get("email_sent", False)}
     elif job["status"] == "failed":
-        raise HTTPException(status_code=500, detail=f"Audit failed: {job['error']}")
+        # Ham istisna metni ISTEMCIYE GITMEZ (bilgi sizmasi); yalniz loga.
+        logger.error(f"Audit job {job_id} failed: {job['error']}")
+        raise ApiHata(500, "tarama_basarisiz")
     elif job["status"] == "partial":
         return {"job_id": job_id, "status": "partial", "result": job.get("result"), "email_sent": False}
     else:
@@ -1107,7 +1113,7 @@ async def stream_audit(job_id: str, lang: str = "tr"):
 
             return StreamingResponse(db_generator(), media_type="text/event-stream",
                                      headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
-        raise HTTPException(status_code=404, detail="Audit job not found")
+        raise ApiHata(404, "tarama_bulunamadi")
 
     async def event_generator():
         try:
@@ -1281,17 +1287,18 @@ async def get_brand_check_status(job_id: str):
         # kredisi dusulmus tarama sonsuza dek "not found" donmesin (web'deki desen).
         row = await get_audit_row(job_id)
         if row is None:
-            raise HTTPException(status_code=404, detail="Brand check job not found")
+            raise ApiHata(404, "tarama_bulunamadi")
         if row["status"] == "complete":
             return {"job_id": job_id, "status": "complete", "result": row.get("result_json")}
         if row["status"] == "failed":
-            raise HTTPException(status_code=500, detail="Brand check failed")
+            raise ApiHata(500, "tarama_basarisiz")
         return {"job_id": job_id, "status": row["status"], "created_at": row.get("created_at")}
     job = brand_checks_store[job_id]
     if job["status"] == "complete":
         return {"job_id": job_id, "status": "complete", "result": job["result"]}
     elif job["status"] == "failed":
-        raise HTTPException(status_code=500, detail=f"Brand check failed: {job['error']}")
+        logger.error(f"Brand check job {job_id} failed: {job['error']}")
+        raise ApiHata(500, "tarama_basarisiz")
     else:
         # `progress`: mobil bekleme ekraninin GERCEK ilerlemesi (bkz. kaydet_adim).
         # Is bellekte degilse (coklu-instance/DB fallback) alan hic gelmez; istemci
@@ -1308,7 +1315,7 @@ async def stream_brand_check(job_id: str):
     """
     queue = brand_check_events.get(job_id)
     if queue is None:
-        raise HTTPException(status_code=404, detail="Brand check job not found")
+        raise ApiHata(404, "tarama_bulunamadi")
 
     async def event_generator():
         try:
@@ -1389,7 +1396,7 @@ async def _require_user(http_request: Request) -> str:
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token")
     if await is_user_suspended(user_id):
-        raise HTTPException(status_code=403, detail="Hesabınız askıya alınmış. Lütfen destek ile iletişime geçin.")
+        raise ApiHata(403, "hesap_askida")
     return user_id
 
 async def _require_expert(http_request: Request) -> str:
@@ -1651,14 +1658,9 @@ async def create_ticket(body: TicketPurchaseRequest, http_request: Request):
     result = await purchase_ticket(user_id, body.ticket_type_id, body.audit_id,
                                    body.target or "", body.request_id)
     if not result["success"]:
-        messages = {
-            "invalid_ticket_type": "Geçersiz bilet türü",
-            "invalid_target_domain": "Bu hizmet bir web sitesine uygulanır — lütfen geçerli bir web adresi (alan adı, ör. ornekmarka.com) girin. Kişi/marka/sosyal hedefleri için farklı hizmetler mevcut.",
-            "insufficient_balance": "Yetersiz token bakiyesi",
-            "user_not_found": "Kullanıcı bulunamadı",
-            "prereq_missing": "Bu hizmet için önce iki temel hizmeti almalısınız: AI Botlarına Erişim İzni ve Sitenizin AI Tarafından Doğru Anlaşılması. Onlar olmadan bu adım sonuç vermez.",
-        }
-        raise HTTPException(status_code=400, detail=messages.get(result["error"], "Bilet satın alınamadı"))
+        # Ic hata kodu -> musteri mesaji kodu (api_errors.BILET_HATA_KODLARI).
+        # Metin yanit uretilirken istegin diline gore secilir.
+        raise ApiHata(400, BILET_HATA_KODLARI.get(result["error"], "bilet_satin_alinamadi"))
     key = result.get("ticket_type_key")
     tid = result.get("ticket_id")
     if key in AUTO_FULFILL_KEYS and tid and body.target:
@@ -1729,7 +1731,7 @@ async def _require_ticket_access(ticket_id: int, http_request: Request) -> tuple
     user_id = await _require_user(http_request)
     role, ticket = await get_ticket_role(ticket_id, user_id)
     if not role:
-        raise HTTPException(status_code=404 if not ticket else 403, detail="Bu bilete erişiminiz yok")
+        raise ApiHata(404 if not ticket else 403, "bilete_erisim_yok")
     return user_id, role
 
 @app.get("/api/tickets/{ticket_id}/messages")
@@ -1750,7 +1752,7 @@ async def ticket_audit_context_ep(ticket_id: int, http_request: Request):
         raise HTTPException(status_code=403, detail="Bu veri uzman/yönetici içindir.")
     ticket = await get_ticket_by_id(ticket_id)
     if not ticket:
-        raise HTTPException(status_code=404, detail="Bilet bulunamadı")
+        raise ApiHata(404, "bilet_bulunamadi")
     audit = None
     if ticket.get("audit_id"):
         audit = await admin_get_audit(ticket["audit_id"])
@@ -1769,7 +1771,7 @@ async def ticket_impact_ep(ticket_id: int, http_request: Request):
     await _require_ticket_access(ticket_id, http_request)
     ticket = await get_ticket_by_id(ticket_id)
     if not ticket:
-        raise HTTPException(status_code=404, detail="Bilet bulunamadı")
+        raise ApiHata(404, "bilet_bulunamadi")
     baseline = await admin_get_audit(ticket["audit_id"]) if ticket.get("audit_id") else None
     latest = await get_latest_audit_by_target(ticket.get("target") or "")
     has_newer = bool(baseline and latest and baseline.get("id") != latest.get("id"))
@@ -1805,7 +1807,7 @@ async def ticket_messages_create_ep(ticket_id: int, body: TicketMessageRequest, 
         raise HTTPException(status_code=400, detail="Mesaj veya ek gerekli")
     ok = await add_ticket_message(ticket_id, user_id, role, body.body or "", body.attachment_url or "", body.attachment_name or "")
     if not ok:
-        raise HTTPException(status_code=400, detail="Mesaj gönderilemedi")
+        raise ApiHata(400, "mesaj_gonderilemedi")
     await notify_ticket_event(ticket_id, "message", actor_role=role)
     return {"success": True}
 
@@ -1817,7 +1819,7 @@ async def ticket_upload_url_ep(ticket_id: int, body: TicketUploadUrlRequest, htt
     await _require_ticket_access(ticket_id, http_request)
     result = await create_ticket_upload_url(ticket_id, body.filename)
     if not result:
-        raise HTTPException(status_code=400, detail="Yükleme linki oluşturulamadı")
+        raise ApiHata(400, "yukleme_linki_olusturulamadi")
     return result
 
 class TicketDisputeRequest(BaseModel):
@@ -2117,7 +2119,7 @@ async def share_card(job_id: str):
     _valid_job_id(job_id)
     data = await get_share_result(job_id)
     if not data:
-        raise HTTPException(status_code=404, detail="Sonuç bulunamadı")
+        raise ApiHata(404, "sonuc_bulunamadi")
     return data
 
 
@@ -2155,7 +2157,7 @@ async def my_referral(http_request: Request):
     user_id = await _require_user(http_request)
     code = await get_or_create_referral_code(user_id)
     if not code:
-        raise HTTPException(status_code=500, detail="Referans kodu oluşturulamadı, lütfen tekrar deneyin.")
+        raise ApiHata(500, "referans_kodu_olusturulamadi")
     return {
         "code": code,
         "referred_count": await count_referred(user_id),
@@ -2189,7 +2191,7 @@ async def update_me_profile(body: SocialProfileRequest, http_request: Request):
     user_id = await _require_user(http_request)
     ok = await update_user_social(user_id, body.linkedin_url or "", body.instagram_handle or "")
     if not ok:
-        raise HTTPException(status_code=500, detail="Profil kaydedilemedi, lütfen tekrar deneyin.")
+        raise ApiHata(500, "profil_kaydedilemedi")
     return {"success": True}
 
 @app.delete("/api/me")
@@ -2199,7 +2201,7 @@ async def delete_me(http_request: Request):
     user_id = await _require_user(http_request)
     ok = await delete_user_account(user_id)
     if not ok:
-        raise HTTPException(status_code=500, detail="Hesap silinemedi, lütfen tekrar deneyin.")
+        raise ApiHata(500, "hesap_silinemedi")
     return {"success": True}
 
 class CheckoutRequest(BaseModel):
@@ -2211,19 +2213,19 @@ async def create_checkout_session(body: CheckoutRequest, http_request: Request):
     token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
     user_id = await get_user_id_from_token(token) if token else None
     if not user_id:
-        raise HTTPException(status_code=401, detail="Giriş yapmanız gerekiyor")
+        raise ApiHata(401, "giris_gerekli")
 
     packages = await get_credit_packages(active_only=True)
     package = next((p for p in packages if p["id"] == body.package_id), None)
     if not package or not package.get("polar_product_id"):
-        raise HTTPException(status_code=400, detail="Geçersiz paket")
+        raise ApiHata(400, "gecersiz_paket")
 
     # Polar tek odeme saglayicisi.
     url = None
     if package.get("polar_product_id") and polar.POLAR_ACCESS_TOKEN:
         url = await polar.create_checkout(package["polar_product_id"], user_id, package["credits"])
     if not url:
-        raise HTTPException(status_code=502, detail="Ödeme sayfası oluşturulamadı")
+        raise ApiHata(502, "odeme_sayfasi_olusturulamadi")
     return {"checkout_url": url}
 
 @app.post("/api/webhooks/polar")
@@ -2349,10 +2351,10 @@ async def iap_intent(body: IapIntentRequest, http_request: Request):
         # Domain kapısı (pre-payment): web-yüzeyi hizmeti isim/@handle hedefine
         # satılamaz (çöp dosya üretir). Para ödenmeden reddet.
         if skey in DOMAIN_ONLY_SERVICE_KEYS and normalize_service_domain(target) is None:
-            raise HTTPException(status_code=400, detail="Bu hizmet bir web sitesine uygulanır — lütfen geçerli bir web adresi (alan adı, ör. ornekmarka.com) girin.")
+            raise ApiHata(400, "hizmet_web_sitesi_gerektirir")
         missing = await missing_service_prerequisites(user_id, skey, target)
         if missing:
-            raise HTTPException(status_code=400, detail="Bu hizmet için önce iki temel hizmeti almalısınız: AI Botlarına Erişim İzni ve Sitenizin AI Tarafından Doğru Anlaşılması.")
+            raise ApiHata(400, "hizmet_on_kosul_eksik")
     ok = await create_iap_intent(user_id, body.product_id, target)
     if not ok:
         raise HTTPException(status_code=500, detail="Niyet kaydedilemedi")
@@ -2476,8 +2478,23 @@ async def admin_audit_detail(audit_id: str, http_request: Request):
     await _require_admin(http_request)
     audit = await admin_get_audit(audit_id)
     if not audit:
-        raise HTTPException(status_code=404, detail="Tarama bulunamadı")
+        raise ApiHata(404, "tarama_bulunamadi")
     return audit
+
+@app.exception_handler(ApiHata)
+async def api_hata_handler(request: Request, exc: ApiHata):
+    """Kod tasiyan musteri hatasini istegin DILINDE metne cevirir.
+
+    Endpoint'ler yalniz kodu firlatir (`raise ApiHata(400, "gecersiz_paket")`);
+    dil cozumu tek yerde. `detail` duz metin kalir — web istemcisi bu alani
+    dogrudan basiyor. Kararli kod ayrica X-Error-Code basliginda.
+    """
+    dil = coz_dil(request.headers.get("accept-language", ""),
+                  request.headers.get("x-lang", ""))
+    return JSONResponse(status_code=exc.status_code,
+                        content={"detail": exc.metin(dil)},
+                        headers={"X-Error-Code": exc.kod})
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
