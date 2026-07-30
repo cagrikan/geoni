@@ -1,4 +1,17 @@
 fastapi==0.115.6
+# starlette fastapi'nin gecisli bagimliligi (fastapi 0.115.6 -> >=0.40,<0.42).
+# Pinsizken her yeniden derleme farkli surum cekebiliyordu; guvenlik yuzeyi
+# derleme gunune gore degisiyordu. 2026-07-30 olcumu (kod tarandi, tahmin degil):
+#   - CVE-2026-48710 "BADHOST" (host header -> request.url dogrulamasi, <1.0.1):
+#     ERISILEMEZ — uygulamada `request.url` HIC kullanilmiyor, Host okunmuyor,
+#     TrustedHostMiddleware yok; yetki `Authorization: Bearer` basligindan gelir,
+#     URL'den TURETILMEZ. (Iki middleware var: CORS + yanit basliklari.)
+#   - CVE-2025-54121 (multipart buyuk dosya DoS, <0.47.2): ERISILEMEZ —
+#     UploadFile/File()/Form() yok, python-multipart bagimlilik bile degil.
+# ⚠️ KOSUL: bu muafiyet "dosya yukleme ucu yok" ve "request.url'den guvenlik
+# karari verilmiyor" varsayimlarina dayanir. Bunlardan biri degisirse starlette
+# >=1.0.1'e cikilmali (fastapi major yukseltmesi gerektirir -> kurucu onayi).
+starlette==0.41.3
 uvicorn==0.34.0
 sentry-sdk>=2.0,<3.0   # A4-5: hata toplama (SENTRY_DSN yoksa no-op)
 pydantic==2.10.4
