@@ -130,6 +130,13 @@ async function promoKoduAyir(senderId, batch) {
   return null;
 }
 
+// Kodun NEREDE kullanilacagi acikca yazilir. "Uygulamada Cuzdan" demek yetmiyor:
+// promosyon alani once WEB'de yayinlandi, mobil surum App Store incelemesinde.
+// Adres verilmezse mobil kullanici kodu alip kullanamiyor.
+const KULLANIM_TARIFI =
+  'app.geoni.ai adresinde Cüzdan > "Promosyon kodun var mı?" alanına gir, '
+  + 'tokenlar hesabına düşsün.';
+
 async function promoKoduGonder(senderId, cfg) {
   const batch = (cfg.promo_active_batch || '').trim();
   if (!batch) return false; // dagitim kapali
@@ -145,13 +152,12 @@ async function promoKoduGonder(senderId, cfg) {
     metin = `Sana daha önce verdiğim kod duruyor: ${sonuc.code}
 
 `
-      + 'Uygulamada Cüzdan > "Promosyon kodu" alanına gir, tokenlar hesabına düşsün.';
+      + KULLANIM_TARIFI;
   } else {
     metin = `Promosyon kodun: ${sonuc.code}
 
 `
-      + 'Uygulamada Cüzdan > "Promosyon kodu" alanına gir, tokenlar hesabına düşsün. '
-      + 'Kod tek kullanımlık ve sana özel.';
+      + KULLANIM_TARIFI + ' Kod tek kullanımlık ve sana özel.';
   }
   await sendDm(senderId, metin, cfg.ig_access_token);
   await logDm(senderId, 'assistant', metin);
