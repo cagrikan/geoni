@@ -1724,7 +1724,7 @@ async def check_brand_recall(
     async def _run_sov():
         sov_topic_ = topic
         if not has_usable_topic(name, sov_topic_) and not custom_queries:
-            sov_topic_ = await infer_topic(name, _sanitize_web_results(web_results), _ask_aux)
+            sov_topic_ = await infer_topic(name, _sanitize_web_results(web_results), _ask_aux, lang)
         # F-Y1 determinizm: SOV sorgu setini (name, type, lang, topic) anahtarli son
         # audit'ten PINLE -> ayni hedef ayni sorgulari alir, SOV koşu-arasi savrulmaz.
         # custom_queries verilmisse pinleme yok (kullanici niyeti onceliklidir).
