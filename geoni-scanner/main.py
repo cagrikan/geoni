@@ -29,7 +29,7 @@ from ssrf_guard import assert_public_host, BlockedHostError
 from indexing import check_indexing_status
 from scoring import compute_ai_visibility_score
 from topics import generate_topics_and_opportunities
-from ratelimit import enforce_audit_rate_limits, RateLimitExceeded
+from ratelimit import enforce_audit_rate_limits, enforce_promo_rate_limit, RateLimitExceeded
 from mailer import (rapor_adresi, send_audit_report_email,
                     send_brand_report_email, send_purchase_email,
                     send_refund_email)
@@ -45,6 +45,7 @@ BRAND_SCAN_COST = 10
 from free_scan import free_scan_gate, record_free_scan
 import attest  # Apple App Attest: mobil muafiyetini imzaya baglar (bkz. _mobile_exempt)
 from db import (
+    promo_kodu_kullan, promo_toplu_uret, promo_parti_ozeti,
     create_pending_audit, update_audit_status, get_audit_row, get_auth_email,
     save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits, get_credit_balance,
     is_strict_admin, get_admin_summary, get_admin_scans_daily, get_admin_credits_stats, get_admin_provider_usage,
@@ -1582,6 +1583,32 @@ async def admin_delete_campaign(campaign_id: str, http_request: Request):
         raise HTTPException(status_code=400, detail="Kampanya silinemedi")
     return {"success": True}
 
+# ── Promosyon kodlari (admin) ───────────────────────────────────────────
+class PromoBatchRequest(BaseModel):
+    batch: str = Field(..., min_length=1, max_length=60)
+    credits: int = Field(..., ge=1, le=1000)
+    count: int = Field(..., ge=1, le=1000)
+    expires_at: Optional[str] = None
+
+
+@app.get("/api/admin/promo")
+async def admin_promo_ozet(http_request: Request):
+    await _require_admin_scope(http_request, "campaigns")
+    return await promo_parti_ozeti()
+
+
+@app.post("/api/admin/promo")
+async def admin_promo_uret(body: PromoBatchRequest, http_request: Request):
+    """Toplu kod uretir. Kodlar YANITTA BIR KEZ doner — admin bunlari kaydeder
+    ya da DM botu tabloya bakip dagitir. Tavan (1000 kod x 1000 token) bilincli:
+    kazara 'sinirsiz token' partisi uretilmesin."""
+    await _require_admin_scope(http_request, "campaigns")
+    kodlar = await promo_toplu_uret(body.batch, body.credits, body.count, body.expires_at)
+    if not kodlar:
+        raise ApiHata(400, "promo_kullanilamadi")
+    return {"success": True, "count": len(kodlar), "codes": kodlar}
+
+
 # ── Bilet (ticket) sistemi ──────────────────────────────────────────────
 # Tarama sonuclarindaki eksiklikleri (sema, entity, icerik vb.) token ile
 # satin alinabilen somut is emirlerine cevirir. Akis: musteri satin alir
@@ -2136,6 +2163,35 @@ async def set_my_referred_by(body: ReferredByRequest, http_request: Request):
     user_id = await _require_user(http_request)
     res = await set_referred_by(user_id, body.ref_code or "")
     return {"success": bool(res.get("ok")), "reason": res.get("reason")}
+
+
+class PromoRedeemRequest(BaseModel):
+    code: str = Field(..., min_length=1, max_length=40)
+
+
+@app.post("/api/promo/redeem")
+async def redeem_promo(body: PromoRedeemRequest, http_request: Request):
+    """Promosyon kodunu kullanir; hediye token yatirir.
+
+    Kod HEDIYE token verir (p_gifted_delta) -> `total_credits_purchased`
+    ARTMAZ, yani kullanici "premium" olmaz. Tokeni yine de HARCAYABILIR:
+    ucretsiz-tarama kapisi 2026-07-30'dan beri bakiyeye bakiyor
+    (free_scan.free_scan_gate); oncesinde bu ozellik ise yaramazdi.
+    """
+    user_id = await _require_user(http_request)
+    try:
+        enforce_promo_rate_limit(user_id)
+    except RateLimitExceeded as e:
+        raise HTTPException(
+            status_code=429,
+            detail=_rate_limit_message(getattr(body, "lang", None) or "tr", e.retry_after_seconds),
+            headers={"Retry-After": str(e.retry_after_seconds)},
+        )
+    sonuc = await promo_kodu_kullan(user_id, body.code)
+    if not sonuc.get("ok"):
+        # Kodun KENDISI hicbir yanitta/logda gecmez — sir.
+        raise ApiHata(400, sonuc.get("hata", "promo_kullanilamadi"))
+    return {"success": True, "credits": sonuc["credits"]}
 
 
 class SocialProfileRequest(BaseModel):

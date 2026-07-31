@@ -9,6 +9,7 @@ import base64
 import json
 import os
 import re
+import secrets
 import time
 import uuid
 import html
@@ -2339,6 +2340,172 @@ async def grant_referral_reward(user_id: str) -> None:
             await send_referral_reward_push(referrer_id, REFERRAL_REWARD_CREDITS)
         except Exception as e:
             logger.warning(f"grant_referral_reward push error: {e}")
+
+
+# ── Promosyon kodlari ───────────────────────────────────────────────────────
+# TEK KULLANIMLIK benzersiz kodlar; hediye token verir (p_gifted_delta), yani
+# `total_credits_purchased` ARTMAZ -> kullanici "premium" olmaz ama tokenini
+# HARCAYABILIR (2026-07-30'da duzeltilen ucretsiz-tarama kapisi sayesinde;
+# oncesinde bu ozellik calismazdi, bkz. free_scan.free_scan_gate).
+#
+# Kodlar SIRDIR: promo_codes tablosunda RLS acik ve HIC policy yok, yalniz
+# service_role erisir. Kodu ASLA loga/hata mesajina yazma.
+
+# Karistirilabilir karakterler (0/O, 1/I/L) BILEREK yok: kod telefonda elle
+# yazilacak ve DM'de okunacak.
+_PROMO_ALFABE = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
+
+def promo_kodu_normalize(kod: str) -> str:
+    """Kullanici girisini kanonik hale getirir: bosluk/tire silinir, buyutulur.
+    'ab cd-1234' ve 'ABCD1234' AYNI koddur — kullanici tire koyarsa cezalandirma."""
+    return "".join(ch for ch in (kod or "").upper() if ch.isalnum())
+
+
+def promo_kodu_uret(uzunluk: int = 10) -> str:
+    return "".join(secrets.choice(_PROMO_ALFABE) for _ in range(uzunluk))
+
+
+async def promo_kodu_kullan(user_id: str, kod: str) -> dict:
+    """Kodu kullanir ve hediye tokenlari yatirir. {"ok": bool, "hata": str, "credits": int}
+
+    Sira ONEMLI: once kodu ATOMIK olarak sahiplen (kosullu UPDATE), sonra
+    krediyi yatir. Tersi olsaydi es zamanli iki istek ayni kodu iki kez
+    odeyebilirdi. Kredi yatirma idempotent (p_external_id=promo:<kod>), yani
+    sahiplenme sonrasi yeniden deneme guvenli.
+    """
+    kod = promo_kodu_normalize(kod)
+    if not (4 <= len(kod) <= 32):
+        return {"ok": False, "hata": "gecersiz_promo_kodu"}
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
+        return {"ok": False, "hata": "promo_kullanilamadi"}
+
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/promo_codes?code=eq.{kod}"
+                "&select=code,credits,batch,expires_at,redeemed_by",
+                headers=_headers(), timeout=10,
+            )
+            satirlar = r.json() if r.status_code == 200 else []
+            if not satirlar:
+                return {"ok": False, "hata": "gecersiz_promo_kodu"}
+            satir = satirlar[0]
+            if satir.get("redeemed_by"):
+                return {"ok": False, "hata": "promo_kodu_kullanilmis"}
+            son = satir.get("expires_at")
+            if son and _pgrest_zaman_gecti(son):
+                return {"ok": False, "hata": "promo_kodu_suresi_gecmis"}
+
+            # ATOMIK sahiplenme: `redeemed_by=is.null` kosulu yarisi burada keser.
+            sahiplen = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/promo_codes?code=eq.{kod}&redeemed_by=is.null",
+                headers={**_headers(), "Prefer": "return=representation"},
+                json={"redeemed_by": user_id,
+                      "redeemed_at": datetime.now(timezone.utc).isoformat()},
+                timeout=10,
+            )
+            if sahiplen.status_code == 409 or "23505" in (sahiplen.text or ""):
+                # (batch, redeemed_by) benzersiz indeksi: ayni partiden ikinci kod.
+                return {"ok": False, "hata": "promo_partisi_zaten_kullanildi"}
+            if sahiplen.status_code not in (200, 201):
+                logger.warning(f"promo sahiplenme {sahiplen.status_code}: {sahiplen.text[:150]}")
+                return {"ok": False, "hata": "promo_kullanilamadi"}
+            alinan = sahiplen.json() if sahiplen.text else []
+            if not alinan:
+                return {"ok": False, "hata": "promo_kodu_kullanilmis"}  # yarisi kaybettik
+
+            n = int(alinan[0]["credits"])
+            rpc = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/apply_credit_change",
+                headers=_headers(),
+                json={"p_user_id": user_id, "p_amount": n, "p_type": "promo",
+                      "p_description": f"Promosyon kodu (+{n} token)",
+                      "p_channel": "promo", "p_external_id": f"promo:{kod}",
+                      "p_gifted_delta": n, "p_idempotent": True},
+                timeout=10,
+            )
+            if rpc.status_code != 200:
+                # TELAFI: kod yandi ama token yatmadi -> sahiplenmeyi geri al ki
+                # kullanici kodu tekrar deneyebilsin (aksi halde sessizce kaybederdi).
+                logger.error(f"promo kredi yatirilamadi ({rpc.status_code}), sahiplenme geri aliniyor")
+                await client.patch(
+                    f"{SUPABASE_URL}/rest/v1/promo_codes?code=eq.{kod}",
+                    headers=_headers(),
+                    json={"redeemed_by": None, "redeemed_at": None}, timeout=10,
+                )
+                return {"ok": False, "hata": "promo_kullanilamadi"}
+            return {"ok": True, "credits": n}
+    except Exception as e:
+        logger.warning(f"promo_kodu_kullan error: {e}")
+        return {"ok": False, "hata": "promo_kullanilamadi"}
+
+
+def _pgrest_zaman_gecti(iso: str) -> bool:
+    try:
+        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt <= datetime.now(timezone.utc)
+    except Exception:
+        return False  # ayristirilamadi -> suresi gecmis SAYMA (kullaniciyi cezalandirma)
+
+
+async def promo_toplu_uret(batch: str, credits: int, adet: int,
+                           expires_at: str | None = None) -> list:
+    """Admin: bir partide `adet` benzersiz kod uretir. Uretilen kodlari doner —
+    cagiran bunlari BIR KEZ gorur (tabloda dururlar ama arayuze listelenirken
+    de gorunur; kod sir olsa da admin gormeli, dagitim onun isi)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return []
+    batch = (batch or "").strip()[:60]
+    if not batch or credits <= 0 or credits > 1000 or adet <= 0 or adet > 1000:
+        return []
+    satirlar = [{"code": promo_kodu_uret(), "credits": credits, "batch": batch,
+                 "expires_at": expires_at} for _ in range(adet)]
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/promo_codes",
+                headers={**_headers(), "Prefer": "return=representation"},
+                json=satirlar, timeout=20,
+            )
+            if r.status_code in (200, 201):
+                return [x["code"] for x in r.json()]
+            logger.warning(f"promo_toplu_uret {r.status_code}: {r.text[:200]}")
+    except Exception as e:
+        logger.warning(f"promo_toplu_uret error: {e}")
+    return []
+
+
+async def promo_parti_ozeti() -> list:
+    """Admin: parti bazinda uretilen/dagitilan/kullanilan sayilari."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return []
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/promo_codes"
+                "?select=batch,credits,expires_at,issued_to,redeemed_by&limit=5000",
+                headers=_headers(), timeout=20,
+            )
+            if r.status_code != 200:
+                return []
+            ozet: dict = {}
+            for x in r.json():
+                b = ozet.setdefault(x["batch"], {
+                    "batch": x["batch"], "credits": x["credits"],
+                    "expires_at": x.get("expires_at"),
+                    "toplam": 0, "dagitilan": 0, "kullanilan": 0})
+                b["toplam"] += 1
+                if x.get("issued_to"):
+                    b["dagitilan"] += 1
+                if x.get("redeemed_by"):
+                    b["kullanilan"] += 1
+            return sorted(ozet.values(), key=lambda x: x["batch"])
+    except Exception as e:
+        logger.warning(f"promo_parti_ozeti error: {e}")
+    return []
 
 
 async def admin_set_is_admin(user_id: str, is_admin_flag: bool) -> bool:

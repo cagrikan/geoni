@@ -155,3 +155,19 @@ def enforce_audit_rate_limits(client_ip: str, email: str, domain: str, skip_ip: 
         logger.warning(f"Rate limit hit: {e.dimension}, retry after {e.retry_after_seconds}s")
         raise
 
+
+
+# Promosyon kodu deneme siniri — KABA KUVVET korumasi.
+# Kod uzayi 31^10 (~8x10^14) yani tahmin pratikte imkansiz; yine de sinirsiz
+# deneme (a) sunucuya bedava yuk bindirir, (b) sizmis bir parti listesinin
+# hangi kodlarinin hala gecerli oldugunu taratmayi ucuzlatir. Hesap BASINA
+# sinirlanir (uc auth zorunlu), IP'ye degil: mobilde carrier NAT bininlerce
+# kullaniciyi tek IP'de topluyor (bkz. enforce_audit_rate_limits notu).
+PROMO_DENEME_LIMITI = int(os.environ.get("PROMO_ATTEMPT_LIMIT", "10"))
+PROMO_DENEME_PENCERESI = int(os.environ.get("PROMO_ATTEMPT_WINDOW", "600"))  # 10 dk
+
+
+def enforce_promo_rate_limit(user_id: str) -> None:
+    """RateLimitExceeded firlatir. Basarili kullanimda da sayar — zaten hesap
+    basina tek kod kullanilabiliyor, mesru kullanici limite yaklasmaz."""
+    _check(f"promo:{user_id}", PROMO_DENEME_LIMITI, PROMO_DENEME_PENCERESI)

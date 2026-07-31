@@ -132,6 +132,31 @@ MESAJLAR: dict[str, dict[str, str]] = {
         "tr": "Mesaj gönderilemedi.",
         "en": "The message could not be sent.",
     },
+    # ── Promosyon kodu ─────────────────────────────────────────────────
+    # DIKKAT: mesajlar kodun VARLIGI hakkinda bilgi sizdirmamali diye degil —
+    # kod uzayi zaten tahmin edilemez — kullaniciya NE YAPACAGINI soylesin diye
+    # ayrilmis. "Gecersiz" ile "kullanilmis" ayri: ikincisinde kullanici kodu
+    # dogru yazdigini bilir, destege bosuna yazmaz.
+    "gecersiz_promo_kodu": {
+        "tr": "Bu promosyon kodu geçerli değil. Kodu kontrol edip tekrar deneyin.",
+        "en": "This promo code is not valid. Please check it and try again.",
+    },
+    "promo_kodu_kullanilmis": {
+        "tr": "Bu promosyon kodu daha önce kullanılmış.",
+        "en": "This promo code has already been used.",
+    },
+    "promo_kodu_suresi_gecmis": {
+        "tr": "Bu promosyon kodunun süresi dolmuş.",
+        "en": "This promo code has expired.",
+    },
+    "promo_partisi_zaten_kullanildi": {
+        "tr": "Bu kampanyadan zaten yararlandınız.",
+        "en": "You have already used a code from this campaign.",
+    },
+    "promo_kullanilamadi": {
+        "tr": "Promosyon kodu şu anda kullanılamadı. Lütfen birazdan tekrar deneyin.",
+        "en": "The promo code could not be applied right now. Please try again shortly.",
+    },
     "yukleme_linki_olusturulamadi": {
         "tr": "Yükleme linki oluşturulamadı.",
         "en": "The upload link could not be created.",
