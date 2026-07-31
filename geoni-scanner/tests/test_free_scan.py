@@ -233,28 +233,58 @@ _KOK = pathlib.Path(__file__).resolve().parent.parent
 
 
 def _sabit(kaynak: str, ad: str) -> int:
-    m = re.search(rf"^{ad} = (\d+)$", kaynak, re.M)
-    assert m, f"{ad} sabiti main.py'de bulunamadi (yeniden adlandirilmis?)"
+    m = re.search(rf"^{ad} = (\d+)", kaynak, re.M)
+    assert m, f"{ad} sabiti scan_costs.py'de bulunamadi (yeniden adlandirilmis?)"
     return int(m.group(1))
 
 
-def test_kapinin_bildigi_bedel_gercek_dusumle_ayni():
-    """Kapi "bu tarama odenecek mi" kararini main.py'deki sabitlere gore veriyor,
-    gercek dusum ise db.py icinde. Ikisi ayrisirsa kapi YANLIS karar verir:
-    bedel dususe (or. 5->3) tavan gereksiz uygulanir; artarsa bakiyesi yetmeyen
-    kullanici tavani atlar ve odemeden tarar."""
+def test_bedeller_tek_kaynaktan_okunuyor():
+    """Bedel artik scan_costs.py'de; main.py ve db.py onu IMPORT etmeli.
+
+    Eskiden her dosya kendi sayisini tasiyordu ve biri degisince digeri sessizce
+    kaliyordu: kapi "odenecek mi" kararini yanlis verir, `audits.credits_spent`
+    gercek dusumden ayrisir (2026-07-28'deki 1120 hayali kredi bu bicimdeydi)."""
     main_kaynak = (_KOK / "main.py").read_text(encoding="utf-8")
     db_kaynak = (_KOK / "db.py").read_text(encoding="utf-8")
 
-    web = _sabit(main_kaynak, "WEB_SCAN_COST")
-    assert f'deduct_credits(user_id, {web}, "web_audit"' in db_kaynak, \
-        f"save_audit'teki web bedeli WEB_SCAN_COST ({web}) ile ayni degil"
+    assert "from scan_costs import" in main_kaynak, "main.py bedelleri tek kaynaktan almiyor"
+    assert "from scan_costs import" in db_kaynak, "db.py bedelleri tek kaynaktan almiyor"
 
-    marka = _sabit(main_kaynak, "BRAND_SCAN_COST")
-    m = re.search(r"credits = (\d+) if \(deduct and user_id\) else 0", db_kaynak)
-    assert m, "save_brand_check'teki bedel satiri bulunamadi (yeniden yazilmis?)"
-    assert int(m.group(1)) == marka, \
-        f"marka bedeli db.py'de {m.group(1)}, main.py'de {marka}"
+
+def test_bedel_hicbir_yerde_duz_sayi_olarak_yazilmamis():
+    """Sabit adi yerine duz sayi yazilirsa tek-kaynak korumasi sessizce delinir."""
+    kalip_dosya = {
+        "db.py": [
+            r'deduct_credits\(user_id, \d+, "web_audit"',
+            r"credits = \d+ if \(deduct and user_id\) else 0",
+            r'"credits_spent": \d+ if \(deduct and user_id\)',
+        ],
+        "main.py": [
+            r'deduct_credits\(user_id, \d+, "web_audit_private"',
+            r"deduct_credits\(user_id, \d+, f\"\{request\.type",
+        ],
+    }
+    for dosya, kaliplar in kalip_dosya.items():
+        kaynak = (_KOK / dosya).read_text(encoding="utf-8")
+        for kalip in kaliplar:
+            bulunan = re.search(kalip, kaynak)
+            assert not bulunan, (
+                f"{dosya}: bedel duz sayi olarak yazilmis -> {bulunan.group(0)!r}. "
+                "scan_costs.py'deki sabiti kullan.")
+
+
+def test_public_uc_gercek_bedelleri_donuyor():
+    """Arayuz 'N token ~ kac tarama' hesabini bu uctan yapiyor. Uc gercek
+    bedelden koparsa musteriye yanlis sayi gosterilir ve fark ancak sikayetle
+    anlasilir."""
+    import scan_costs
+
+    web = _sabit((_KOK / "scan_costs.py").read_text(encoding="utf-8"), "WEB_SCAN_COST")
+    marka = _sabit((_KOK / "scan_costs.py").read_text(encoding="utf-8"), "BRAND_SCAN_COST")
+    assert scan_costs.SCAN_COSTS["web"] == web
+    assert scan_costs.SCAN_COSTS["person"] == marka == scan_costs.SCAN_COSTS["brand"]
+    # Sosyal ucretsiz kalmali: bedel gelirse asagidaki test de kirilir.
+    assert scan_costs.SCAN_COSTS["social"] == 0
 
 
 def test_sosyal_tarama_hala_dusumsuz():

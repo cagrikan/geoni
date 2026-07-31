@@ -36,12 +36,12 @@ from mailer import (rapor_adresi, send_audit_report_email,
 from brand_recall import check_brand_recall, infer_brand_identity, SCORING_VERSION
 from devicecheck import MAX_FREE_SCANS as FREE_SCAN_LIMIT
 
-# Tarama basina dusen token. TEK KAYNAK DEGIL — gercek dusum db.save_audit
-# (5) ve db.save_brand_check (10) icinde; buradaki degerler ucretsiz-tarama
-# kapisinin "bu tarama odenecek mi" kararini vermesi icin. tests/test_free_scan.py
-# ikisinin AYNI kaldigini dogruluyor (ayrisirsa kapi yanlis karar verir).
-WEB_SCAN_COST = 5
-BRAND_SCAN_COST = 10
+# Tarama basina dusen token. Artik TEK KAYNAK: scan_costs.py. Once burada,
+# db.save_audit'te, db.save_brand_check'te ve iki private-dusum satirinda AYRI
+# AYRI yaziliydi; biri degisip digeri kalirsa `audits.credits_spent` gercek
+# dusumle tutmuyor (2026-07-28'deki 1120 hayali kredi tam bu bicimdeydi) ve
+# ucretsiz-tarama kapisi yanlis karar veriyor.
+from scan_costs import WEB_SCAN_COST, BRAND_SCAN_COST, SCAN_COSTS
 from free_scan import free_scan_gate, record_free_scan
 import attest  # Apple App Attest: mobil muafiyetini imzaya baglar (bkz. _mobile_exempt)
 from db import (
@@ -533,7 +533,7 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
             # F3: dusum donusunu KONTROL et. On-kontrol ile bu nokta arasinda
             # eszamanli baska bir private tarama bakiyeyi tuketmis olabilir;
             # atomik dusum False donerse ucretsiz sonuc TESLIM ETME.
-            charged = await deduct_credits(user_id, 5, "web_audit_private", job_id) if user_id else False
+            charged = await deduct_credits(user_id, WEB_SCAN_COST, "web_audit_private", job_id) if user_id else False
             if not charged:
                 jobs_store[job_id].update({"status": "failed", "error": "insufficient_credits"})
                 if sqs_enabled():
@@ -683,7 +683,7 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
             else:
                 # F3: dusum donusunu KONTROL et; on-kontrol ile bu nokta arasinda
                 # eszamanli baska tarama bakiyeyi tuketmis olabilir -> teslim etme.
-                charged = await deduct_credits(user_id, 10, f"{request.type or 'person'}_check_private", job_id) if user_id else False
+                charged = await deduct_credits(user_id, BRAND_SCAN_COST, f"{request.type or 'person'}_check_private", job_id) if user_id else False
                 if not charged:
                     brand_checks_store[job_id].update({"status": "failed", "error": "insufficient_credits"})
                     logger.warning(f"Private brand {job_id}: dusum basarisiz, teslim iptal")
@@ -2083,6 +2083,17 @@ async def credit_packages():
         {k: p.get(k) for k in ("id", "name", "credits", "display_price", "currency", "apple_product_id")}
         for p in packages
     ]
+
+@app.get("/api/scan-costs")
+async def scan_costs():
+    """Tarama basina token maliyeti (public).
+
+    Arayuz "20 token ~ kac tarama" diyebilmek icin buna ihtiyac duyuyor.
+    Istemciye SABIT YAZILMAZ: yazilsaydi fiyat degistiginde kullaniciya yanlis
+    sayi gosterilirdi ve fark ancak musteri sikayetiyle anlasilirdi.
+    """
+    return SCAN_COSTS
+
 
 @app.get("/api/me/transactions")
 async def my_transactions(http_request: Request, limit: int = 20, offset: int = 0):

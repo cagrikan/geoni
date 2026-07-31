@@ -19,6 +19,8 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse, parse_qs, quote
 import httpx
 
+from scan_costs import WEB_SCAN_COST, BRAND_SCAN_COST
+
 logger = logging.getLogger(__name__)
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
@@ -180,12 +182,12 @@ async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str
         "domain": request_data.get("domain"),
         "score": result.get("score"),
         "result_json": result,
-        # Gercek dusumle ayni olmali (asagida deduct_credits 5 dusuyor) -
+        # Gercek dusumle ayni olmali (asagida ayni sabitle dusuluyor) -
         # eskiden 10 yaziliyordu, kullanici gercekte harcadigindan fazlasini goruyordu.
         # user_id kosulu da SART: anonim/ucretsiz taramada dusum yapilmiyor
         # (asagida `if user_id and deduct`), ama satira 5 yaziliyordu -> admin
         # raporu odenmemis krediyi harcanmis sayiyordu.
-        "credits_spent": 5 if (deduct and user_id) else 0,
+        "credits_spent": WEB_SCAN_COST if (deduct and user_id) else 0,
         "status": "complete",
         "completed_at": result.get("created_at"),
     }
@@ -205,8 +207,8 @@ async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str
                 if user_id and deduct:
                     # Donus DEGERI kontrol edilir: False donerse satir "5 kredi
                     # harcandi" demeye devam edemez.
-                    if not await deduct_credits(user_id, 5, "web_audit", job_id):
-                        await _maliyeti_sifirla(client, job_id, user_id, 5, "web_audit")
+                    if not await deduct_credits(user_id, WEB_SCAN_COST, "web_audit", job_id):
+                        await _maliyeti_sifirla(client, job_id, user_id, WEB_SCAN_COST, "web_audit")
                 # (C) Ayni hedefin ESKI tam raporunu hemen sadelestir (skor kalir).
                 if user_id:
                     asyncio.create_task(run_audit_retention(user_id))
@@ -237,7 +239,7 @@ async def save_brand_check(job_id: str, request_data: dict, result: dict, user_i
     entity_type = request_data.get("type", "person")
     # save_audit ile ayni kural: dusum `if user_id and deduct` ile yapiliyor,
     # yazilan maliyet de ayni kosula bagli olmali (anonim taramada 0).
-    credits = 10 if (deduct and user_id) else 0
+    credits = BRAND_SCAN_COST if (deduct and user_id) else 0
 
     payload = {
         "id": job_id,
