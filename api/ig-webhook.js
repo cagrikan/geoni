@@ -43,7 +43,7 @@ function sb(path, init = {}) {
 }
 
 async function getConfig() {
-  const keys = 'ig_verify_token,ig_app_secret,ig_access_token,ig_self_id,ig_autoreply_enabled,ig_autoreply_mode,ig_autoreply_comment_text,ig_autoreply_dm_text,ig_autoreply_close_text';
+  const keys = 'ig_verify_token,ig_app_secret,ig_access_token,ig_self_id,ig_autoreply_enabled,ig_autoreply_mode,ig_autoreply_comment_text,ig_autoreply_dm_text,ig_autoreply_close_text,promo_active_batch';
   const r = await sb(`app_config?key=in.(${keys})&select=key,value`);
   const rows = r.ok ? await r.json() : [];
   return Object.fromEntries(rows.map((x) => [x.key, x.value]));
@@ -75,6 +75,87 @@ async function sendDm(recipientId, text, token) {
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ recipient: { id: recipientId }, message: { text } }),
   }).catch(() => {});
+}
+
+// ── Promosyon kodu dagitimi ───────────────────────────────────────────────
+// KRITIK: kodu AI URETMEZ. Model bir kod "uydurursa" kullanici calismayan bir
+// kodla gelir ve guveni kaybederiz; ustelik uydurulan kod bir baskasinin gercek
+// koduyla cakisabilir. Kod HER ZAMAN promo_codes tablosundan cekilir ve DM'e
+// duz metin olarak, AI'a hic ugramadan yazilir.
+//
+// Hangi partiden dagitildigi app_config.promo_active_batch ile belirlenir.
+// Anahtar bos ise dagitim KAPALIDIR (varsayilan kapali — yanlislikla token
+// dagitilmasin).
+const KOD_NIYETI =
+  /(promosyon|promo)\s*kod|hediye\s*kod|\bkod\s*(istiyorum|ver|alabilir|nas[ıi]l)|^\s*(kod|hediye)\s*$/i;
+
+/** Gonderen icin kod ayirir. AYNI gonderen tekrar isterse AYNI kodu doner
+ *  (yeni kod yakmaz) — (batch, issued_to) benzersiz indeksi de bunu zorlar. */
+async function promoKoduAyir(senderId, batch) {
+  // 1) Bu gonderene daha once kod verildiyse onu tekrar ver.
+  const varOlan = await sb(
+    `promo_codes?batch=eq.${encodeURIComponent(batch)}&issued_to=eq.${encodeURIComponent(senderId)}&select=code&limit=1`,
+  );
+  if (varOlan.ok) {
+    const rows = await varOlan.json().catch(() => []);
+    if (rows.length) return { code: rows[0].code, tekrar: true };
+  }
+
+  // 2) Bos bir kod kap. Es zamanli istekler ayni kodu secebilir; kosullu
+  //    UPDATE (issued_to=is.null) yalniz birine verir, digeri yeniden dener.
+  for (let deneme = 0; deneme < 5; deneme++) {
+    const bos = await sb(
+      `promo_codes?batch=eq.${encodeURIComponent(batch)}&issued_to=is.null&redeemed_by=is.null&select=code&limit=1`,
+    );
+    if (!bos.ok) return null;
+    const adaylar = await bos.json().catch(() => []);
+    if (!adaylar.length) return { tukendi: true };
+
+    const kod = adaylar[0].code;
+    const kap = await sb(
+      `promo_codes?code=eq.${encodeURIComponent(kod)}&issued_to=is.null`,
+      {
+        method: 'PATCH',
+        headers: { Prefer: 'return=representation' },
+        body: JSON.stringify({ issued_to: senderId, issued_at: new Date().toISOString() }),
+      },
+    );
+    if (kap.ok) {
+      const alinan = await kap.json().catch(() => []);
+      if (alinan.length) return { code: kod, tekrar: false };
+    }
+    // 409 = (batch, issued_to) cakismasi: bu gonderene baska bir istek zaten
+    // kod vermis -> bastan bak, 1. adim onu bulur.
+  }
+  return null;
+}
+
+async function promoKoduGonder(senderId, cfg) {
+  const batch = (cfg.promo_active_batch || '').trim();
+  if (!batch) return false; // dagitim kapali
+  const sonuc = await promoKoduAyir(senderId, batch);
+  if (!sonuc) return false;
+
+  let metin;
+  if (sonuc.tukendi) {
+    // Durust ol: "kod bitti" de, oyalama.
+    metin = 'Bu kampanyadaki kodların hepsi dağıtıldı 😔 Yeni kod açtığımızda buradan duyuracağız. '
+      + 'Bu arada ilk taraman zaten ücretsiz: geoni.ai';
+  } else if (sonuc.tekrar) {
+    metin = `Sana daha önce verdiğim kod duruyor: ${sonuc.code}
+
+`
+      + 'Uygulamada Cüzdan > "Promosyon kodu" alanına gir, tokenlar hesabına düşsün.';
+  } else {
+    metin = `Promosyon kodun: ${sonuc.code}
+
+`
+      + 'Uygulamada Cüzdan > "Promosyon kodu" alanına gir, tokenlar hesabına düşsün. '
+      + 'Kod tek kullanımlık ve sana özel.';
+  }
+  await sendDm(senderId, metin, cfg.ig_access_token);
+  await logDm(senderId, 'assistant', metin);
+  return true;
 }
 
 // "Catch": influencer/isbirligi niyeti yakalaninca ekibe EMAIL (Resend). ig_dm_log
@@ -374,6 +455,11 @@ async function handleDm(senderId, msg, cfg) {
 
   if (cfg.ig_autoreply_mode === 'ai' && process.env.ANTHROPIC_API_KEY && userText) {
     await logDm(senderId, 'user', userText);
+
+    // Promosyon kodu istegi AI'a HIC UGRAMADAN karsilanir: model kod uyduramaz,
+    // kod tablodan gelir. Gunluk DM tavanindan da ONCE — kodunu isteyen
+    // kullanici tavana takilip elleri bos donmesin.
+    if (KOD_NIYETI.test(userText) && (await promoKoduGonder(senderId, cfg))) return;
 
     // "Catch": influencer/isbirligi niyeti → ekibe email bildirimi (gunde 1/sender).
     const creatorNiyeti = /(influencer|creator|i[şs]birli[ğg]i|isbirligi|collab|reklam ver|partner|el[çc]i ol|sponsor|birlikte [çc]al[ıi])/i.test(userText);
