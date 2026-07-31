@@ -2182,9 +2182,15 @@ async def redeem_promo(body: PromoRedeemRequest, http_request: Request):
     try:
         enforce_promo_rate_limit(user_id)
     except RateLimitExceeded as e:
+        # Dil govdeden DEGIL istekten cozulur: bu ucun `lang` alani yok ve
+        # sabit "tr" vermek tam da 2026-07-30'da kapatilan hatanin tekrari olurdu
+        # (EN arayuzdeki musteriye Turkce mesaj).
         raise HTTPException(
             status_code=429,
-            detail=_rate_limit_message(getattr(body, "lang", None) or "tr", e.retry_after_seconds),
+            detail=_rate_limit_message(
+                coz_dil(http_request.headers.get("accept-language", ""),
+                        http_request.headers.get("x-lang", "")),
+                e.retry_after_seconds),
             headers={"Retry-After": str(e.retry_after_seconds)},
         )
     sonuc = await promo_kodu_kullan(user_id, body.code)
