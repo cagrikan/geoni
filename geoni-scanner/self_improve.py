@@ -36,6 +36,9 @@ FOUNDER_EMAIL = os.environ.get("GEONI_CONTENT_EMAIL", "mail@geoni.ai")
 # ileride motor-guven kalibrasyonu) hipotez/metrik/karar izini tutar (audit trail + guven).
 import json as _json
 _EXP_PREFIX = "experiment:"
+# geoni.ai self-scan'in 4-motor sonucunun KALICI anlik goruntusu. audits.result_json
+# retention'a tabi (bkz. _snapshot_self_recognition); app_config degil.
+SELF_RECOG_KEY = "self_scan_recognition"
 
 
 # Faz1-1.1: ACTION_POLICY — her sinyal icin AKSIYON ve otonom/onayli SINIRI (ÖLÇ->AKSIYON
@@ -144,6 +147,42 @@ def _quality_digest_lines(digest: dict, m_total, m_recog, m_hallu,
     return lines
 
 
+async def _snapshot_self_recognition() -> bool:
+    """geoni.ai self-scan'in 4-motor `model_results`'ini app_config'e KOPYALAR.
+
+    NEDEN (2026-08-01): own_recognition sinyali audits.result_json'dan okunuyordu,
+    ama o alan kalici DEGIL — apply_audit_retention RPC'si ayni (kullanici+tur+hedef)
+    icin en yeni kayit disindaki HER raporun result_json'unu YASINA BAKMADAN
+    NULL'liyor (rn > 1). geoni.ai elle bir kez daha taraninca haftalik self-scan
+    kaydi bosaliyor, sinyal sessizce oluyordu. app_config retention'a tabi olmadigi
+    icin anlik goruntu kalici; kaynak zinciri run_improvement_cycle'da (1)/(2)/(3).
+    Salt-kopya: hicbir tarama/skor davranisi degismez."""
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/audits?type=eq.web&domain=eq.{SELF_SCAN_DOMAIN}"
+                f"&status=eq.complete&result_json->>auto_monitor=eq.true"
+                f"&select=result_json,created_at&order=created_at.desc&limit=1",
+                headers=_headers(), timeout=15)
+            rows = r.json() if r.status_code == 200 else []
+            if not rows:
+                logger.warning("self_scan snapshot: taze self-scan kaydi bulunamadi")
+                return False
+            rj = rows[0].get("result_json") or {}
+            mr = rj.get("model_results") or (rj.get("brand_recall") or {}).get("model_results") or {}
+            if not mr:
+                logger.warning("self_scan snapshot: model_results bos, yazilmadi")
+                return False
+            return await _save_experiment(client, SELF_RECOG_KEY, {
+                "at": rows[0].get("created_at"),
+                "score": rj.get("score"),
+                "model_results": mr,
+            })
+    except Exception as e:
+        logger.warning(f"_snapshot_self_recognition error: {e}")
+        return False
+
+
 async def self_scan() -> int | None:
     """geoni.ai'yi tarar (kendi AI-gorunurluk skor trendimiz icin) ve audits'e
     yazar. monitor._scan_web_item'i tekrar kullanir; haftada bir yeter."""
@@ -151,6 +190,8 @@ async def self_scan() -> int | None:
         from monitor import _scan_web_item
         score = await _scan_web_item({"target": {"domain": SELF_SCAN_DOMAIN}})
         logger.info(f"self-scan {SELF_SCAN_DOMAIN}: score={score}")
+        # Retention kaydi bosaltmadan ONCE kalici kopya al (own_recognition kaynagi).
+        await _snapshot_self_recognition()
         return score
     except Exception as e:
         logger.warning(f"self_scan error: {e}")
@@ -236,6 +277,8 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
         return {"ok": False, "error": "not_configured"}
     since = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
     geoni_mr = {}
+    geoni_mr_at = None      # anlik goruntunun tarihi (own_recognition detail'ine girer)
+    geoni_mr_src = None     # hangi kaynaktan okundu (snapshot / audit_top / audit_nested)
     try:
         async with httpx.AsyncClient() as client:
             # Sayfalama: PostgREST ~1000 satir cap'ine takilmadan 7 gunluk pencerenin
@@ -255,19 +298,48 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
                 if len(batch) < PAGE or offset >= 50000:  # tavan: patolojik durumda sonsuz donmesin
                     break
                 offset += PAGE
-            # geoni.ai self-scan (own_recognition): SADECE haftalik self_scan kaydini al
-            # (auto_monitor=true). Aksi halde araya giren normal kullanici web-taramasi
-            # "en son" gelir; onun model_results'i brand_recall altinda ic-ice oldugundan
-            # top-level okuma bosalir ve sinyal SESSIZCE yanlis/bos uretilir.
-            gm = await client.get(
-                f"{SUPABASE_URL}/rest/v1/audits?type=eq.web&domain=eq.geoni.ai"
-                f"&status=eq.complete&result_json->>auto_monitor=eq.true"
-                f"&select=result_json&order=created_at.desc&limit=1",
-                headers=_headers(), timeout=15,
-            )
-            g = gm.json() if gm.status_code == 200 else []
-            if g:
-                geoni_mr = (g[0].get("result_json") or {}).get("model_results") or {}
+            # geoni.ai self-scan (own_recognition) — UC KADEMELI kaynak.
+            # (1) app_config anlik goruntusu: BIRINCIL kaynak. NEDEN: audits.result_json
+            #     kalici DEGIL — apply_audit_retention RPC'si ayni (kullanici+tur+hedef)
+            #     icin en yeni kayit disindaki HER raporun result_json'unu YASINA BAKMADAN
+            #     NULL'liyor. geoni.ai elle bir kez daha taraninca haftalik self-scan
+            #     kaydi bosaliyor ve sinyal SESSIZCE oluyordu (2026-08-01'de oldu:
+            #     own_recognition 9 gun uretildikten sonra bir anda kayboldu).
+            #     _snapshot_self_recognition() bu yuzden tarama aninda kopya birakir.
+            snap = await _load_experiment(client, SELF_RECOG_KEY)
+            if isinstance(snap, dict) and isinstance(snap.get("model_results"), dict):
+                geoni_mr = snap["model_results"] or {}
+                geoni_mr_at, geoni_mr_src = snap.get("at"), "snapshot"
+            # (2) Yedek: haftalik self_scan kaydi (auto_monitor=true) — top-level yazar.
+            if not geoni_mr:
+                gm = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/audits?type=eq.web&domain=eq.geoni.ai"
+                    f"&status=eq.complete&result_json->>auto_monitor=eq.true"
+                    f"&select=result_json,created_at&order=created_at.desc&limit=1",
+                    headers=_headers(), timeout=15,
+                )
+                g = gm.json() if gm.status_code == 200 else []
+                if g:
+                    geoni_mr = (g[0].get("result_json") or {}).get("model_results") or {}
+                    if geoni_mr:
+                        geoni_mr_at, geoni_mr_src = g[0].get("created_at"), "audit_top"
+            # (3) Son care: normal (kullanici) geoni.ai web taramasi — main.py bu yolda
+            #     model_results'i brand_recall ALTINA yazar. Ic-ice okumak "sessiz bos"
+            #     durumundan iyidir; kaynak detail'de acikca isaretlenir.
+            if not geoni_mr:
+                gm2 = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/audits?type=eq.web&domain=eq.geoni.ai"
+                    f"&status=eq.complete&result_json=not.is.null"
+                    f"&select=result_json,created_at&order=created_at.desc&limit=1",
+                    headers=_headers(), timeout=15,
+                )
+                g2 = gm2.json() if gm2.status_code == 200 else []
+                if g2:
+                    rj = g2[0].get("result_json") or {}
+                    geoni_mr = ((rj.get("brand_recall") or {}).get("model_results")
+                                or rj.get("model_results") or {})
+                    if geoni_mr:
+                        geoni_mr_at, geoni_mr_src = g2[0].get("created_at"), "audit_nested"
     except Exception as e:
         logger.warning(f"harvest fetch error: {e}")
         return {"ok": False, "error": "fetch_failed"}
@@ -439,7 +511,10 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
         if isinstance(mv, dict) and meng not in SHADOW_ENGINES:  # golge motor (grok) own_recognition'a girmez
             signals.append({"kind": "own_recognition", "subject": meng,
                             "metric": 1 if mv.get("recognized") else 0,
-                            "detail": {"score": mv.get("score")}})
+                            # as_of/source: sinyal BAYAT mi (self_scan haftalik) ve hangi
+                            # kaynaktan geldi — sessizce sabit kalan trend fark edilsin.
+                            "detail": {"score": mv.get("score"),
+                                       "as_of": geoni_mr_at, "source": geoni_mr_src}})
 
     avg_stab = round(sum(stabilities) / len(stabilities), 1) if stabilities else None
     signals.append({"kind": "quality_overall", "subject": "answer_rate",
