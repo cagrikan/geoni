@@ -179,11 +179,23 @@ def yapisal_veri_ingilizce(html: str) -> str:
     return html
 
 
+DUGME_TR = ('<a class="nav-toggle-btn" id="lang-toggle" href="/en" hreflang="en" '
+            'title="English" aria-label="İngilizce sürüme geç">EN</a>')
+DUGME_EN = ('<a class="nav-toggle-btn" id="lang-toggle" href="/" hreflang="tr" '
+            'title="Türkçe" aria-label="Switch to Turkish">TR</a>')
+
+
 def dil_dugmesi(html: str) -> str:
-    """Ingilizce sayfada dil dugmesi 'TR' yazmali. JS zaten DOMContentLoaded'da
-    duzeltiyor ama ham HTML'i okuyan AI tarayicisi/JS'siz istemci 'EN' goruyordu."""
-    return html.replace('id="lang-toggle" title="Language" aria-label="Dil degistir">EN<',
-                        'id="lang-toggle" title="Dil" aria-label="Switch language">TR<', 1)
+    """Ingilizce sayfada dil degistirici Turkce ana sayfaya bakmali.
+
+    NEDEN: dugme artik gercek bir <a href> (bkz. index.html'deki yorum). Ham
+    HTML'i okuyan AI tarayicisi burayi gordugu icin hedefi de metni de dogru
+    olmali; yoksa /en sayfasi kendi kendine baglanir ve `/` yetim kalir.
+    """
+    if DUGME_TR not in html:
+        raise ValueError("dil degistirici baglantisi bulunamadi — index.html'de "
+                         "markup degisti mi? build-en.py'deki DUGME_TR guncellenmeli.")
+    return html.replace(DUGME_TR, DUGME_EN, 1)
 
 
 def baglanti_esle(html: str) -> str:

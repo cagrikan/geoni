@@ -114,7 +114,7 @@ nav{position:fixed;inset:0 0 auto;z-index:100;padding:18px 48px;display:flex;jus
 .nav-cta{background:var(--accent);color:#FFFFFF;padding:9px 22px;border-radius:6px;font-size:.875rem;font-weight:600;text-decoration:none;transition:opacity .2s}
 .nav-cta:hover{opacity:.85}
 .nav-toggles{display:flex;align-items:center;gap:10px;margin-right:8px}
-.nav-toggle-btn{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:6px;border:1px solid var(--border-mid);background:transparent;color:var(--text-sub);cursor:pointer;transition:all .2s;font-family:var(--mono);font-size:.75rem;font-weight:600}
+.nav-toggle-btn{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:6px;border:1px solid var(--border-mid);background:transparent;color:var(--text-sub);cursor:pointer;transition:all .2s;font-family:var(--mono);font-size:.75rem;font-weight:600;text-decoration:none}
 .nav-toggle-btn:hover{color:var(--text);border-color:rgba(124,134,245,.4)}
 .nav-toggle-btn svg{width:16px;height:16px}
 .nav-hamburger{display:none}
@@ -643,7 +643,12 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
     <button type="button" class="nav-toggle-btn" id="theme-toggle" title="Tema" aria-label="Tema degistir">
       <svg id="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></svg>
     </button>
-    <button type="button" class="nav-toggle-btn" id="lang-toggle" title="Dil" aria-label="Switch language">TR</button>
+    <!-- NEDEN <a> (2026-08-01): dil degistirici <button>+JS idi; AI tarayicilari
+         (GPTBot/ClaudeBot/PerplexityBot) JS calistirmadigi icin /en sayfasina
+         siteden HICBIR baglanti gormuyordu — /en yetim sayfaydi, yalnizca
+         sitemap uzerinden bulunabiliyordu. Gercek baglanti tarayiciya da,
+         klavyeye de, JS'siz istemciye de calisir. -->
+    <a class="nav-toggle-btn" id="lang-toggle" href="/" hreflang="tr" title="Türkçe" aria-label="Switch to Turkish">TR</a>
     <button type="button" class="nav-toggle-btn nav-hamburger" id="nav-hamburger" aria-label="Menü" aria-expanded="false" aria-controls="nav-links-menu">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
     </button>
@@ -1456,11 +1461,8 @@ function applyLang(lang) {
   setMeta('meta[property="og:locale:alternate"]', meta.altLocale);
 }
 
-function toggleLang() {
-  // Dil = URL. Istemci tarafi ceviri yerine gercek sayfaya git ki paylasilan
-  // baglanti da, AI tarayicisinin gordugu HTML de dogru dilde olsun.
-  location.href = CURRENT_LANG === 'en' ? '/' : '/en';
-}
+// NOT: toggleLang() kaldirildi — dil degistirici artik gercek bir <a href>.
+// Gezinmeyi tarayici yapiyor; JS'e gerek yok ve baglanti taranabilir kaliyor.
 
 const SUN_ICON = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>';
 const MOON_ICON = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
@@ -1497,7 +1499,6 @@ function toggleTheme() {
   const theme = savedTheme || 'light';
   applyTheme(theme);
   document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
-  document.getElementById('lang-toggle').addEventListener('click', toggleLang);
   // Mobil menu (hamburger): <=900px'te nav linkleri gizli, buradan acilir
   const hamburger = document.getElementById('nav-hamburger');
   const navMenu = document.getElementById('nav-links-menu');

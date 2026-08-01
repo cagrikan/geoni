@@ -34,9 +34,28 @@ Each service ships with a work-breakdown checklist, in-app messaging with the as
 - GEONI distinguishes training crawlers (GPTBot, ClaudeBot, Google-Extended, CCBot) from search/citation crawlers (OAI-SearchBot, ChatGPT-User, PerplexityBot, Claude-SearchBot) - visibility in real-time AI answers is governed by the latter.
 - Market: Türkiye-based (Ankara), serving globally. Interface in Turkish and English.
 
+## Guides (English)
+
+- [What is GEO (Generative Engine Optimization)?](https://geoni.ai/guides/what-is-geo): definition of GEO, how it differs from SEO and AEO, how it is measured.
+- [What is AEO (Answer Engine Optimization)?](https://geoni.ai/guides/what-is-aeo): AEO explained, AEO vs GEO vs SEO, measurement and improvement.
+- [Why isn't my brand in ChatGPT?](https://geoni.ai/guides/brand-not-in-chatgpt): the seven reasons a brand is missing from AI answers, and where to start.
+- [How does your brand become visible in ChatGPT?](https://geoni.ai/guides/chatgpt-visibility): six concrete steps from bot access to trusted-source mentions.
+- [What is llms.txt and how do you add it?](https://geoni.ai/guides/what-is-llms-txt): format, a minimal example, and the robots.txt rules that go with it.
+- [All guides](https://geoni.ai/guides): index of the English guide library.
+
+## Guides (Türkçe)
+
+- [GEO nedir?](https://geoni.ai/rehber/geo-nedir)
+- [AEO nedir?](https://geoni.ai/rehber/aeo-nedir)
+- [Markam ChatGPT'de görünmüyor](https://geoni.ai/rehber/markam-chatgptde-gorunmuyor)
+- [ChatGPT görünürlüğü](https://geoni.ai/rehber/chatgpt-gorunurlugu)
+- [llms.txt nedir?](https://geoni.ai/rehber/llms-txt-nedir)
+- [Tüm rehberler](https://geoni.ai/rehber)
+
 ## Links
 
-- [Main site](https://geoni.ai): product overview, live demo, token pricing
+- [Main site — English](https://geoni.ai/en): product overview, live demo, token pricing (English edition of the home page)
+- [Main site — Türkçe](https://geoni.ai): same page in Turkish (x-default)
 - [App](https://app.geoni.ai): free account, scans and services
 - [Free scan](https://geoni.ai#audit): run the first AI visibility audit without payment
 
