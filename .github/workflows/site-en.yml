@@ -1,0 +1,39 @@
+name: en.html guncel mi
+
+# NEDEN: en.html elle duzenlenmez, index.html'deki I18N.en sozlugunden
+# uretilir (scripts/build-en.py). Ana sayfa metni degisip en.html yeniden
+# uretilmezse Ingilizce sayfa sessizce eskir ve AI tarayicilari yanlis/eksik
+# icerik gorur. Bu kontrol tam da onu yakalar.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'en.html'
+      - 'scripts/build-en.py'
+      - '.github/workflows/site-en.yml'
+  pull_request:
+    paths:
+      - 'index.html'
+      - 'en.html'
+      - 'scripts/build-en.py'
+
+jobs:
+  dogrula:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: en.html yeniden uret
+        run: python3 scripts/build-en.py
+      - name: Fark var mi
+        run: |
+          if ! git diff --quiet -- en.html; then
+            echo "::error::en.html guncel degil. Proje kokunde 'python3 scripts/build-en.py' calistirip commit'leyin."
+            git diff --stat -- en.html
+            exit 1
+          fi
+          echo "en.html guncel."

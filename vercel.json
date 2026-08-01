@@ -58,6 +58,10 @@
       "destination": "/indir.html"
     },
     {
+      "source": "/en",
+      "destination": "/en.html"
+    },
+    {
       "source": "/guides",
       "destination": "/guides.html"
     },
