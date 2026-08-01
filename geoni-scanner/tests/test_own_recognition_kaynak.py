@@ -134,6 +134,51 @@ def test_self_scan_kalici_kopya_birakir(monkeypatch):
     assert govde["at"] == "2026-08-03T07:00:00+00:00"
 
 
+def _alarm_yakala(monkeypatch):
+    """send_ticket_email cagrilarini toplar (gercek mail GITMEZ)."""
+    gonderilen = []
+
+    async def _fake_mail(to, subject, *a, **k):
+        gonderilen.append(subject)
+        return True
+
+    import mailer
+    monkeypatch.setattr(mailer, "send_ticket_email", _fake_mail)
+    return gonderilen
+
+
+def test_kaynak_degisince_dusus_alarmi_atlanir(monkeypatch):
+    """ELMA-ARMUT: onceki olcum haftalik self-scan'den, bugunku elle yapilmis
+    taramadan geliyorsa 'motor bizi tanimayi birakti' maili GITMEZ."""
+    onceki = [{"subject": "claude", "metric": 1, "cycle_date": "2026-07-31",
+               "detail": {"source": "audit_top"}}]
+    # bugun: iç içe kaynaktan claude=0 -> normalde dusus alarmi tetiklenirdi
+    nested = [{"created_at": "2026-08-01T07:56:29+00:00",
+               "result_json": {"brand_recall": {"model_results":
+                                                {"claude": {"recognized": False, "score": 0.0}}}}}]
+    _kur(monkeypatch, [("app_config", []),
+                       ("auto_monitor", []),
+                       ("result_json=not.is.null", nested),
+                       ("kind=eq.own_recognition", onceki)])
+    gonderilen = _alarm_yakala(monkeypatch)
+
+    asyncio.run(si.run_improvement_cycle(days=7))
+    assert not [s for s in gonderilen if "tanımayı bıraktı" in s]
+
+
+def test_ayni_kaynakta_dusus_alarmi_calisir(monkeypatch):
+    """Koruma alarmi KORLESTIRMEZ: kaynak aynıysa gercek dusus yine bildirilir."""
+    onceki = [{"subject": "claude", "metric": 1, "cycle_date": "2026-07-31",
+               "detail": {"source": "snapshot"}}]
+    snap = [{"value": json.dumps({"at": "2026-08-01T07:00:00+00:00",
+                                  "model_results": {"claude": {"recognized": False, "score": 0.0}}})}]
+    _kur(monkeypatch, [("app_config", snap), ("kind=eq.own_recognition", onceki)])
+    gonderilen = _alarm_yakala(monkeypatch)
+
+    asyncio.run(si.run_improvement_cycle(days=7))
+    assert [s for s in gonderilen if "tanımayı bıraktı" in s]
+
+
 def test_snapshot_bos_model_results_yazmaz(monkeypatch):
     """Bos/eksik sonuc KALICI kopyayi EZMEZ — yoksa bir basarisiz tarama
     saglam anlik goruntuyu silip sinyali yine oldururdu."""

@@ -644,17 +644,27 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
                 today_s = datetime.now(timezone.utc).date().isoformat()
                 pr = await _rc.get(
                     f"{SUPABASE_URL}/rest/v1/improvement_signals?kind=eq.own_recognition"
-                    f"&cycle_date=lt.{today_s}&select=subject,metric,cycle_date"
+                    f"&cycle_date=lt.{today_s}&select=subject,metric,cycle_date,detail"
                     f"&order=cycle_date.desc&limit=20",
                     headers=_headers(), timeout=10)
                 rows = pr.json() if pr.status_code == 200 else []
-                prev_own = {}
+                prev_own, prev_src = {}, None
                 if rows:
                     latest = rows[0]["cycle_date"]
+                    prev_src = ((rows[0].get("detail") or {}) if isinstance(rows[0].get("detail"), dict) else {}).get("source")
                     for r in rows:
                         if r.get("cycle_date") == latest and r.get("subject") not in prev_own:
                             prev_own[r["subject"]] = float(r.get("metric") or 0)
                 drops = [e for e, v in cur_own.items() if v == 0 and prev_own.get(e, 0) >= 1]
+                # ELMA-ARMUT KORUMASI: iki olcum FARKLI kaynaktan geliyorsa dusus
+                # gercek olmayabilir — haftalik self-scan (tr) ile araya giren elle
+                # yapilmis bir tarama (or. en) kiyaslanirsa "motor bizi tanimayi
+                # birakti" YANLIS alarmi gider. Ayni kaynak degilse yalniz logla.
+                if drops and prev_src != geoni_mr_src:
+                    logger.warning(
+                        f"own_recognition dusus ({drops}) ATLANDI: kaynak degisti "
+                        f"{prev_src} -> {geoni_mr_src}; kiyas gecerli degil")
+                    drops = []
                 if drops:
                     from mailer import send_ticket_email
                     still = [e for e, v in cur_own.items() if v >= 1]
