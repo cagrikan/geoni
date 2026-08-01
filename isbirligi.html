@@ -57,7 +57,12 @@ document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
   .eyebrow::before{content:"✦";color:var(--amber)}
   header{position:relative;overflow:hidden;border-bottom:1px solid var(--border)}
   #sky{position:absolute;inset:0;width:100%;height:100%;z-index:0}
-  .head-in{position:relative;z-index:1;padding:60px 0 44px}
+  /* Yalniz DIKEY padding verilir. `padding:60px 0 44px` kisayolu yaziliyordu ve
+     ayni ozgullukte olup .wrap'tan SONRA geldigi icin .wrap'in yatay 24px'ini
+     sifirliyordu: header bloğu (logo/h1/lede) telefonda ekranin soluna yapisik
+     cikiyordu, main ise dogru duruyordu. Olculdu (iPhone 16, 402 CSS px):
+     header 0.7-1.7px, main 24.7px. */
+  .head-in{position:relative;z-index:1;padding-top:60px;padding-bottom:44px}
   .brand{display:flex;align-items:center;gap:12px;margin-bottom:34px}
   .brand svg{flex:none}
   .brand b{font-weight:800;font-size:1.15rem;letter-spacing:-.02em}
