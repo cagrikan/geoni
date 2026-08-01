@@ -7,6 +7,14 @@
   var SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>';
   var MOON = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
 
+  // Kayitli tercih yoksa isletim sistemini dinle. Sabit 'light' donuluyordu:
+  // koyu temadaki kullanici rehber/guides sayfalarini bembeyaz aliyordu.
+  function tercih() {
+    var t = localStorage.getItem(KEY);
+    if (t === 'light' || t === 'dark') return t;
+    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+  }
+
   function apply(t) {
     document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light');
     var icon = document.getElementById('gn-theme-icon');
@@ -14,7 +22,7 @@
   }
 
   // Paint'ten once uygula (FOUC yok)
-  apply(localStorage.getItem(KEY) || 'light');
+  apply(tercih());
 
   function mount() {
     if (document.getElementById('gn-theme-toggle')) return;
@@ -31,7 +39,7 @@
       apply(next);
     });
     document.body.appendChild(b);
-    apply(localStorage.getItem(KEY) || 'light'); // buton geldi, ikonu ayarla
+    apply(tercih()); // buton geldi, ikonu ayarla
   }
 
   if (document.readyState === 'loading') {

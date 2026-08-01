@@ -104,10 +104,6 @@
     {
       "source": "/account-deletion",
       "destination": "/hesap-sil.html"
-    },
-    {
-      "source": "/((?!api/).*)",
-      "destination": "/index.html"
     }
   ],
   "headers": [

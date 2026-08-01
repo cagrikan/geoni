@@ -53,6 +53,11 @@
   --good:#3FB950;
   --warn:#D29922;
   --bad:#F85149;
+  --nav-creator:#F5A623;
+  --nav-lig:#2FBD84;
+  /* Dolu butonun zemini: beyaz metinle 4.78 (accent'in kendisi 3.19'du). */
+  --accent-fill:#5B63E8;
+  --serp-link:#6D9BF0;
 }
 :root[data-theme="light"]{
   --bg:#F7F8FA;
@@ -65,7 +70,13 @@
   --accent-2:#5B63E8;
   --text:#16181D;
   --text-sub:#4D5464;
-  --text-muted:#8A90A0;
+  --text-muted:#666B7D;
+  /* WCAG AA: acik zeminde parlak amber/yesil okunmuyordu (1.91 ve 2.26,
+     esik 4.5). Koyu temada mevcut parlak tonlar zaten 8-9.6, dokunulmadi. */
+  --nav-creator:#96590A;
+  --nav-lig:#0F7A52;
+  --accent-fill:#5B63E8;
+  --serp-link:#2F5FBE;
   --nav-bg:rgba(247,248,250,0.85);
   --chat-input-bg:#F1F2F6;
   --bubble-ai-bg:#EEF0FE;
@@ -82,7 +93,9 @@
     --bg:#F7F8FA; --surface:#FFFFFF; --surface-2:#F1F2F6;
     --border:rgba(22,24,29,.08); --border-mid:rgba(22,24,29,.16);
     --accent:#5B63E8; --accent-dim:rgba(91,99,232,.09); --accent-2:#5B63E8;
-    --text:#16181D; --text-sub:#4D5464; --text-muted:#8A90A0;
+    --text:#16181D; --text-sub:#4D5464; --text-muted:#666B7D;
+    --nav-creator:#96590A; --nav-lig:#0F7A52;
+    --accent-fill:#5B63E8; --serp-link:#2F5FBE;
     --nav-bg:rgba(247,248,250,0.85); --chat-input-bg:#F1F2F6;
     --bubble-ai-bg:#EEF0FE; --bubble-ai-text:#3A4050;
     --audit-panel-bg:#FFFFFF; --audit-head-bg:#F7F8FA; --option-bg:#FFFFFF;
@@ -99,7 +112,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:16
 /* Klavye fokusu her yerde gorunur olsun (E9) */
 a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 /* Iceriye atla baglantisi (E3) */
-.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent);color:#fff;padding:10px 16px;border-radius:0 0 8px 0;font-family:var(--body);font-size:.875rem;text-decoration:none}
+.skip-link{position:absolute;left:-9999px;top:0;z-index:1000;background:var(--accent-fill);color:#fff;padding:10px 16px;border-radius:0 0 8px 0;font-family:var(--body);font-size:.875rem;text-decoration:none}
 .skip-link:focus{left:0}
 /* Gorsel gizli ama SR icin okunur etiketler (E5) */
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
@@ -111,10 +124,14 @@ nav{position:fixed;inset:0 0 auto;z-index:100;padding:18px 48px;display:flex;jus
 .nav-links{display:flex;gap:28px;list-style:none}
 .nav-links a{color:var(--text-sub);text-decoration:none;font-size:.875rem;transition:color .2s}
 .nav-links a:hover{color:var(--text)}
-.nav-cta{background:var(--accent);color:#FFFFFF;padding:9px 22px;border-radius:6px;font-size:.875rem;font-weight:600;text-decoration:none;transition:opacity .2s}
+.nav-cta{background:var(--accent-fill);color:#FFFFFF;padding:9px 22px;border-radius:6px;font-size:.875rem;font-weight:600;text-decoration:none;transition:opacity .2s}
 .nav-cta:hover{opacity:.85}
 .nav-toggles{display:flex;align-items:center;gap:10px;margin-right:8px}
-.nav-toggle-btn{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:6px;border:1px solid var(--border-mid);background:transparent;color:var(--text-sub);cursor:pointer;transition:all .2s;font-family:var(--mono);font-size:.75rem;font-weight:600;text-decoration:none}
+/* Dokunma hedefi: gorsel kutu 40px, ::after ile gercek dokunma alani 44px
+   (Apple HIG). Eskiden 34px'ti ve ust kosede yan yana iki dugme yanlis
+   basmaya aciyordu. */
+.nav-toggle-btn{position:relative;display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:6px;border:1px solid var(--border-mid);background:transparent;color:var(--text-sub);cursor:pointer;transition:all .2s;font-family:var(--mono);font-size:.75rem;font-weight:600;text-decoration:none}
+.nav-toggle-btn::after{content:'';position:absolute;top:50%;left:50%;width:44px;height:44px;transform:translate(-50%,-50%)}
 .nav-toggle-btn:hover{color:var(--text);border-color:rgba(124,134,245,.4)}
 .nav-toggle-btn svg{width:16px;height:16px}
 .nav-hamburger{display:none}
@@ -128,7 +145,7 @@ h1{font-family:var(--display);font-size:clamp(2.4rem,3.8vw,3.4rem);font-weight:7
 h1 .grad{background:linear-gradient(135deg,var(--accent) 20%,var(--accent-2) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .hero-sub{color:var(--text-sub);font-size:1.25rem;line-height:1.75;margin-bottom:38px;max-width:460px}
 .hero-btns{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
-.btn-p{background:var(--accent);color:#FFFFFF;padding:13px 26px;border-radius:6px;font-size:1rem;font-weight:600;text-decoration:none;transition:opacity .2s,transform .2s;display:inline-block}
+.btn-p{background:var(--accent-fill);color:#FFFFFF;padding:13px 26px;border-radius:6px;font-size:1rem;font-weight:600;text-decoration:none;transition:opacity .2s,transform .2s;display:inline-block}
 .btn-p:hover{opacity:.85;transform:translateY(-1px)}
 .btn-g{background:transparent;font-family:inherit;cursor:pointer;color:var(--text-sub);padding:13px 22px;border-radius:6px;font-size:1rem;text-decoration:none;border:1px solid var(--border-mid);transition:all .2s}
 .btn-g:hover{color:var(--text);border-color:rgba(124,134,245,.35)}
@@ -178,10 +195,10 @@ h2{font-family:var(--display);font-size:clamp(1.8rem,2.8vw,2.4rem);font-weight:7
 .geo-pane-body{padding:16px;flex:1}
 .geo-serp-item{padding:7px 0}
 .geo-serp-item .gsu{font-size:.75rem;color:var(--good);opacity:.75}
-.geo-serp-item .gst{font-size:.875rem;color:#6D9BF0;text-decoration:underline;text-underline-offset:2px}
-.geo-serp-item.dim .gst{color:var(--text-muted);text-decoration-color:var(--border-mid)}
+.geo-serp-item .gst{font-size:.875rem;color:var(--serp-link);text-decoration:underline;text-underline-offset:2px}
+.geo-serp-item.dim .gst{color:var(--text-sub);text-decoration-color:var(--border-mid)}
 .geo-serp-more{font-size:.75rem;color:var(--text-muted);padding-top:8px;font-family:var(--mono)}
-.geo-ai-q{display:inline-block;background:var(--accent);color:#fff;font-size:.8125rem;padding:8px 12px;border-radius:14px 14px 2px 14px;margin-bottom:14px}
+.geo-ai-q{display:inline-block;background:var(--accent-fill);color:#fff;font-size:.8125rem;padding:8px 12px;border-radius:14px 14px 2px 14px;margin-bottom:14px}
 .geo-ai-a{background:var(--surface-2);border:1px solid var(--border);border-radius:14px 14px 14px 2px;padding:12px 14px;font-size:.875rem;color:var(--text-sub)}
 .geo-ai-a b{color:var(--text);background:var(--accent-dim);border:1px solid rgba(124,134,245,.3);border-radius:6px;padding:1px 6px}
 .geo-ai-src{display:inline-flex;align-items:center;gap:5px;margin-top:10px;font-size:.75rem;color:var(--text-muted);border:1px solid var(--border);border-radius:999px;padding:3px 9px}
@@ -196,7 +213,7 @@ h2{font-family:var(--display);font-size:clamp(1.8rem,2.8vw,2.4rem);font-weight:7
 .gfa{font-size:.875rem;color:var(--text-sub)}
 .gfa b{color:var(--text);font-weight:600}
 .geo-cta{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding-top:24px}
-.geo-cta a{background:var(--accent);color:#fff;text-decoration:none;font-size:.875rem;font-weight:600;padding:11px 22px;border-radius:6px}
+.geo-cta a{background:var(--accent-fill);color:#fff;text-decoration:none;font-size:.875rem;font-weight:600;padding:11px 22px;border-radius:6px}
 .geo-cta span{font-size:.8125rem;color:var(--text-muted)}
 
 /* HOW IT WORKS */
@@ -213,7 +230,7 @@ h2{font-family:var(--display);font-size:clamp(1.8rem,2.8vw,2.4rem);font-weight:7
 .pkg{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px 24px;display:flex;flex-direction:column;position:relative;transition:border-color .3s}
 .pkg:hover{border-color:rgba(124,134,245,.25)}
 .pkg.hot{border-color:var(--accent);background:linear-gradient(150deg,rgba(124,134,245,.07),var(--surface))}
-.hot-badge{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--accent);color:#FFFFFF;font-size:.75rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 13px;border-radius:999px;font-family:var(--mono);white-space:nowrap}
+.hot-badge{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--accent-fill);color:#FFFFFF;font-size:.75rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 13px;border-radius:999px;font-family:var(--mono);white-space:nowrap}
 .pkg-tier{font-family:var(--mono);font-size:.75rem;color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:7px}
 .pkg-name{font-family:var(--display);font-size:1.25rem;font-weight:700;margin-bottom:8px}
 .pkg-price{font-size:.875rem;color:var(--text-sub);margin-bottom:22px;padding-bottom:22px;border-bottom:1px solid var(--border)}
@@ -222,7 +239,7 @@ h2{font-family:var(--display);font-size:clamp(1.8rem,2.8vw,2.4rem);font-weight:7
 .pkg-feats li{font-size:.875rem;color:var(--text-sub);display:flex;align-items:flex-start;gap:8px;line-height:1.5}
 .pkg-feats li::before{content:'→';color:var(--accent);flex-shrink:0;font-family:var(--mono)}
 .pkg-btn{margin-top:26px;padding:11px;border-radius:6px;font-size:.875rem;font-weight:600;text-align:center;text-decoration:none;transition:all .2s;border:1px solid var(--border);color:var(--text-sub);display:block}
-.pkg.hot .pkg-btn{background:var(--accent);color:#FFFFFF;border-color:var(--accent)}
+.pkg.hot .pkg-btn{background:var(--accent-fill);color:#FFFFFF;border-color:var(--accent)}
 .pkg-btn:hover{border-color:rgba(124,134,245,.4);color:var(--text)}
 .pkg.hot .pkg-btn:hover{opacity:.85;color:#FFFFFF}
 
@@ -250,7 +267,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 /* min-width:0 — flex ogesinin varsayilan min-width:auto'su, 380px'lik esasin
    altina inmesini engelleyip dar ekranda kutuyu tasiriyordu (yatay kaydirma). */
 .creator-txt{flex:1 1 380px;min-width:0;position:relative}
-.creator-box .eyebrow{color:#F5A623;margin-bottom:10px}
+.creator-box .eyebrow{color:var(--nav-creator);margin-bottom:10px}
 .creator-box h2{font-family:var(--display);font-size:1.4rem;font-weight:700;margin:0 0 8px}
 .creator-box p{color:var(--text-sub);font-size:.95rem;margin:0;max-width:60ch}
 .creator-btn{position:relative;flex:0 0 auto;color:var(--text);padding:13px 24px;border-radius:8px;font-size:.95rem;text-decoration:none;border:1px solid rgba(245,166,35,.4);transition:background .2s,border-color .2s;white-space:nowrap}
@@ -290,7 +307,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 .demo-input{flex:1;background:var(--chat-input-bg);border:1px solid rgba(124,134,245,.3);border-radius:6px;padding:11px 15px;color:var(--text);font-family:var(--mono);font-size:.875rem;outline:none;transition:border-color .2s, box-shadow .2s}
 .demo-input:focus{border-color:rgba(124,134,245,.7);box-shadow:0 0 0 3px rgba(124,134,245,.08)}
 .demo-input::placeholder{color:var(--text-sub)}
-.demo-btn{background:var(--accent);color:#FFFFFF;border:none;border-radius:6px;padding:11px 20px;font-size:.875rem;font-weight:700;cursor:pointer;transition:opacity .2s, transform .15s;font-family:var(--mono);white-space:nowrap;letter-spacing:.03em}
+.demo-btn{background:var(--accent-fill);color:#FFFFFF;border:none;border-radius:6px;padding:11px 20px;font-size:.875rem;font-weight:700;cursor:pointer;transition:opacity .2s, transform .15s;font-family:var(--mono);white-space:nowrap;letter-spacing:.03em}
 .demo-btn:hover{opacity:.9;transform:translateY(-1px)}
 .demo-btn:disabled{opacity:.35;cursor:not-allowed}
 .demo-empty{color:var(--text-muted);font-size:.8125rem;font-family:var(--mono);text-align:center;margin:auto;line-height:1.7}
@@ -305,17 +322,17 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 
 /* MODE TABS (api.geoni.ai/LandingPage'den birebir tasindi) */
 .mode-tabs{display:flex;width:100%;gap:4px;background:var(--surface-2);border:1px solid var(--border-mid);border-radius:10px;padding:4px;box-sizing:border-box}
-.mode-tab{display:flex;align-items:center;justify-content:center;flex:1;gap:5px;background:none;border:none;border-radius:6px;padding:9px 8px;font-family:var(--body);font-size:.875rem;font-weight:500;color:var(--text-muted);cursor:pointer;transition:background .2s,color .2s;white-space:nowrap}
+.mode-tab{display:flex;align-items:center;justify-content:center;flex:1;gap:5px;min-height:44px;background:none;border:none;border-radius:6px;padding:9px 8px;font-family:var(--body);font-size:.875rem;font-weight:500;color:var(--text-muted);cursor:pointer;transition:background .2s,color .2s;white-space:nowrap}
 .mode-tab:hover{color:var(--text-sub)}
-.mode-tab--active{background:var(--accent);color:#FFFFFF}
+.mode-tab--active{background:var(--accent-fill);color:#FFFFFF}
 .mode-tab--active:hover{color:#FFFFFF}
 .mode-panel{display:none;margin-top:12px}
 .mode-panel--active{display:block}
 .premium-teaser{text-align:center;padding:18px 8px}
 .premium-teaser p{color:var(--text-sub);font-size:.875rem;margin-bottom:14px;line-height:1.6}
-.premium-teaser a{display:inline-block;background:var(--accent);color:#FFFFFF;padding:9px 20px;border-radius:6px;font-size:.875rem;font-weight:600;text-decoration:none;transition:opacity .2s}
+.premium-teaser a{display:inline-block;background:var(--accent-fill);color:#FFFFFF;padding:9px 20px;border-radius:6px;font-size:.875rem;font-weight:600;text-decoration:none;transition:opacity .2s}
 .premium-teaser a:hover{opacity:.85}
-.premium-teaser-btn{display:inline-block;margin-top:8px;background:var(--accent);color:#FFFFFF;padding:8px 18px;border-radius:6px;font-size:.8125rem;font-weight:600;text-decoration:none;transition:opacity .2s}
+.premium-teaser-btn{display:inline-block;margin-top:8px;background:var(--accent-fill);color:#FFFFFF;padding:8px 18px;border-radius:6px;font-size:.8125rem;font-weight:600;text-decoration:none;transition:opacity .2s}
 .premium-teaser-btn:hover{opacity:.85}
 .web-result{margin-top:12px;padding:14px 16px;border-radius:10px;border:1px solid var(--border-mid);background:var(--surface-2)}
 .web-result__badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.75rem;padding:4px 10px;border-radius:999px;margin-bottom:8px}
@@ -352,7 +369,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 .insights-bar{padding:0 48px 80px;scroll-margin-top:80px}
 .insight-benefit{margin-top:18px;padding-top:14px;border-top:1px solid var(--border);font-size:.8125rem;color:var(--text-sub);line-height:1.6}
 .insight-benefit b{color:var(--text)}
-.insight-cta{display:inline-block;margin-top:14px;background:var(--accent);color:#fff;text-decoration:none;font-size:.8125rem;font-weight:600;padding:9px 18px;border-radius:6px}
+.insight-cta{display:inline-block;margin-top:14px;background:var(--accent-fill);color:#fff;text-decoration:none;font-size:.8125rem;font-weight:600;padding:9px 18px;border-radius:6px}
 .insights-inner{max-width:1200px;margin:0 auto;display:grid;grid-template-columns:1.4fr 1fr;gap:20px}
 .insight-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:32px 36px}
 .eyebrow-sm{font-family:var(--mono);font-size:.75rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);display:block;margin-bottom:10px}
@@ -369,7 +386,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 @media(max-width:900px){.insights-inner{grid-template-columns:1fr}.insights-bar{padding:0 20px 60px}}
 
 /* AUDIT CHAT WIDGET */
-.audit-btn{position:fixed;bottom:28px;right:28px;z-index:1000;background:var(--accent);color:#FFFFFF;border:none;border-radius:999px;padding:13px 22px;font-size:.875rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 8px 32px rgba(124,134,245,.35);transition:transform .2s,box-shadow .2s;font-family:var(--mono);letter-spacing:.04em}
+.audit-btn{position:fixed;bottom:28px;right:28px;z-index:1000;background:var(--accent-fill);color:#FFFFFF;border:none;border-radius:999px;padding:13px 22px;font-size:.875rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 8px 32px rgba(124,134,245,.35);transition:transform .2s,box-shadow .2s;font-family:var(--mono);letter-spacing:.04em}
 .audit-btn:hover{transform:translateY(-2px);box-shadow:0 12px 44px rgba(124,134,245,.45)}
 .audit-btn svg{flex-shrink:0}
 .audit-panel{position:fixed;bottom:88px;right:28px;z-index:1000;width:380px;height:560px;background:var(--audit-panel-bg);border:1px solid rgba(124,134,245,.22);border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.6);display:flex;flex-direction:column;overflow:hidden;transition:opacity .25s,transform .25s}
@@ -378,7 +395,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 .audit-head-left{display:flex;align-items:center;gap:10px}
 .audit-head-title{font-family:var(--mono);font-size:.8125rem;color:var(--text);letter-spacing:.06em}
 .audit-head-sub{font-size:.75rem;color:var(--text-muted);letter-spacing:.04em}
-.audit-close{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;padding:4px 8px;border-radius:6px;transition:color .2s}
+.audit-close{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;min-width:44px;min-height:44px;padding:4px 8px;border-radius:6px;transition:color .2s}
 .audit-close:hover{color:var(--text)}
 .audit-msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth}
 .audit-msgs::-webkit-scrollbar{width:3px}
@@ -411,7 +428,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 .audit-input{flex:1;background:var(--option-bg);border:1px solid rgba(124,134,245,.2);border-radius:6px;padding:9px 13px;color:var(--text);font-size:.875rem;outline:none;transition:border-color .2s;font-family:var(--body)}
 .audit-input:focus{border-color:rgba(124,134,245,.5)}
 .audit-input::placeholder{color:#334155}
-.audit-send{background:var(--accent);color:#FFFFFF;border:none;border-radius:6px;padding:9px 14px;cursor:pointer;font-weight:700;font-size:.875rem;transition:opacity .2s}
+.audit-send{background:var(--accent-fill);color:#FFFFFF;border:none;border-radius:6px;padding:9px 14px;cursor:pointer;font-weight:700;font-size:.875rem;transition:opacity .2s}
 .audit-send:hover{opacity:.85}
 .audit-send:disabled{opacity:.35;cursor:not-allowed}
 @media(max-width:600px){.audit-panel{width:calc(100vw - 32px);right:16px;bottom:80px}}
@@ -421,7 +438,7 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
 .sample-modal-overlay{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;backdrop-filter:blur(4px);transition:opacity .2s}
 .sample-modal-overlay.hidden{display:none}
 .sample-modal{position:relative;width:100%;max-width:900px;background:var(--surface);border:1px solid var(--border-mid);border-radius:14px;box-shadow:0 40px 100px rgba(0,0,0,.5);padding:8px 8px 32px;margin-bottom:40px}
-.sample-modal__close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--text-muted);font-size:1.25rem;cursor:pointer;padding:6px 10px;border-radius:6px;transition:color .2s;z-index:1}
+.sample-modal__close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--text-muted);font-size:1.25rem;cursor:pointer;min-width:44px;min-height:44px;padding:6px 10px;border-radius:6px;transition:color .2s;z-index:1}
 .sample-modal__close:hover{color:var(--text)}
 .sample-modal__banner{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:10px;padding:12px 16px;font-size:.8125rem;color:var(--warn);display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin:24px 24px 0;font-family:var(--mono)}
 .sample-modal__banner a{color:var(--accent);text-decoration:none;font-weight:700}
@@ -632,12 +649,12 @@ footer{padding:36px 48px;border-top:1px solid var(--border);text-align:center;co
     <li><a href="#neden" data-i18n="nav_why">Why GEO</a></li>
     <li><a href="#geo" data-i18n="nav_geo">What is GEO</a></li>
     <li><a href="#nasil" data-i18n="nav_how">How it works</a></li>
-    <li><a href="/ai-friendly" data-i18n="nav_aifriendly" style="color:#2fbd84;font-weight:600">AI Friendly Board ✓</a></li>
+    <li><a href="/ai-friendly" data-i18n="nav_aifriendly" style="color:var(--nav-lig);font-weight:600">AI Friendly Board ✓</a></li>
     <li><a href="#paketler" data-i18n="nav_packages">Packages</a></li>
     <!-- Arz tarafi (creator) navigasyonda: sayfanin DIBINDEKI band tek giris
          noktasiydi ve creator oraya inmeden ayriliyordu. Amber = markanin
          satin-alma linklerinden ayri bir izleyici. -->
-    <li><a href="/isbirligi" data-i18n="nav_creator" style="color:#F5A623;font-weight:600">Creator Program</a></li>
+    <li><a href="/isbirligi" data-i18n="nav_creator" style="color:var(--nav-creator);font-weight:600">Creator Program</a></li>
   </ul>
   <div class="nav-toggles">
     <button type="button" class="nav-toggle-btn" id="theme-toggle" title="Tema" aria-label="Tema degistir">
@@ -1496,7 +1513,13 @@ function toggleTheme() {
 
 (function initI18nTheme() {
   const savedTheme = localStorage.getItem('geoni_site_theme');
-  const theme = savedTheme || 'light';
+  // Kayitli tercih YOKSA isletim sistemini dinle. Eskiden burada sabit 'light'
+  // vardi: koyu temadaki telefon geoni.ai'yi bembeyaz aciyordu (ve CSS'in
+  // prefers-color-scheme kurali JS tarafindan geri aliniyordu). Ayni kusur
+  // isbirligi.html'de duzeltilmisti, buraya tasinmamisti.
+  const theme = (savedTheme === 'light' || savedTheme === 'dark')
+    ? savedTheme
+    : ((window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light');
   applyTheme(theme);
   document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
   // Mobil menu (hamburger): <=900px'te nav linkleri gizli, buradan acilir
@@ -2178,7 +2201,9 @@ document.getElementById('calc-sector').addEventListener('change', function() {
   </div>
   <div class="audit-msgs" id="audit-msgs" role="log" aria-live="polite"></div>
   <div class="audit-input-wrap" id="audit-input-wrap">
-    <input class="audit-input" id="audit-input" placeholder="Type your answer..." onkeydown="if(event.key==='Enter')sendAudit()" data-i18n-ph="audit_input_ph">
+    <!-- aria-label: ekran okuyucu yalnizca yer tutucuyu okuyordu; yer tutucu
+         erisilebilir ad YERINE GECMEZ. -->
+    <input class="audit-input" id="audit-input" aria-label="Type your answer" placeholder="Type your answer..." onkeydown="if(event.key==='Enter')sendAudit()" data-i18n-ph="audit_input_ph">
     <button class="audit-send" id="audit-send" onclick="sendAudit()">→</button>
   </div>
 </div>

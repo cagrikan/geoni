@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sayfa bulunamadı — GEONI</title>
+<meta name="description" content="Aradığınız sayfa GEONI'de bulunamadı. Ana sayfaya, rehbere ya da ücretsiz taramaya buradan geçebilirsiniz.">
+<meta name="robots" content="noindex,follow">
+<link rel="icon" href="/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<!-- Ayni tema anahtarini (geoni_site_theme) paylasir; kayitli tercih yoksa
+     isletim sistemini dinler. -->
+<script src="/theme-toggle.js"></script>
+<style>
+  :root{
+    --bg:#0B0C10; --surface:#14161C; --border:rgba(124,134,245,.18);
+    --text:#ECEDF5; --text-sub:#A8ACBE; --text-muted:#818799;
+    --accent:#7C86F5; --amber:#F5A623;
+    --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+    --body:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  }
+  @media(prefers-color-scheme:light){
+    :root:not([data-theme="dark"]){
+      --bg:#F7F8FA; --surface:#FFFFFF; --border:rgba(22,24,29,.12);
+      --text:#16181D; --text-sub:#4D5464; --text-muted:#666B7D; --accent:#5B63E8; --amber:#96590A;
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#F7F8FA; --surface:#FFFFFF; --border:rgba(22,24,29,.12);
+    --text:#16181D; --text-sub:#4D5464; --text-muted:#666B7D; --accent:#5B63E8; --amber:#96590A;
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+       background:var(--bg);color:var(--text);font-family:var(--body);line-height:1.6;padding:32px 22px}
+  main{max-width:34rem;display:flex;flex-direction:column;gap:16px}
+  .kod{font:600 .72rem/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--accent)}
+  h1{margin:0;font-size:clamp(1.6rem,5vw,2.2rem);font-weight:800;letter-spacing:-.03em;line-height:1.12;text-wrap:balance}
+  p{margin:0;color:var(--text-sub)}
+  ul{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:9px}
+  a.kart{display:flex;align-items:center;gap:11px;background:var(--surface);border:1px solid var(--border);
+         border-radius:11px;padding:13px 16px;color:var(--text);text-decoration:none;min-height:44px;
+         transition:border-color .2s,transform .2s}
+  a.kart:hover{border-color:var(--accent);transform:translateX(2px)}
+  a.kart b{font-weight:600}
+  a.kart span{color:var(--text-muted);font-size:.88rem;margin-left:auto;font-family:var(--mono)}
+  :focus-visible{outline:2.5px solid var(--accent);outline-offset:3px;border-radius:6px}
+  #gn-theme-toggle{position:fixed;top:16px;right:16px;width:40px;height:40px;display:flex;
+    align-items:center;justify-content:center;border-radius:9px;border:1px solid var(--border);
+    background:var(--surface);color:var(--text-sub);cursor:pointer}
+  #gn-theme-toggle svg{width:17px;height:17px}
+</style>
+</head>
+<body>
+<main>
+  <span class="kod">404 · sayfa bulunamadı</span>
+  <h1>Bu adreste bir şey yok.</h1>
+  <p>Bağlantı eski olabilir ya da adres yanlış yazılmış olabilir. Aradığınız muhtemelen aşağıdakilerden biri:</p>
+  <ul>
+    <li><a class="kart" href="/"><b>Ana sayfa</b> <span>geoni.ai</span></a></li>
+    <li><a class="kart" href="/rehber"><b>AI görünürlüğü rehberi</b> <span>/rehber</span></a></li>
+    <li><a class="kart" href="/indir"><b>Uygulamayı indir</b> <span>/indir</span></a></li>
+    <li><a class="kart" href="/isbirligi"><b>Creator programı</b> <span>/isbirligi</span></a></li>
+    <li><a class="kart" href="/en"><b>English</b> <span>/en</span></a></li>
+  </ul>
+</main>
+</body>
+</html>
