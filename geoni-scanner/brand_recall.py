@@ -2190,7 +2190,7 @@ async def check_brand_recall(
     return _finalize(sov_topic, sov_result, topics)
 
 
-async def infer_brand_identity(domain: str, pages: list) -> dict:
+async def infer_brand_identity(domain: str, pages: list, lang: str = "tr") -> dict:
     """Infer brand name + topic from crawled pages.
 
     F (daktilo vakasi): Yalnizca sayfa BASLIKLARINA bakmak, siirsel/metaforik
@@ -2202,6 +2202,14 @@ async def infer_brand_identity(domain: str, pages: list) -> dict:
 
     `pages`: crawl_result['pages'] (dict listesi). Geriye-uyum: str listesi de
     kabul edilir (eski cagiranlar/testler kirilmasin).
+
+    `lang` KULLANICININ dili. Rapordaki "Field:" degeri (result_json
+    brand_recall.inferred_topic) BURADAN gelir — sov.infer_topic'ten degil.
+    2026-07-31'de sov.infer_topic dile duyarli yapilmisti ama Ingilizce site
+    taramasi hala "Field: AI Görünürlük Optimizasyonu" gosteriyordu: cunku o
+    fonksiyon yalnizca kullanici alan girmediginde SOV icin devreye giren YEDEK
+    yol; ekranda gorunen alan bu fonksiyonun ciktisi. Alan ayrica check_brand_recall'a
+    ve kategori sorgularina besleniyor, yani yanlis dil sorgu kalitesini de bozuyor.
     """
     fallback_name = domain.split(".")[0].replace("-", " ").title()
 
@@ -2225,17 +2233,31 @@ async def infer_brand_identity(domain: str, pages: list) -> dict:
         return {"name": fallback_name, "topic": fallback_name}
     signal_text = "\n".join(lines[:10])
 
-    prompt = (
-        f"Aşağıda bir web sitesinin sayfalarından başlık, H1 ve açıklama metinleri var. "
-        f"Sitenin marka adını ve NE İŞ YAPTIĞINI (faaliyet alanı) belirle.\n\n"
-        f"ÖNEMLİ: Faaliyet alanını marka ADINDAN tahmin etme — adlar metaforik ya da "
-        f"yanıltıcı olabilir (ör. bir kelime, ürünün gerçekte yaptığı işi yansıtmayabilir). "
-        f"Kategoriyi yalnızca sayfaların açıkça anlattığı işe (açıklama ve H1 metinlerine) dayandır.\n\n"
-        f"Sayfa metinleri:\n{signal_text}\n\n"
-        f"Sadece şu formatta yanıt ver:\n"
-        f"MARKA: [marka/şirket adı]\n"
-        f"ALAN: [faaliyet alanı, 2-4 kelime]"
-    )
+    if lang == "en":
+        prompt = (
+            f"Below are titles, H1s and descriptions from the pages of a website. "
+            f"Determine the site's brand name and WHAT IT DOES (its field).\n\n"
+            f"IMPORTANT: Do not guess the field from the brand NAME — names can be "
+            f"metaphorical or misleading (a single word may not reflect what the product "
+            f"actually does). Base the category only on the work the pages explicitly "
+            f"describe (the description and H1 texts).\n\n"
+            f"Page texts:\n{signal_text}\n\n"
+            f"Answer in this format ONLY, IN ENGLISH:\n"
+            f"MARKA: [brand/company name]\n"
+            f"ALAN: [field, 2-4 words]"
+        )
+    else:
+        prompt = (
+            f"Aşağıda bir web sitesinin sayfalarından başlık, H1 ve açıklama metinleri var. "
+            f"Sitenin marka adını ve NE İŞ YAPTIĞINI (faaliyet alanı) belirle.\n\n"
+            f"ÖNEMLİ: Faaliyet alanını marka ADINDAN tahmin etme — adlar metaforik ya da "
+            f"yanıltıcı olabilir (ör. bir kelime, ürünün gerçekte yaptığı işi yansıtmayabilir). "
+            f"Kategoriyi yalnızca sayfaların açıkça anlattığı işe (açıklama ve H1 metinlerine) dayandır.\n\n"
+            f"Sayfa metinleri:\n{signal_text}\n\n"
+            f"Sadece şu formatta yanıt ver:\n"
+            f"MARKA: [marka/şirket adı]\n"
+            f"ALAN: [faaliyet alanı, 2-4 kelime]"
+        )
 
     try:
         # F-Y1: kimlik cikarimi (ad/alan) DETERMINISTIK olmali — temp 0.3'te site

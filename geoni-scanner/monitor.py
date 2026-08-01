@@ -62,14 +62,16 @@ async def _scan_web_item(item: dict) -> int | None:
     # sahte-yuksek/bot_protection sahte-False kalir (main.py bunu domain gecerek zaten cozmustu,
     # monitor/self-scan yolu atlanmisti). Domain gecirildi -> izleme + geoni.ai self-scan duzelir.
     indexing_status = await check_indexing_status(crawl_result["pages"], domain=domain)
-    identity = await infer_brand_identity(domain, crawl_result.get("pages", []))
+    item_lang = item.get("lang") or "tr"
+    identity = await infer_brand_identity(domain, crawl_result.get("pages", []), item_lang)
     brand_recall_result = await check_brand_recall(
         identity["name"], identity["topic"],
         custom_queries=item.get("custom_queries"),
         website=domain,
+        lang=item_lang,
     )
     score_result = await compute_ai_visibility_score(crawl_result, indexing_status, brand_recall_result)
-    topics = await generate_topics_and_opportunities(domain, crawl_result["pages"], item.get("lang") or "tr")
+    topics = await generate_topics_and_opportunities(domain, crawl_result["pages"], item_lang)
 
     # NOT: main.run_audit_job'daki result_payload ile ayni sekil olmali —
     # dashboard bu kaydi tiklaninca normal rapor olarak acar.

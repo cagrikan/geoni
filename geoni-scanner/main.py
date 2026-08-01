@@ -458,7 +458,7 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
         # within that topic. This becomes a 6th scoring dimension.
         # Zengin sinyal (baslik + H1 + meta desc) beslenir; siirsel/metaforik
         # marka adlarinda kategori yanlis cikmasin (bkz. infer_brand_identity).
-        identity = await infer_brand_identity(request.domain, crawl_result.get("pages", []))
+        identity = await infer_brand_identity(request.domain, crawl_result.get("pages", []), request.lang)
         # Perf (Fable 2026-07-24): topics.py'nin LLM cagrisi yalniz domain+pages'e
         # bagli (crawl_result), brand_recall SONUCUNA degil — eskiden brand_recall
         # (crawl+recall+judge+SOV, dakikalarca surebilen zincir) TAMAMEN bitene
