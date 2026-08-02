@@ -38,6 +38,7 @@ from db import (
 from mailer import send_monitor_email
 from pushnotify import send_score_change_push
 from stability import build_stability
+from audit_payload import build_audit_result_payload
 from scanqueue import acquire_scan_slot, release_scan_slot
 
 logger = logging.getLogger(__name__)
@@ -73,52 +74,14 @@ async def _scan_web_item(item: dict) -> int | None:
     score_result = await compute_ai_visibility_score(crawl_result, indexing_status, brand_recall_result)
     topics = await generate_topics_and_opportunities(domain, crawl_result["pages"], item_lang)
 
-    # NOT: main.run_audit_job'daki result_payload ile ayni sekil olmali —
-    # dashboard bu kaydi tiklaninca normal rapor olarak acar.
-    result_payload = {
-        "domain": domain,
-        "score": score_result["overall_score"],
-        "score_breakdown": score_result["breakdown"],
-        "scoring_version": score_result.get("scoring_version"),
-        "weights_used": score_result.get("weights_used"),
-        "diagnostics": score_result.get("diagnostics"),
-        "total_pages": crawl_result["total_pages"],
-        "indexed_pages": indexing_status["indexed_count"],
-        "platforms": {
-            "chatgpt": indexing_status.get("openai", False),
-            "anthropic": indexing_status.get("anthropic", False),
-            "perplexity": indexing_status.get("perplexity", False),
-            "google": indexing_status.get("google", 0),
-        },
-        "bot_access": indexing_status.get("bot_access", {}),
-        "llms_txt": indexing_status.get("llms_txt", False),
-        "top_topics": topics["performing_topics"],
-        "opportunities": topics["opportunity_topics"],
-        "pages": [
-            {"url": p.get("url"), "title": p.get("title"), "meta_description": p.get("meta_description")}
-            for p in crawl_result.get("pages", []) if p.get("title")
-        ][:20],
-        "brand_recall": {
-            "checked": brand_recall_result.get("checked", False),
-            "recognized": brand_recall_result.get("recognized", False),
-            "score": brand_recall_result.get("score"),
-            "score_legacy": brand_recall_result.get("score_legacy"),
-            "scoring_version": brand_recall_result.get("scoring_version"),
-            "inferred_name": identity["name"],
-            "inferred_topic": identity["topic"],
-        },
-        "sov": brand_recall_result.get("sov"),
-        # F1: 4-motor model_results'i top-level'a tasi — geoni.ai self-scan'in
-        # own_recognition sinyali (self_improve) bunu buradan okur; eskiden yoktu
-        # ve ozellik sessizce olulyordu.
-        "model_results": brand_recall_result.get("model_results") or {},
-        "stability": await build_stability("web", domain,
-                                           score_result["overall_score"],
-                                           score_result["breakdown"],
-                                           score_result.get("weights_used")),
-        "auto_monitor": True,  # rapor basliginda "otomatik izleme taramasi" gosterilebilir
-        "created_at": datetime.now().isoformat(),
-    }
+    # Payload artik ELLE KURULMAZ: main.run_audit_job ile AYNI fonksiyondan gecer
+    # (audit_payload.py). Onceden iki kopya vardi ve monitor kopyasi geride
+    # kalmisti — bkz. audit_payload.py'deki `platforms.google` tuzagi.
+    result_payload = await build_audit_result_payload(
+        domain=domain, lang=item_lang, crawl_result=crawl_result,
+        indexing_status=indexing_status, brand_recall_result=brand_recall_result,
+        score_result=score_result, topics=topics, identity=identity,
+        auto_monitor=True)
 
     job_id = str(uuid.uuid4())
     await save_audit(job_id, {"domain": domain, "email": ""}, result_payload,

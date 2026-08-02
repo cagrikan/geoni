@@ -63,8 +63,14 @@ _HABER = re.compile(r"(?i)haber|sondakika|son-dakika|dergisi|gazete|/news/")
 
 def siniflandir(url: str, baslik: str = "") -> str:
     """Tek kaynagi sayfa tipine ayirir. Sira ONEMLI: en spesifik once."""
-    u = (url or "").strip()
-    b = (baslik or "").strip()
+    # Girdi DIS KAYNAKLI: baslik/URL, AI Overview'in alintiladigi ucuncu-taraf
+    # sayfalardan gelir ve uzunlugu sinirsizdir (crawler'daki gibi onceden
+    # kirpilmiyor). Regex'ler dogrusal zamanli — bugun somurulebilir bir ReDoS
+    # yok (2026-08-02 denetimi) — ama sinirsiz girdiyi desen motoruna vermek
+    # gereksiz bir yuzey; kirpma bedelsiz savunma derinligi. Baslik tipini
+    # belirleyen sinyaller zaten ilk kelimelerdedir.
+    u = (url or "").strip()[:500]
+    b = (baslik or "").strip()[:200]
     hepsi = f"{b} {u}"
 
     if _LISTE_BASLIK.search(b) or _LISTE_URL.search(u):

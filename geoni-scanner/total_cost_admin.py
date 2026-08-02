@@ -26,7 +26,7 @@ from aws_cost import get_aws_monthly_breakdown
 from gemini_admin import get_gemini_monthly_breakdown
 from perplexity_admin import get_perplexity_monthly_breakdown
 from grok_admin import get_grok_monthly_breakdown
-from db import get_manual_cost
+from db import get_manual_cost, get_dataforseo_cost_monthly
 
 logger = logging.getLogger(__name__)
 
@@ -75,12 +75,18 @@ async def get_admin_total_cost_summary() -> dict:
     months = _last_n_calendar_months(3, now)  # [this, prev1, prev2]
     this_key = months[0]
 
-    anthropic_m, openai_m, perplexity_m, gemini_m, grok_m, supabase_row, usd_try = await asyncio.gather(
+    (anthropic_m, openai_m, perplexity_m, gemini_m, grok_m, dataforseo_m,
+     supabase_row, usd_try) = await asyncio.gather(
         get_anthropic_monthly_breakdown(),
         get_openai_monthly_breakdown(),
         get_perplexity_monthly_breakdown(),
         get_gemini_monthly_breakdown(),
         get_grok_monthly_breakdown(),
+        # DataForSEO (Google AI Ozeti): saglayicinin aylik dokum API'si yok;
+        # maliyet zaten yanittan hesaplanip taramaya yaziliyor (ai_overview.py),
+        # buradan toplaniyor. Eksik birakilirsa panel harcamayi SISTEMATIK
+        # eksik gosterir — 2026-08-02 denetiminde boyleydi.
+        get_dataforseo_cost_monthly(),
         get_manual_cost("supabase"),
         _get_usd_try_rate(),
     )
@@ -92,6 +98,7 @@ async def get_admin_total_cost_summary() -> dict:
         "aws": aws_m or {},
         "perplexity": perplexity_m or {},
         "grok": grok_m or {},
+        "dataforseo": dataforseo_m or {},
     }
     gemini_try_by_month = gemini_m or {}
     gemini_usd_by_month = {k: v / usd_try for k, v in gemini_try_by_month.items()} if usd_try else {}
@@ -118,6 +125,9 @@ async def get_admin_total_cost_summary() -> dict:
         "aws": round((aws_m or {}).get(this_key, 0), 2),
         "perplexity": round((perplexity_m or {}).get(this_key, 0), 2),
         "grok": round((grok_m or {}).get(this_key, 0), 2),  # Fable: usd_sources'ta vardi ama kirilimda eksikti
+        # DataForSEO kalemleri kucuk ($0.004-0.012/tarama) — 2 hane yuvarlama
+        # hepsini 0.00 gosterirdi; 4 hane ile gercek deger gorunur.
+        "dataforseo": round((dataforseo_m or {}).get(this_key, 0), 4),
         "gemini_usd": round(gemini_usd_by_month.get(this_key, 0), 2),
         "supabase": round(supabase_current, 2),
     }

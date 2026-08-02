@@ -57,7 +57,10 @@ def test_web_sablonu_bozulmadi():
            "top_topics": [{"topic": "SEO"}], "opportunities": [],
            "created_at": "2026-07-30T12:00:00"}
     html = mailer._build_report_html("ornek.com", web, "tr")
-    assert "Taranan Alan Adı" in html and "Otorite" in html and "SEO" in html
+    # Etiket 2026-08-02'de "Otorite" -> "Güvenilirlik Sinyali" oldu (jargon
+    # temizligi). Kirilim etiketinin e-postaya BASILDIGINI dogrulamak testin
+    # amaci; hangi kelime oldugu web/mobil ile ayni kalmali (bkz. mailer.py).
+    assert "Taranan Alan Adı" in html and "Güvenilirlik Sinyali" in html and "SEO" in html
 
 
 def test_bos_adres_ag_istegi_yapmadan_false_doner():

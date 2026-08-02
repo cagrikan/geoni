@@ -59,11 +59,14 @@ _EMAIL_TEXT = {
         "sov_sources_label": "AI yanıtlarında kaynak gösterilen siteler:",
         "smoothed_label": "Yumuşatılmış skor (son 3 tarama)",
         "breakdown_labels": {
-            "index_coverage": "Dizin Kapsamı",
-            "authority": "Otorite",
-            "freshness": "Tazelik",
-            "schema": "Şema Bütünlüğü",
-            "ai_access": "AI Erişimi",
+            # Insan dilinde (2026-08-02): web ResultsPage BREAKDOWN_LABELS_TR
+            # ve mobil lib/i18n ile AYNI olmali — ayni skor uc yuzeyde farkli
+            # adla anilirsa kullanici iki ayri sey sanar.
+            "index_coverage": "AI'ın Görebildiği Sayfalar",
+            "authority": "Güvenilirlik Sinyali",
+            "freshness": "İçerik Güncelliği",
+            "schema": "Sitenin AI'a Doğru Anlatılması",
+            "ai_access": "AI Botlarının Erişimi",
             "engagement": "Etkileşim",
             "brand_recall": "Marka Bilinirliği",
             # Kisi/marka/sosyal taramanin kirilimi (brand_recall.score_breakdown).
@@ -99,11 +102,11 @@ _EMAIL_TEXT = {
         "sov_sources_label": "Sites cited as sources in AI answers:",
         "smoothed_label": "Smoothed score (last 3 scans)",
         "breakdown_labels": {
-            "index_coverage": "Index Coverage",
-            "authority": "Authority",
-            "freshness": "Freshness",
-            "schema": "Schema Integrity",
-            "ai_access": "AI Access",
+            "index_coverage": "Pages AI Can Actually See",
+            "authority": "Trust Signal",
+            "freshness": "Content Freshness",
+            "schema": "Correct Site Understanding by AI",
+            "ai_access": "AI Bot Access",
             "engagement": "Engagement",
             "brand_recall": "Brand Recall",
             "claude": "Claude",

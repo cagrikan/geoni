@@ -12,6 +12,7 @@ teslim sonrasi bir kalite denetimidir. Bu yuzden musteriye giden mesajlar
 "otomatik olusturuldu / gorunur" diye dururst ifade edilir, "kalite kontrolden
 SONRA iletilecek" gibi bir gecikme yanilsamasi verilmez.
 """
+import asyncio
 import json
 import logging
 import os
@@ -22,7 +23,7 @@ from urllib.robotparser import RobotFileParser
 
 import httpx
 
-from ssrf_guard import safe_get
+from ssrf_guard import safe_get, assert_public_host, BlockedHostError
 from indexing import TRAINING_CRAWLER_AGENTS, SEARCH_CRAWLER_AGENTS
 from db import (
     get_latest_web_audit_by_domain, get_latest_audit_by_target,
@@ -42,6 +43,29 @@ _UA = {"User-Agent": "GEONI-bot/1.0 (+https://geoni.ai)"}
 _PAGE_NOISE_RE = re.compile(
     r"(login|signin|sign-in|/cart|/sepet|checkout|/account|/hesab|/admin|/wp-|"
     r"/tag/|/etiket/|/page/\d|/sayfa/\d|privacy|gizlilik|cerez|/kvkk|\?)", re.I)
+
+
+async def _hedef_public_mi(domain: str) -> bool:
+    """🔒 SSRF kapisi (2026-08-02 guvenlik denetimi).
+
+    NEDEN BURADA, cagiranda DEGIL: bilet hedefi (`POST /api/tickets` body.target)
+    kullanicidan gelir ve yalnizca `normalize_domain`'den gecer — o fonksiyon
+    SOZDIZIMI dogrular, ADRESI degil: "169.254.170.2" (ECS metadata) regex'i
+    gecer, cunku rakamlar da [a-z0-9] sinifindadir. `safe_get` ise yalniz
+    REDIRECT hop'larini dogrular, ILK istegi degil (bkz. ssrf_guard.py:98) —
+    yani ag istegini atan fonksiyon dogrulamazsa kimse dogrulamaz.
+
+    Bu yuzden guard, cagiranda degil ISTEGI ATAN iki fonksiyonun (_find_sitemap,
+    generate_robots_txt) girisindedir: yarin yeni bir cagiran eklenirse koruma
+    kendiliginden gelir (crawler.py:339 ile ayni desen, tek fark: orada giris
+    noktasi crawl'in kendisi).
+    """
+    try:
+        await asyncio.to_thread(assert_public_host, domain)
+        return True
+    except BlockedHostError as e:
+        logger.warning(f"ticket_automation SSRF engellendi: {e}")
+        return False
 
 
 def _sanitize_text(s: str, max_len: int) -> str:
@@ -116,6 +140,8 @@ async def _find_sitemap(domain: str, audit: dict | None) -> str | None:
     audit sitemap_found=False diyorsa canli kontrole gerek yok (crawl'a guven)."""
     if audit and (audit.get("result_json") or {}).get("sitemap_found") is False:
         return None
+    if not await _hedef_public_mi(domain):
+        return None
     for path in ("sitemap.xml", "sitemap_index.xml"):
         try:
             async with httpx.AsyncClient() as c:
@@ -183,6 +209,8 @@ async def generate_robots_txt(domain: str, sitemap_path: str | None = None) -> t
     elle duzeltmeli). kisitli_botlar: kendi grubunda kisitli olanlar."""
     existing = None
     try:
+        if not await _hedef_public_mi(domain):
+            raise BlockedHostError(domain)
         async with httpx.AsyncClient() as c:
             r = await safe_get(c, f"https://{domain}/robots.txt", timeout=8, headers=_UA)
         body = r.text or ""
@@ -638,8 +666,13 @@ async def fulfill_content_ticket(ticket_id: int, target: str) -> bool:
                 "uzmanlık doğrulaması yapın.\n\n" + draft + "\n"
             )
         message += (
+            # "llms.txt" urunun HICBIR yerinde tanimli degil (2026-08-02
+            # kullanici-dostlugu denetimi): hizmeti SATIN ALMIS musteri bile bu
+            # terimi ilk kez burada gorebilir. Ne oldugu yazilir, dosya adi
+            # parantezde teknik ipucu olarak kalir.
             "\n---\n\n**Yayınlayınca:** içerik URL'sini bu bilete yazın; sayfayı "
-            "llms.txt'inize ücretsiz ekler, güncelliğini izlemenize yardımcı oluruz. "
+            "AI botlarının erişim listesine (llms.txt) ücretsiz ekler, güncelliğini "
+            "izlemenize yardımcı oluruz. "
             "İçeriği bir sektör sitesine **misafir yazı** olarak da verebilirsiniz — "
             "üçüncü-taraf atıf için “Güvenilir Kaynaklarda Görünürlük” hizmetimiz tam bunu yapar."
         )
@@ -1257,6 +1290,13 @@ async def fulfill_auto_ticket(key: str, ticket_id: int, target: str) -> bool:
                 "bu hizmet uygulanamaz."
             ))
             logger.info(f"fulfill_auto_ticket: hedef domain degil ({target!r}), cop uretilmedi, bilet {ticket_id} open")
+            return False
+        # 🔒 Ic/ozel adrese cozulen hedef otomasyona HIC girmez: ag istegini atan
+        # fonksiyonlarda da guard var (savunma derinligi) ama burada durdurmak
+        # anlamsiz bir "robots.txt" dosyasi uretilmesini de engeller — bilet
+        # normal uzman akisina duser, musteri parasini kaybetmez.
+        if not await _hedef_public_mi(website):
+            logger.warning(f"fulfill_auto_ticket: hedef public degil ({target!r}), bilet {ticket_id} uzmana")
             return False
         if key == "llms_robots":
             return await fulfill_llms_robots_ticket(ticket_id, website)

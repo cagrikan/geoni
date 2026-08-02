@@ -113,18 +113,19 @@ def test_platforms_google_SAYI_DEGIL_bot_izni_okumali():
     Son 120 gunde 109 taramanin 78'i (%71,6) etkilendi ve yaninda "Hizmete git"
     butonu vardi: OLMAYAN bir soruna hizmet satiliyordu.
 
-    KAYNAK SEVIYESINDE denetlenir: main.py fastapi ister, CI minimal ortaminda
-    import EDILEMEZ (bkz. task_protection.py'de yasanan boto3 olayi). Dosya
-    METIN olarak okunur — kimse eski satiri geri getirirse test kirmizi olur.
+    2026-08-02: payload main.py'den `audit_payload.py`'ye tasindi (main ve
+    monitor ayni sekli ELLE kuruyordu ve monitor kopyasi bu duzeltmeyi
+    kacirmisti). Kontrol da oraya tasindi — artik davranis DOGRUDAN olculuyor
+    (kaynak metni okumak yerine payload uretiliyor), bkz.
+    tests/test_audit_payload.py. Burada yalniz payload'in tek yerde kuruldugu
+    dogrulanir; iki dosyada da elle kurulum kalmamali.
     """
     import pathlib
-    src = (pathlib.Path(__file__).parent.parent / "main.py").read_text(encoding="utf-8")
-    i = src.index('"platforms": {')
-    blok = src[i:i + 1400]
-    assert '"google": indexing_status.get("google_bot_allowed"' in blok, \
-        "platforms.google bot-izni bayragini okumali (SAYIYI degil)"
-    assert '"google": indexing_status.get("google", 0)' not in blok, \
-        "platforms.google yine SONUC SAYISINI okuyor — yanlis bulgu geri geldi"
+    kok = pathlib.Path(__file__).parent.parent
+    for ad in ("main.py", "monitor.py"):
+        src = (kok / ad).read_text(encoding="utf-8")
+        assert '"platforms": {' not in src, \
+            f"{ad} payload'i yine elle kuruyor — iki kopya = sessiz sapma riski"
 
 
 def test_bot_izni_kaynagi_BOOLEAN_uretir():

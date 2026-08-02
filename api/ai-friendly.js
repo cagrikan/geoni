@@ -11,6 +11,17 @@ function esc(s) {
   }[c]));
 }
 
+// 🔒 JSON-LD, <script> blogunun ICINDE durur ve orada HTML escape'i GECERSIZDIR:
+// tarayici script govdesini ilk "</script" dizisinde kapatir. JSON.stringify bu
+// diziyi kacirmaz — yani veriden gelen tek bir "</script>" sayfayi bolup XSS
+// acar (2026-08-02 denetiminde bulundu: audits.domain ham geliyordu).
+// esc() BURADA KULLANILAMAZ (JSON'u bozar); dogru cozum "<" karakterini JSON'un
+// kendi \u kacisiyla yazmaktir — anlam ayni kalir, HTML ayristiricisi goremez.
+// Alan alan degil TEK NOKTADA uygulanir ki ileride eklenen her alan korunsun.
+function jsonld(obj) {
+  return JSON.stringify(obj).replace(/</g, '\\u003c');
+}
+
 export default async function handler(req, res) {
   let items = [];
   try {
@@ -79,7 +90,7 @@ export default async function handler(req, res) {
      WebPage + BreadcrumbList sayfayi Organization'a ve site agacina bagliyor.
      ItemList ogeleri GERCEK veriden uretilir — uydurma satir YOK; liste bossa
      itemListElement de bos kalir (yanlis veri basmaktansa eksik kalsin). -->
-<script type="application/ld+json">${JSON.stringify({
+<script type="application/ld+json">${jsonld({
   "@context": "https://schema.org",
   "@graph": [
     { "@type": "WebPage", "@id": "https://geoni.ai/ai-friendly",

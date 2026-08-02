@@ -5428,3 +5428,58 @@ async def get_previous_audits(kind: str, target: str, limit: int = 2) -> list:
     except Exception as e:
         logger.warning(f"get_previous_audits error: {e}")
     return []
+
+
+async def get_dataforseo_cost_monthly(lookback_days: int = 365) -> dict[str, float]:
+    """DataForSEO (AI Overview) harcamasi: YYYY-MM -> USD.
+
+    NEDEN AUDITS'TEN OKUNUR, AYRI TABLODAN DEGIL: maliyeti zaten saglayici
+    yanitindan hesaplayip taramanin kendi sonucuna yaziyoruz
+    (`result_json.sov.ai_overview.cost_usd`, bkz. ai_overview.py). Ikinci bir
+    defter tutmak ayni sayiyi iki yerde tutmak olur — ve sema degisikligi
+    gerektirirdi. Perplexity'de ayri tablo VAR cunku orada maliyet bir taramaya
+    degil tek tek LLM cagrilarina ait; burada birim zaten taramadir.
+
+    PostgREST satir limiti tuzagi (perplexity'de yasandi: 1964 satir kesilip
+    harcama yariya dusmustu) burada sayfalama ile kapatilir; ayrica yalniz
+    ai_overview OLCULMUS satirlar cekilir (bugun 393 taramanin ~5'i).
+    """
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return {}
+    # 🪤 isoformat() "+00:00" ile biter; URL'de ham "+" BOSLUK olarak cozulur ve
+    # PostgREST 400 doner (olculdu). Gun hassasiyeti 365 gunluk pencere icin
+    # fazlasiyla yeterli — tarih formati bu tuzagi tamamen ortadan kaldirir.
+    baslangic = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+    aylik: dict[str, float] = {}
+    sayfa, ADIM = 0, 1000
+    try:
+        async with httpx.AsyncClient() as client:
+            while True:
+                r = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/audits"
+                    f"?select=created_at,cost:result_json->sov->ai_overview->>cost_usd"
+                    f"&result_json->sov->ai_overview->>cost_usd=not.is.null"
+                    f"&created_at=gte.{baslangic}&order=created_at.asc",
+                    headers={**_headers(),
+                             "Range-Unit": "items",
+                             "Range": f"{sayfa * ADIM}-{sayfa * ADIM + ADIM - 1}"},
+                    timeout=15,
+                )
+                if r.status_code not in (200, 206):
+                    logger.warning(f"get_dataforseo_cost_monthly HTTP {r.status_code}")
+                    break
+                satirlar = r.json()
+                for row in satirlar:
+                    try:
+                        tutar = float(row.get("cost") or 0)
+                    except (TypeError, ValueError):
+                        continue
+                    ay = (row.get("created_at") or "")[:7]
+                    if ay:
+                        aylik[ay] = aylik.get(ay, 0.0) + tutar
+                if len(satirlar) < ADIM:
+                    break
+                sayfa += 1
+    except Exception as e:
+        logger.warning(f"get_dataforseo_cost_monthly error: {e}")
+    return {k: round(v, 5) for k, v in aylik.items()}

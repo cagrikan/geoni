@@ -22,10 +22,11 @@ yasanan boto3 olayi).
 import asyncio
 import logging
 import re
+from urllib.parse import urlparse
 
 import httpx
 
-from ssrf_guard import safe_get
+from ssrf_guard import safe_get, assert_public_host
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,15 @@ def gorunen_metin(html: str) -> str:
 
 async def _tek_sayfa(client, url: str, render_len: int) -> dict | None:
     try:
+        # 🔒 SSRF/DNS-rebind (2026-08-02 guvenlik denetimi): bu modul crawl
+        # BITTIKTEN sonra (crawler.py:40 — 90 sn'ye kadar) AYNI URL'lere YENI bir
+        # baglantiyla gider. crawler.py host'u uc kez dogruluyor (girisde, her
+        # Playwright document isteginde, navigasyondan sonra) ama o dogrulamalar
+        # bu istegi KAPSAMAZ; `safe_get` ise yalniz redirect hop'larini dogrular,
+        # ilk istegi degil. Aradaki surede saldirgan kendi domaininin DNS'ini ic
+        # bir IP'ye cevirebilir. Bu yuzden host BURADA tekrar dogrulanir.
+        host = urlparse(url).hostname or ""
+        await asyncio.to_thread(assert_public_host, host)
         r = await safe_get(client, url, headers={"User-Agent": _UA}, timeout=_TIMEOUT)
         if r.status_code != 200:
             return None

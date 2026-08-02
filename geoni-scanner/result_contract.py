@@ -54,6 +54,37 @@ SOV_OPTIONAL_CLIENT_KEYS = {
 }
 
 
+# ---------- WEB taramasi sozlesmesi (2026-08-02) ----------
+# NEDEN SONRADAN EKLENDI: marka akisinda bu sozlesme vardi ve gercek bir bug'i
+# yakaladi (resolved_identity/needs_niche sessizce dusmustu). WEB akisinda hic
+# yoktu -> 2026-08-02 denetiminde "uretiliyor ama hicbir istemci okumuyor"
+# (citability) ve "istemcide var, payload'da yok" (monitor'de ssr/page_type_gap)
+# vakalarinin ikisi de ancak elle bakarak bulundu.
+#
+# Liste OLCULEREK cikarildi (tahminle degil): web `ResultsPage.jsx:161-168` +
+# `FixSuggestions:96-140` + `SovSection`, mobil `lib/api.ts:227-250 AuditResult`.
+# Yeni alan eklerken: istemci okuyorsa BURAYA da ekle, yoksa test yalan soyler.
+WEB_CLIENT_KEYS = {
+    "domain", "score", "score_breakdown", "total_pages", "indexed_pages",
+    "platforms", "llms_txt", "top_topics", "opportunities", "brand_recall",
+    "sov", "sov_pending", "stability", "created_at",
+    # 2026-08-02'de eklendi; web `FixSuggestions` bunlari okuyup "neden" cumlesi
+    # kuruyor (ResultsPage.jsx:122,131). Mobil'de HENUZ YOK — acik is.
+    "ssr", "page_type_gap",
+}
+
+# Istemcinin OKUMADIGI ama payload'da tasinan alanlar. Burada olmak bir SUC
+# degil (rapor/otomasyon/oz-gelisim okuyabilir) — ama listede durmasi "kimse
+# okumuyorsa neden uretiyoruz" sorusunu gorunur kilar.
+WEB_INTERNAL_KEYS = {
+    "lang", "scoring_version", "weights_used", "diagnostics", "sitemap_found",
+    "site_assets", "bot_access", "pages", "model_results",
+    # GOLGE MOD: hesaplaniyor, tasiniyor, HICBIR istemci okumuyor (olculdu
+    # 2026-08-02: web+mobil sifir eslesme). Ya baglanacak ya bitis tarihi alacak.
+    "citability",
+}
+
+
 def build_brand_payload(result: dict, name, topic, stability, created_at: str, lang: str = "tr") -> dict:
     """brand_recall.check_brand_recall sonucundan client payload'i uretir.
     `result` brand_recall'in dondurdugu ham dict; `stability` ve `created_at`

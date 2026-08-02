@@ -160,3 +160,26 @@ def test_403_olcumden_atilir(monkeypatch):
         return Resp()
     monkeypatch.setattr(ssr_check, "safe_get", sahte)
     assert asyncio.run(ssr_check.check_ssr([{"url": "https://x.com/", "text_len": 5000}])) is None
+
+
+# ---------- SSRF / DNS-rebind kapisi (2026-08-02 guvenlik denetimi) ----------
+
+def test_ic_adrese_giden_sayfa_AG_ISTEGI_ATMAZ(monkeypatch):
+    """
+    🪤 Bu modul crawl BITTIKTEN sonra (crawler.py:40 — 90 sn'ye kadar) ayni
+    URL'lere YENI bir httpx baglantisiyla gider. crawler.py host'u uc katmanda
+    dogruluyor ama o dogrulamalar bu istegi KAPSAMAZ; `safe_get` ise yalniz
+    redirect hop'larini dogrular, ILK istegi degil (ssrf_guard.py:98). Aradaki
+    surede saldirgan kendi domaininin DNS'ini ic bir IP'ye cevirirse istek ic
+    aga giderdi. Guard'in istegin ONUNDE oldugunu kanitlar: safe_get cagrilirsa
+    test patlar (yalnizca "None dondu" kaniti yetmez).
+    """
+    cagrildi = []
+
+    async def _patlat(*a, **k):
+        cagrildi.append(a)
+        raise AssertionError("safe_get ic hedefe cagrildi — SSRF acik")
+
+    monkeypatch.setattr(ssr_check, "safe_get", _patlat)
+    assert asyncio.run(ssr_check._tek_sayfa(None, "https://169.254.170.2/x", 100)) is None
+    assert cagrildi == []
