@@ -50,6 +50,7 @@ Each service ships with a work-breakdown checklist, in-app messaging with the as
 - [Markam ChatGPT'de görünmüyor](https://geoni.ai/rehber/markam-chatgptde-gorunmuyor)
 - [ChatGPT görünürlüğü](https://geoni.ai/rehber/chatgpt-gorunurlugu)
 - [llms.txt nedir?](https://geoni.ai/rehber/llms-txt-nedir)
+- [AI görünürlük takip araçları karşılaştırması](https://geoni.ai/rehber/ai-gorunurluk-araclari): kategori araçlarının ne ölçtüğü, seçim için 7 ölçüt, araçsız 5 dakikalık öz test.
 - [Tüm rehberler](https://geoni.ai/rehber)
 
 ## Links

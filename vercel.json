@@ -54,6 +54,10 @@
       "destination": "/rehber/geo-nedir.html"
     },
     {
+      "source": "/rehber/ai-gorunurluk-araclari",
+      "destination": "/rehber/ai-gorunurluk-araclari.html"
+    },
+    {
       "source": "/indir",
       "destination": "/indir.html"
     },
