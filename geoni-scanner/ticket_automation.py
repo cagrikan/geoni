@@ -461,14 +461,31 @@ def _select_content_topics(audit: dict | None) -> dict:
     comps = [_sanitize_text(c.get("name") if isinstance(c, dict) else c, 60)
              for c in (sov.get("competitors") or [])]
     comps = [c for c in dict.fromkeys(c for c in comps if c)]
+    # SAYFA TIPI EKSIGI (2026-08-02, golge mod olcumu). Uzmana en somut ipucu
+    # bu: "ne yazayim" degil, "HANGI TIPTE yazayim". Olculdu: AI'in alintiladigi
+    # sayfalarin ~%53'u karsilastirma listesi, rehber yalnizca ~%3 — cogu
+    # musteri (ve biz) rehber uretiyor. Deterministik: LLM cagrisi YOK.
+    tip_eksik = []
+    for e in ((result.get("page_type_gap") or {}).get("eksik_tipler") or []):
+        ad = _sanitize_text(str(e.get("tip") or ""), 40)
+        if not ad:
+            continue
+        tip_eksik.append({
+            "tip": ad,
+            "ai_orani": e.get("ai_orani"),
+            "bizdeki_sayfa": e.get("bizdeki_sayfa"),
+            "kat": e.get("kat"),
+        })
     return {"gaps": gaps[:6], "opportunities": opps[:6], "strengths": strengths[:6],
-            "competitors": comps[:6], "has_sov": bool(sov.get("checked"))}
+            "competitors": comps[:6], "has_sov": bool(sov.get("checked")),
+            "page_type_gap": tip_eksik[:3]}
 
 
 def _content_has_material(sel: dict) -> bool:
     """Otonom üretim için yeterli deterministik hammadde var mı? Yoksa insana
     düşülür (çöp/jenerik içerik üretmektense uzman doğru veriden yazsın)."""
-    return bool(sel["gaps"] or sel["opportunities"] or sel["strengths"] or sel["competitors"])
+    return bool(sel["gaps"] or sel["opportunities"] or sel["strengths"]
+                or sel["competitors"] or sel.get("page_type_gap"))
 
 
 async def generate_content_briefs(name: str, topic: str, audit: dict | None, kind: str) -> str | None:
@@ -479,6 +496,19 @@ async def generate_content_briefs(name: str, topic: str, audit: dict | None, kin
     if not _content_has_material(sel):
         return None
     data_lines = []
+    if sel.get("page_type_gap"):
+        # Uzmana ILK bu soylenir: hangi TIPTE sayfa yazacagi, ne yazacagindan once gelir.
+        parcalar = []
+        for t in sel["page_type_gap"]:
+            oran = f"%{t['ai_orani']*100:.0f}" if isinstance(t.get("ai_orani"), (int, float)) else "?"
+            kat = f", sitede {t['bizdeki_sayfa']} sayfa ({t['kat']} kat az)" if t.get("kat") else \
+                  f", sitede {t.get('bizdeki_sayfa', 0)} sayfa"
+            parcalar.append(f"{t['tip']} (AI atiflarinin {oran}'i bu tipte{kat})")
+        data_lines.append(
+            "EKSİK SAYFA TİPİ — İÇERİĞİN BİÇİMİ BUNA GÖRE SEÇİLMELİ: " + "; ".join(parcalar)
+            + ". Aynı konuyu düz rehber olarak yazmak yerine bu biçimde kurgula "
+              "(karşılaştırma listesi ise tablo + madde madde aday; hizmet/ürün ise "
+              "kapsam, fiyatlandırma ve kime uygun bölümleri).")
     if sel["gaps"]:
         data_lines.append("KANITLANMIŞ BOŞLUKLAR (AI'a soruldu, marka anılmadı — en öncelikli hedefler): "
                           + "; ".join(sel["gaps"]))
