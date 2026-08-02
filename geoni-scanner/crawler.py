@@ -272,6 +272,27 @@ async def extract_page_metadata(page, is_home: bool = False) -> dict:
         except Exception:
             site_assets = {}
 
+    # Alintilanabilirlik + yapi ozeti (citability.py). TEK evaluate cagrisi,
+    # ek AG istegi YOK. Metnin kendisi degil OLCULERI tasinir; paragraflar
+    # yalnizca kelime saymak icin kirpik gonderilir -> result_json sismez.
+    try:
+        yapi = await page.evaluate("""() => {
+            const h = [...document.querySelectorAll('h1,h2,h3,h4')]
+                .slice(0, 40)
+                .map(e => ({level: +e.tagName[1], text: (e.innerText||'').trim().slice(0,120)}));
+            const p = [...document.querySelectorAll('article p, main p, p')]
+                .map(e => (e.innerText||'').trim()).filter(t => t.length > 40)
+                .slice(0, 60).map(t => t.slice(0, 400));
+            return {
+                headings: h, paragraphs: p,
+                list_count: document.querySelectorAll('ul,ol').length,
+                table_count: document.querySelectorAll('table').length,
+                faq: /faq|sik(ca)? sorulan|frequently asked/i.test(document.body.innerText || ''),
+            };
+        }""")
+    except Exception:
+        yapi = {}
+
     # SSR olcumunun paydasi: JS CALISTIKTAN SONRA gorunen metin uzunlugu.
     # ssr_check.py ayni sayfayi JS'siz cekip orani hesaplayacak. Yalniz SAYI
     # tasinir (metnin kendisi degil) — result_json sismesin.
@@ -284,6 +305,7 @@ async def extract_page_metadata(page, is_home: bool = False) -> dict:
         "title": title or "",
         "meta_description": meta_description or "",
         "text_len": int(text_len or 0),
+        "yapi": yapi or {},
         "h1": h1,
         "canonical_url": canonical_url or "",
         "schema_types": schema_types,
@@ -455,9 +477,18 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
     except Exception as e:
         logger.warning(f"SSR olcumu atlandi: {e}")
 
+    # Alintilanabilirlik/yapi: GOLGE MOD — skoru degistirmez, rapora yazilir.
+    citability = None
+    try:
+        import citability as _cit
+        citability = _cit.site_ozeti([p.get("yapi") or {} for p in results])
+    except Exception as e:
+        logger.warning(f"Alintilanabilirlik olcumu atlandi: {e}")
+
     return {
         "domain": domain,
         "ssr": ssr,
+        "citability": citability,
         "total_pages": len(results),
         "crawl_time_ms": crawl_time_ms,
         "pages": results,

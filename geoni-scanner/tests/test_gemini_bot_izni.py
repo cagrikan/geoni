@@ -57,3 +57,31 @@ def test_google_extended_egitim_listesinde_tanimli():
     sessizce True varsayilana dusmeyelim."""
     assert "google_extended" in indexing.TRAINING_CRAWLER_AGENTS
     assert indexing.TRAINING_CRAWLER_AGENTS["google_extended"] == "Google-Extended"
+
+
+# ---------- bot listesi genisletmesi (2026-08-02) ----------
+
+def test_yeni_egitim_botlari_listede():
+    """claude-seo karsilastirmasindan cikan eksikler: Bytespider, cohere-ai."""
+    for k, ad in (("bytespider", "Bytespider"), ("cohere_ai", "cohere-ai")):
+        assert indexing.TRAINING_CRAWLER_AGENTS.get(k) == ad
+
+
+def test_vertex_arama_botu_listede():
+    assert indexing.SEARCH_CRAWLER_AGENTS.get("google_cloudvertexbot") == "Google-CloudVertexBot"
+
+
+def test_robots_baglamaz_kumesi_dogru():
+    """
+    Bu getiriciler KULLANICI TETIKLEMELI ve robots.txt'i tasarim geregi yok
+    sayarlar. Raporda "izin verildi" demek YANILTICI olur — site sahibi bunlari
+    robots ile durduramaz.
+    """
+    b = indexing.ROBOTS_BAGLAMAZ
+    for beklenen in ("ChatGPT-User", "Claude-User", "Google-Agent", "Google-NotebookLM"):
+        assert beklenen in b.values(), f"{beklenen} eksik"
+
+
+def test_robots_baglamaz_egitim_listesiyle_karismaz():
+    """Egitim botlari robots'a UYAR; ikisi karisirsa yanlis etiket basariz."""
+    assert not (set(indexing.ROBOTS_BAGLAMAZ.values()) & set(indexing.TRAINING_CRAWLER_AGENTS.values()))

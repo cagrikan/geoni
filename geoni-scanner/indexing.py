@@ -51,6 +51,8 @@ TRAINING_CRAWLER_AGENTS = {
     "ccbot":           "CCBot",          # Common Crawl - bircok modelin egitim kaynagi
     "applebot_extended":  "Applebot-Extended",  # Apple Intelligence (2026 guncel)
     "meta_externalagent": "meta-externalagent",  # Meta AI (2026 guncel)
+    "bytespider":         "Bytespider",          # ByteDance / TikTok AI (2026-08-02 eklendi)
+    "cohere_ai":          "cohere-ai",           # Cohere modelleri (2026-08-02 eklendi)
     # "anthropic-ai" cikarildi: Anthropic'in artik kullanmadigi eski ad (gurultu).
 }
 
@@ -64,6 +66,23 @@ SEARCH_CRAWLER_AGENTS = {
     "perplexity_user":   "Perplexity-User",
     "claude_searchbot":  "Claude-SearchBot",
     "claude_user":       "Claude-User",   # Anthropic kullanici-baslatan getirme (2026 guncel)
+    # Site sahibinin KENDI istegiyle Vertex AI ajanlarinin taramasi (2026-08-02).
+    "google_cloudvertexbot": "Google-CloudVertexBot",
+}
+
+# 🪤 ROBOTS.TXT ILE ENGELLENEMEYEN getiriciler (2026-08-02). Bunlar KULLANICI
+# TETIKLEMELI: biri sohbette linki actigi icin gidip sayfayi cekerler ve
+# robots.txt'i TASARIM GEREGI yok sayarlar. Raporda "izin verildi/verilmedi"
+# demek YANILTICI olurdu — site sahibi bunlari robots ile durduramaz, ancak
+# sunucu tarafi erisim denetimiyle durdurabilir.
+# Kaynak: developers.google.com/crawling (Google'in kanonik referansi, 2025-11-20
+# tasindi) + OpenAI ChatGPT-User dokumantasyonu.
+ROBOTS_BAGLAMAZ = {
+    "chatgpt_user":          "ChatGPT-User",       # OpenAI, kullanici tetikli
+    "claude_user":           "Claude-User",        # Anthropic, kullanici tetikli
+    "perplexity_user":       "Perplexity-User",    # Perplexity, kullanici tetikli
+    "google_agent":          "Google-Agent",       # Google ajansal gezinme (Mariner)
+    "google_notebooklm":     "Google-NotebookLM",  # kullanicinin ekledigi kaynak URL'i
 }
 
 HEADERS = {
@@ -163,6 +182,9 @@ async def check_robots_ai_access(domain: str) -> dict:
         "robots_found": robots_found,
         "egitim": egitim,
         "arama": arama,
+        # Rapor bunlari "izinli/engelli" DIYE gostermemeli: robots.txt onlari
+        # baglamiyor. Istemci ayri bir etiket basar ("robots ile engellenemez").
+        "robots_baglamaz": sorted(ROBOTS_BAGLAMAZ.values()),
         "bot_protection_suspected": bot_protection_suspected,  # M6
         # Geriye donuk uyumluluk icin: platform bazinda "en azindan bir arama
         # botu izinli mi" ozeti. Bu, "AI'da gorunurluk" acisindan egitim
