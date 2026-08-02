@@ -227,8 +227,22 @@ async def check_ai_overview(queries: list[str], name: str, own_domain: str = "",
     mentioned = [r for r in present if r.get("brand_mentioned")]
     domains = Counter(d for r in present for d in (r.get("cited_domains") or []))
 
+    # Kaynak SAYFA TIPI dagilimi (golge mod, skoru DEGISTIRMEZ). Olculdu
+    # 2026-08-02: AI Overview'in alintiladigi sayfalarin ~%49'u liste/
+    # karsilastirma, yalnizca ~%5'i rehber — ve rehber GEONI'nin urettigi TEK
+    # tipti. "Ne yapayim" sorusuna somut cevap: eksik SAYFA TIPI.
+    # Ek maliyet YOK: veri zaten referanslardan geliyor.
+    tip_dagilimi = None
+    try:
+        import source_type
+        tip_dagilimi = source_type.dagilim(
+            [r for row in present for r in (row.get("references") or [])])
+    except Exception as e:
+        logger.warning(f"Kaynak tipi dagilimi atlandi: {e}")
+
     return {
         "queries": rows,
+        "source_types": tip_dagilimi,
         "queries_measured": len(ok),
         "queries_failed": len(failed),
         "aio_present_count": len(present),
