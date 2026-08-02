@@ -33,6 +33,7 @@ web_results, judge_diagnostics).
 import asyncio
 import json
 import os
+import random
 import re
 import logging
 import statistics
@@ -157,7 +158,18 @@ JUDGE_MODEL_OPENAI = "gpt-4o"
 # Iki Tavily hesabi arasinda donusumlu (round-robin) kullanim - her hesabin
 # kendi aylik sorgu kotasi (1000) var, esit yaslandirma icin sirayla donuyor.
 TAVILY_API_KEYS = [k for k in [os.environ.get("TAVILY_API_KEY", ""), os.environ.get("TAVILY_API_KEY_2", "")] if k]
-_tavily_rr = {"i": 0}
+
+# 🪤 SIFIRDAN BASLAMAK ESIT YASLANDIRMAYI BOZAR (olculdu 2026-08-02).
+# Sayac SUREC-ICI. Worker scale-to-zero ile calisiyor: neredeyse her tarama icin
+# YENI bir gorev ayaga kalkiyor, `i` 0'a donuyor, `0 % 2 = 0` -> her taramanin
+# ilk cagrisi hep tavily-1'e gidiyor. Canli olcum: son 7 gunde 21 cagrinin
+# 21'i tavily-1; tavily-2 30 Temmuz'dan beri hic kullanilmadi (228 vs 133).
+# Failover kodu kota dolunca devrede oldugu icin ERISILEBILIRLIK sorunu degildi,
+# ama kotalar esit yaslanmiyordu.
+# COZUM: baslangic noktasi surec basina RASTGELE. Kisa omurlu bircok worker
+# uzerinde beklenen dagilim esitlenir; ek durum/altyapi (Redis sayaci vb.)
+# gerekmez.
+_tavily_rr = {"i": random.randrange(len(TAVILY_API_KEYS)) if TAVILY_API_KEYS else 0}
 
 
 def _next_tavily_key() -> tuple[str, str]:
