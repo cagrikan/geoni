@@ -74,6 +74,30 @@ export default async function handler(req, res) {
 <title>${L.title}</title>
 <meta name="description" content="${L.desc}">
 <link rel="canonical" href="https://geoni.ai/ai-friendly">
+<!-- Yapisal veri (2026-08-02): sitemap'teki 19 sayfanin YALNIZ BU BIRINDE sema
+     yoktu (olculdu). Liste bir siralama oldugu icin ItemList dogru tip;
+     WebPage + BreadcrumbList sayfayi Organization'a ve site agacina bagliyor.
+     ItemList ogeleri GERCEK veriden uretilir — uydurma satir YOK; liste bossa
+     itemListElement de bos kalir (yanlis veri basmaktansa eksik kalsin). -->
+<script type="application/ld+json">${JSON.stringify({
+  "@context": "https://schema.org",
+  "@graph": [
+    { "@type": "WebPage", "@id": "https://geoni.ai/ai-friendly",
+      "url": "https://geoni.ai/ai-friendly", "name": L.h1, "description": L.desc,
+      "inLanguage": lang === 'tr' ? 'tr' : 'en',
+      "isPartOf": { "@id": "https://geoni.ai/#website" },
+      "publisher": { "@id": "https://geoni.ai/#organization" } },
+    { "@type": "BreadcrumbList", "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "GEONI", "item": "https://geoni.ai" },
+      { "@type": "ListItem", "position": 2, "name": L.h1 } ] },
+    { "@type": "ItemList", "name": L.h1, "description": L.desc,
+      "numberOfItems": items.length,
+      "itemListOrder": "https://schema.org/ItemListOrderDescending",
+      "itemListElement": items.slice(0, 50).map((it, i) => ({
+        "@type": "ListItem", "position": i + 1, "name": it.domain,
+        "url": `https://${it.domain}` })) }
+  ]
+})}</script>
 <meta property="og:type" content="website">
 <meta property="og:title" content="${L.h1} — GEONI">
 <meta property="og:description" content="${L.desc}">
