@@ -39,3 +39,46 @@ def test_retry_then_success():
     out = asyncio.run(sov._extract_competitors(["Rakip A metinde geciyor"], "X", flaky_llm))
     assert calls["n"] == 2                    # retry oldu
     assert [c["name"] for c in out] == ["Rakip A"]
+
+
+def test_kirpilmis_json_kurtarilir():
+    """Kok neden regresyon testi (2026-08-02): max_tokens tavaninda kesilen yanit.
+
+    Uretimde 7 gunde 26/26 'JSON parse basarisiz' bu sekilde olusuyordu; hem
+    json.loads hem `[\\[{].*[\\]}]` regex'i kapanis parantezi olmadigi icin
+    dusuyor, rakip listesi sessizce BOS kaliyordu."""
+    kirpik = ('{"competitors": [{"name": "Rakip A", "mentions": 2}, '
+              '{"name": "Rakip B", "mentions": 1}, {"name": "Rakip C", "menti')
+
+    async def kirpan_llm(_p, **_kw):
+        return kirpik
+
+    # Eski yol gercekten dusuyor mu — testin bir seyi kanitladigindan emin ol.
+    assert sov._extract_json(kirpik) is None
+
+    out = asyncio.run(sov._extract_competitors(
+        ["Rakip A ve Rakip B onerilir.", "Rakip A one cikiyor."], "X", kirpan_llm))
+    names = [c["name"] for c in out]
+    assert names[:2] == ["Rakip A", "Rakip B"]   # tam nesneler kurtarildi
+    assert "Rakip C" not in names                # yarim nesne UYDURULMAZ
+
+
+def test_max_tokens_desteklemeyen_llm_bozulmaz():
+    """ask_llm sozlesmesi tek argumanli olabilir (testlerdeki sahte LLM'ler,
+    eski cagiranlar). TypeError yakalanip tek argumanla tekrar denenmeli."""
+    calls = {"n": 0}
+
+    async def tek_argumanli(_p):          # kwarg KABUL ETMIYOR
+        calls["n"] += 1
+        return '{"competitors": [{"name": "Rakip A"}]}'
+
+    out = asyncio.run(sov._extract_competitors(["Rakip A geciyor"], "X", tek_argumanli))
+    assert [c["name"] for c in out] == ["Rakip A"]
+    assert calls["n"] == 1
+
+
+def test_salvage_ic_ice_olmayan_semada_yarim_nesneyi_atar():
+    assert sov._salvage_objects('[{"name":"A"},{"name":"B"},{"na') == \
+        [{"name": "A"}, {"name": "B"}]
+    assert sov._salvage_objects('{"name":""}') == []      # bos ad alinmaz
+    assert sov._salvage_objects("") == []

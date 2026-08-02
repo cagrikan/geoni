@@ -40,6 +40,12 @@ SOV_QUERY_COUNT = 3      # birincil alan sorgusu
 SOV_ADJACENT_COUNT = 2   # komsu alan sorgusu (ikinci yakalanma sansi)
 MAX_CUSTOM_QUERIES = 3
 
+# Rakip cikarimi yardimci LLM'in varsayilan 500 token'ina sigmiyordu: girdi 5
+# yanit x 2000 karakter, cikti her ad icin bir JSON nesnesi. Kirpilan yanit
+# parse edilemeyip liste BOS donuyordu (bkz. _salvage_objects). Filtre zaten
+# ilk 5'i aliyor; buyuk butce yalnizca JSON'un KAPANMASINI garanti eder.
+_COMPETITOR_MAX_TOKENS = 1500
+
 ENGINE_LABELS = {"perplexity": "Perplexity", "google": "Google AI",
                  "chatgpt": "ChatGPT", "claude": "Claude"}
 
@@ -257,6 +263,33 @@ def _extract_json(raw: str) -> dict | list | None:
             except Exception:
                 return None
     return None
+
+
+def _salvage_objects(raw: str) -> list[dict]:
+    """KIRPILMIS JSON'dan tam nesneleri kurtarir.
+
+    NEDEN: `_ask_aux` varsayilan `max_tokens=500` ile cagriliyor. Rakip cikarimi
+    5 yanittan (her biri 2000 karaktere kadar) gecen TUM ozel adlari isteyip her
+    biri icin {"name","mentions"} nesnesi urettiginden yanit sik sik tavana carpip
+    dizinin ORTASINDA kesiliyor. Kesik metinde ne `json.loads` ne de `_extract_json`
+    icindeki `[\\[{].*[\\]}]` regex'i is goruyor (kapanis parantezi yok) -> her iki
+    deneme de "JSON parse basarisiz" verip rakip listesi BOS donuyordu. Olculdu
+    (2026-08-02, /ecs/geoni-scanner, 7 gun): 26/26 basarisizligin tamami bu satir,
+    hepsi 2. denemede — yani transient degil, girdiye bagli deterministik.
+
+    Sema duz oldugu icin ({"name": "...", "mentions": 1}) ic ice suslu parantez
+    beklenmez; bu yuzden `\\{[^{}]*\\}` ile tam nesneleri toplamak guvenli.
+    Yarim kalan SON nesne dogal olarak eslesmez ve atilir — kismi ad uydurmayiz.
+    """
+    out: list[dict] = []
+    for m in re.finditer(r"\{[^{}]*\}", raw or ""):
+        try:
+            obj = json.loads(m.group(0))
+        except Exception:
+            continue
+        if isinstance(obj, dict) and str(obj.get("name", "")).strip():
+            out.append(obj)
+    return out
 
 
 def _source_domain(src: str) -> str:
@@ -591,7 +624,13 @@ async def _extract_competitors(answers: list[str], own_name: str, ask_llm, socia
     # bir kez daha denenir; her basarisizlik NEDENIYLE loglanir (canary/telemetri gorur).
     for attempt in (1, 2):
         try:
-            raw = await ask_llm(prompt)
+            # Kirpilma en sik gorulen ariza (bkz. _salvage_objects): budce
+            # yetiyorsa buyugunu iste. ask_llm sozlesmesi tek argumanli oldugundan
+            # (testlerdeki sahte LLM'ler dahil) kwarg'i desteklemeyeni bozmayiz.
+            try:
+                raw = await ask_llm(prompt, max_tokens=_COMPETITOR_MAX_TOKENS)
+            except TypeError:
+                raw = await ask_llm(prompt)
         except Exception as e:
             logger.warning(f"SOV competitor: ask_llm hata (deneme {attempt}): {e}")
             continue
@@ -602,8 +641,19 @@ async def _extract_competitors(answers: list[str], own_name: str, ask_llm, socia
         data = _extract_json(raw)
         comps = (data or {}).get("competitors") if isinstance(data, dict) else None
         if not isinstance(comps, list):
-            logger.warning(f"SOV competitor: JSON parse basarisiz (deneme {attempt})")
-            continue
+            # Kirpilmis yanittan tam nesneleri kurtarmayi dene; sessiz-[] yasagi
+            # geregi hangi yola girildigi ve ham yanitin BOYU/KUYRUGU loglanir
+            # (kok neden gorunur kalsin, tekrar tahmin etmeyelim).
+            comps = _salvage_objects(raw)
+            if comps:
+                logger.warning(
+                    f"SOV competitor: JSON parse basarisiz, KIRPILMA kurtarildi "
+                    f"(deneme {attempt}, {len(comps)} aday, ham={len(raw)} karakter)")
+            else:
+                logger.warning(
+                    f"SOV competitor: JSON parse basarisiz (deneme {attempt}, "
+                    f"ham={len(raw)} karakter, kuyruk={raw[-120:]!r})")
+                continue
         out = _filter_competitors(comps, own_name, full_answers)
         if out:
             return out
