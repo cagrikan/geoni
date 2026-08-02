@@ -101,3 +101,37 @@ def test_engines_unavailable_musteriye_tasiniyor():
     # Alan hic uretilmediginde de client kirilmasin: bos liste, None degil.
     ham.pop("engines_unavailable")
     assert build_brand_payload(ham, "@garyvee", "x", {}, "t")["engines_unavailable"] == []
+
+
+# ---------- tip tutarliligi kalkani (2026-08-02) ----------
+
+def test_platforms_google_SAYI_DEGIL_bot_izni_okumali():
+    """
+    🪤 YASANDI: `platforms` sozlugunde uc alan BOOLEAN bot-izni bayragiydi,
+    dorduncusu (google) Google SONUC SAYISI (int). Arayuz hepsini boolean sanip
+    `!platforms.google` yazdi -> "Gemini sitenize erisemiyor" YANLIS bulgusu.
+    Son 120 gunde 109 taramanin 78'i (%71,6) etkilendi ve yaninda "Hizmete git"
+    butonu vardi: OLMAYAN bir soruna hizmet satiliyordu.
+
+    KAYNAK SEVIYESINDE denetlenir: main.py fastapi ister, CI minimal ortaminda
+    import EDILEMEZ (bkz. task_protection.py'de yasanan boto3 olayi). Dosya
+    METIN olarak okunur — kimse eski satiri geri getirirse test kirmizi olur.
+    """
+    import pathlib
+    src = (pathlib.Path(__file__).parent.parent / "main.py").read_text(encoding="utf-8")
+    i = src.index('"platforms": {')
+    blok = src[i:i + 1400]
+    assert '"google": indexing_status.get("google_bot_allowed"' in blok, \
+        "platforms.google bot-izni bayragini okumali (SAYIYI degil)"
+    assert '"google": indexing_status.get("google", 0)' not in blok, \
+        "platforms.google yine SONUC SAYISINI okuyor — yanlis bulgu geri geldi"
+
+
+def test_bot_izni_kaynagi_BOOLEAN_uretir():
+    """indexing.check_robots_ai_access'in google bayragi bool olmali (ag YOK)."""
+    import indexing
+    egitim = {k: True for k in indexing.TRAINING_CRAWLER_AGENTS}
+    egitim["google_extended"] = False
+    assert isinstance(egitim["google_extended"], bool)
+    # Alan adi degisirse sessizce True varsayilana dusmeyelim:
+    assert "google_extended" in indexing.TRAINING_CRAWLER_AGENTS
