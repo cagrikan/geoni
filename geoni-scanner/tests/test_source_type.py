@@ -116,3 +116,66 @@ def test_bos_girdi_None():
 def test_baslik_yoksa_patlamaz():
     assert st.siniflandir("https://a.com/x", "") in (st.DIGER, st.HIZMET, st.LISTE, st.REHBER)
     assert st.siniflandir("", "") == st.DIGER
+
+
+# ---------- SXO: uyumsuzluk (2026-08-02) ----------
+
+def _liste(n): return [{"url": f"https://ai.com/en-iyi-{i}", "title": f"En İyi {i} Araç"} for i in range(n)]
+def _rehber(n): return [{"url": f"https://biz.com/nedir-{i}", "title": f"GEO nedir {i}"} for i in range(n)]
+
+
+def test_eksik_tip_yakalanir():
+    """
+    ASIL SXO SINYALI: AI liste alintiliyor, bizde yalnizca rehber var.
+    Bu cikmiyorsa ozelligin hicbir degeri yok.
+    """
+    k = st.karsilastir(kendi_sayfalar=_rehber(10), alintilanan=_liste(10))
+    tipler = [e["tip"] for e in k["eksik_tipler"]]
+    assert st.LISTE in tipler, k["eksik_tipler"]
+    assert k["eksik_tipler"][0]["bizdeki_sayfa"] == 0
+
+
+def test_bizde_zaten_varsa_eksik_sayilmaz():
+    """Yanlis alarm uretmeyelim: sayfa tipi bizde de varsa bulgu DEGIL."""
+    k = st.karsilastir(kendi_sayfalar=_liste(10), alintilanan=_liste(10))
+    assert [e["tip"] for e in k["eksik_tipler"]] == []
+
+
+def test_sosyal_ve_haber_eksik_tip_sayilmaz():
+    """YouTube/haber sitesi 'uretebilecegimiz sayfa tipi' degil — oneri olmaz."""
+    dis = [{"url": f"https://www.youtube.com/watch?v={i}", "title": "Video"} for i in range(10)]
+    k = st.karsilastir(kendi_sayfalar=_rehber(10), alintilanan=dis)
+    assert [e["tip"] for e in k["eksik_tipler"]] == []
+
+
+def test_dusuk_oranli_tip_eksik_sayilmaz():
+    """%15 esigi: tek bir alintilanan sayfadan aksiyon uretmeyelim."""
+    dis = _rehber(9) + [{"url": "https://a.com/en-iyi-1", "title": "En İyi 5 Araç"}]
+    k = st.karsilastir(kendi_sayfalar=_rehber(10), alintilanan=dis)
+    assert [e["tip"] for e in k["eksik_tipler"]] == []
+
+
+def test_taraflardan_biri_olculemezse_None():
+    assert st.karsilastir([], _liste(5)) is None
+    assert st.karsilastir(_rehber(5), []) is None
+
+
+def test_AZ_TEMSIL_de_bulgu_sayilir():
+    """
+    🪤 GERCEK VERIDE COKTU: ilk olcut ikiliydi ("bizde <=%5"). geoni.ai'de TEK
+    bir karsilastirma sayfasi orani %11 yapiyor ve bulgu kayboluyordu — oysa AI
+    %52.5 alintiliyordu (4.7 kat fark). Az temsil de bulgudur.
+    """
+    kendi = _rehber(8) + _liste(1)          # 9 sayfanin 1'i liste (~%11)
+    k = st.karsilastir(kendi_sayfalar=kendi, alintilanan=_liste(5) + _rehber(5))
+    tipler = [e["tip"] for e in k["eksik_tipler"]]
+    assert st.LISTE in tipler, k["eksik_tipler"]
+    e = [x for x in k["eksik_tipler"] if x["tip"] == st.LISTE][0]
+    assert e["kat"] and e["kat"] >= 2, e
+
+
+def test_esit_temsilde_bulgu_YOK():
+    """2 kat esigi: benzer oranda sahip oldugumuz tip aksiyon uretmemeli."""
+    k = st.karsilastir(kendi_sayfalar=_liste(5) + _rehber(5),
+                       alintilanan=_liste(5) + _rehber(5))
+    assert [e["tip"] for e in k["eksik_tipler"]] == []

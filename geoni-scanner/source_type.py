@@ -114,3 +114,49 @@ def dagilim(kaynaklar: list[dict]) -> dict | None:
         # Istemci "deneysel · skora katilmiyor" etiketi bassin.
         "shadow": True,
     }
+
+
+def karsilastir(kendi_sayfalar: list[dict], alintilanan: list[dict]) -> dict | None:
+    """
+    SXO'nun ASIL sinyali: AI'in alintiladigi sayfa tipleri ile SENIN sahip
+    oldugun tipleri karsilastirir.
+
+    "AI bu kategoride %53 KARSILASTIRMA LISTESI alintiliyor; senin 19 sayfanin
+     0'i bu tipte" — genel oneri degil, EKSIK SAYFA TIPI.
+
+    `kendi_sayfalar`: crawler'in ciktisi [{"url", "title"}, ...]
+    `alintilanan`   : AI Overview referanslari [{"url", "title"}, ...]
+
+    Doner: {"kendi": {...}, "alintilanan": {...}, "eksik_tipler": [...]}
+    Iki taraftan biri olculemezse None.
+    """
+    kendi = dagilim([{"url": p.get("url"), "title": p.get("title", "")}
+                     for p in (kendi_sayfalar or [])])
+    dis = dagilim(alintilanan or [])
+    if not kendi or not dis:
+        return None
+
+    # EKSIK TIP = AZ TEMSIL. Ilk surumde olcut IKILIYDI ("AI >=%15 VE bizde
+    # <=%5") ve GERCEK VERIDE COKTU: geoni.ai'de tek bir karsilastirma sayfasi
+    # oraninin %11 olmasina yetiyor, bulgu kayboluyordu. Oysa asil sinyal ORAN
+    # FARKI: AI %52.5 karsilastirma alintiliyor, bizde %11.1 — 4.7 KAT az.
+    # Yeni olcut: AI payi kayda deger (>=%15) VE bizimkinin en az 2 KATI.
+    eksik = []
+    for tip, oran in dis["oran"].items():
+        if tip in (DIGER, SOSYAL, HABER):
+            continue          # bunlar bizim uretebilecegimiz sayfa tipleri degil
+        bizde = kendi["oran"].get(tip, 0.0)
+        if oran >= 0.15 and oran >= max(bizde * 2, 0.05):
+            eksik.append({
+                "tip": tip, "ai_orani": oran, "bizdeki_oran": bizde,
+                "bizdeki_sayfa": kendi["dagilim"].get(tip, 0),
+                # Rapor metni icin: "AI 4.7 kat daha cok bu tipi aliniyor"
+                "kat": round(oran / bizde, 1) if bizde else None,
+            })
+    eksik.sort(key=lambda e: -e["ai_orani"])
+    return {
+        "kendi": kendi,
+        "alintilanan": dis,
+        "eksik_tipler": eksik,
+        "shadow": True,
+    }

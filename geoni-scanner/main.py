@@ -331,6 +331,18 @@ async def set_job_status(job_id: str, status: str):
         await update_audit_status(job_id, status)
 
 
+def _sxo_uyumsuzlugu(crawl_result: dict, sov_payload: dict | None) -> dict | None:
+    """AI'in alintiladigi sayfa tipleri ile musterinin tipleri arasindaki fark.
+    Iki taraftan biri olculemezse None (ozellik sessizce yok sayilir)."""
+    try:
+        import source_type
+        aio = ((sov_payload or {}).get("ai_overview") or {})
+        alinti = [r for q in (aio.get("queries") or []) for r in (q.get("references") or [])]
+        return source_type.karsilastir(crawl_result.get("pages") or [], alinti)
+    except Exception:
+        return None
+
+
 async def _build_audit_result_payload(request: AuditRequest, crawl_result: dict, indexing_status: dict,
                                        brand_recall_result: dict, score_result: dict, topics: dict,
                                        identity: dict) -> dict:
@@ -349,6 +361,19 @@ async def _build_audit_result_payload(request: AuditRequest, crawl_result: dict,
         "total_pages": crawl_result["total_pages"],
         "sitemap_found": crawl_result.get("sitemap_found"),  # B-4: llms/robots sitemap kanıtı
         "site_assets": crawl_result.get("site_assets"),  # P1: schema logo/sameAs
+        # SSR korlugu (2026-08-02): AI botlari JS calistirmaz, bizim tarayicimiz
+        # calistirir. Icerik yalnizca JS sonrasi olusuyorsa bot bos kabuk goruyor.
+        # ai_access skoruna zaten kesinti olarak girdi; burada rapor METNI icin
+        # tasiniyor ("AI botlari bu sayfanin %X'ini goremiyor").
+        "ssr": crawl_result.get("ssr"),
+        # Alintilanabilirlik/yapi: GOLGE MOD (shadow: true). Skora GIRMEZ;
+        # istemci "deneysel · skora katilmiyor" etiketiyle gosterir.
+        "citability": crawl_result.get("citability"),
+        # SXO uyumsuzlugu (GOLGE MOD): AI'in alintiladigi sayfa TIPLERI ile
+        # musterinin sahip oldugu tipleri karsilastirir. "Sema ekle" gibi genel
+        # oneri yerine EKSIK SAYFA TIPI verir: "AI %53 karsilastirma listesi
+        # alintiliyor, senin bu tipte tek sayfan yok."
+        "page_type_gap": _sxo_uyumsuzlugu(crawl_result, brand_recall_result.get("sov")),
         "indexed_pages": indexing_status["indexed_count"],
         "platforms": {
             # Not: bu alanlar artik ARAMA/ALINTILANMA botlarina (OAI-SearchBot,
