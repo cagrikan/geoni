@@ -272,9 +272,18 @@ async def extract_page_metadata(page, is_home: bool = False) -> dict:
         except Exception:
             site_assets = {}
 
+    # SSR olcumunun paydasi: JS CALISTIKTAN SONRA gorunen metin uzunlugu.
+    # ssr_check.py ayni sayfayi JS'siz cekip orani hesaplayacak. Yalniz SAYI
+    # tasinir (metnin kendisi degil) — result_json sismesin.
+    try:
+        text_len = await page.evaluate("() => (document.body && document.body.innerText || '').trim().length")
+    except Exception:
+        text_len = 0
+
     return {
         "title": title or "",
         "meta_description": meta_description or "",
+        "text_len": int(text_len or 0),
         "h1": h1,
         "canonical_url": canonical_url or "",
         "schema_types": schema_types,
@@ -436,8 +445,19 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
 
     crawl_time_ms = int((time.monotonic() - start_time) * 1000)
 
+    # SSR korlugu: AI botlari JS CALISTIRMAZ, biz calistiriyoruz. Ayni sayfalari
+    # JS'siz cekip orani olceriz. Hata olursa None -> ozellik yok sayilir,
+    # tarama ETKILENMEZ (bkz. ssr_check.py).
+    ssr = None
+    try:
+        import ssr_check
+        ssr = await ssr_check.check_ssr(results)
+    except Exception as e:
+        logger.warning(f"SSR olcumu atlandi: {e}")
+
     return {
         "domain": domain,
+        "ssr": ssr,
         "total_pages": len(results),
         "crawl_time_ms": crawl_time_ms,
         "pages": results,

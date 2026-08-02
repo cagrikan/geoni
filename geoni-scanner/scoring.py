@@ -170,8 +170,34 @@ def compute_ai_access_score(indexing_status: dict, crawl_result: dict) -> dict:
         + (2 if llms_txt else 0)
         + (10 if sitemap_found else 0)
     )
+
+    # SSR CEZASI (2026-08-02). robots.txt izin verse bile, icerik yalnizca
+    # JavaScript sonrasi olusuyorsa AI botu HICBIR SEY GOREMEZ — bizim
+    # tarayicimiz Playwright oldugu icin bunu goremiyorduk ve "erisim tamam"
+    # diyorduk. Olculdu: app.geoni.ai JS'siz 175 karakter, geoni.ai 7.818.
+    # Ceza CARPAN degil KESINTI: bot izinleri gercekten var, kaybolan sey
+    # ICERIGIN GORUNURLUGU. En fazla 40 puan; oran ne kadar dusukse o kadar
+    # buyuk. Olcum yoksa (eski taramalar, hata) ceza YOK — muhafazakar.
+    ssr = (crawl_result or {}).get("ssr") or {}
+    ssr_ceza = 0.0
+    # 🪤 BOT KORUMASI JS SANILMASIN. Ham getirme 403/challenge alirsa metin bos
+    # doner ve sayfa "JS-bagimli" gibi gorunur — oysa sebep TAMAMEN BASKA:
+    # sunucu botu ENGELLIYOR. Olculdu 2026-08-02: seoyen.com GPTBot'a 403
+    # ("Your request was blocked.", 25 bayt), tarayiciya 200 (178 KB).
+    # 403'u modul zaten olcumden ATIYOR, ama Cloudflare bazen 200 + JS challenge
+    # dondurur; o durumda ayirt edemeyiz. Engelleme SUPHESI varsa SSR cezasi
+    # UYGULANMAZ — engelleme zaten arama/egitim oranlariyla cezalandiriliyor,
+    # ikinci kez cezalandirmak ve YANLIS SEBEP gostermek olur.
+    bot_korumasi = bool(indexing_status.get("bot_protection_suspected"))
+    if ssr.get("js_dependent") and not bot_korumasi:
+        gizli = max(0.0, min(1.0, 1.0 - float(ssr.get("median_ratio", 1.0))))
+        ssr_ceza = round(40.0 * gizli, 1)
+        score = max(0.0, score - ssr_ceza)
+
     return {
         "score": min(100.0, score),
+        "ssr_penalty": ssr_ceza,
+        "ssr_hidden_pct": ssr.get("hidden_pct"),
         "arama_ratio": round(arama_ratio, 2),
         "egitim_ratio": round(egitim_ratio, 2),
         "measured": arama_measured or egitim_measured,
