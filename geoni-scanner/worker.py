@@ -25,6 +25,9 @@ import signal
 import boto3
 
 import main  # pipeline + jobs_store; uvicorn calismaz, sadece modul
+# Scale-in korumasi ayri modulde: worker.py boto3 + SCAN_QUEUE_URL istedigi icin
+# CI'nin minimal test ortaminda import EDILEMIYOR (bkz. task_protection.py).
+import task_protection
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("worker")
@@ -40,63 +43,6 @@ _region = QUEUE_URL.split(".")[1] if "sqs." in QUEUE_URL else None
 sqs = boto3.client("sqs", region_name=_region)
 
 _shutdown = asyncio.Event()
-
-# --- ECS Task Scale-In Protection -------------------------------------------
-# NEDEN: bosta-alarmi CALISAN worker'i tarama ortasinda oldurdu (olculdu
-# 2026-08-02: 20:09'da desired->0, gorev SIGKILL 137, mesaj kuyruga dondu, ayni
-# is BASTAN tarandi -> 3 gunde 12 isin 2'si iki kez kostu, her tekrar ~$0.31).
-# Alarm metrigi dogru (vis+inf); suc CloudWatch'in ~3 dk gecikmesinde: kuyruk
-# dolmadan ONCEKI bosluk, is basladiktan SONRA alarmi ates¬liyor.
-# Korumali gorev scale-in ile OLDURULEMEZ; boylece yaris kapanir.
-#
-# Sayac SART: koruma GOREVE ait, mesaja degil. WORKER_CONCURRENCY=2 iken iki is
-# paralel kosar; biri bitince korumayi kaldirirsak digeri savunmasiz kalir.
-_protect_lock = asyncio.Lock()
-_protect_count = 0
-# TTL emniyet supabi: `finally` hic kosmazsa (process crash) koruma sonsuza
-# kadar kalmasin — suresi dolunca kendiliginden duser. En kotu durum "worker
-# biraz fazla yasar", ki bu zaten bugunku davranis.
-PROTECT_MINUTES = int(os.environ.get("SCAN_PROTECT_MINUTES", "60"))
-
-
-async def _set_protection(enabled: bool) -> None:
-    """ECS agent'a koruma durumunu bildirir. Agent URI yoksa (yerel calistirma,
-    eski agent) sessizce no-op — worker yerelde de kosabilmeli."""
-    uri = os.environ.get("ECS_AGENT_URI")
-    if not uri:
-        return
-    body = {"ProtectionEnabled": enabled}
-    if enabled:
-        body["ExpiresInMinutes"] = PROTECT_MINUTES
-    try:
-        import httpx
-        async with httpx.AsyncClient() as c:
-            r = await c.put(f"{uri}/task-protection/v1/state", json=body, timeout=10)
-        if r.status_code != 200:
-            logger.warning(f"task protection {enabled} basarisiz: {r.status_code} {r.text[:200]}")
-        else:
-            logger.info(f"task protection -> {enabled}")
-    except Exception as e:
-        # Koruma kurulamazsa tarama YINE DE kosar: eski (korumasiz) davranisa
-        # duseriz, yeni bir kirilma yuzeyi acmayiz.
-        logger.warning(f"task protection {enabled} hata: {e}")
-
-
-async def _acquire_protection() -> None:
-    global _protect_count
-    async with _protect_lock:
-        _protect_count += 1
-        if _protect_count == 1:
-            await _set_protection(True)
-
-
-async def _release_protection() -> None:
-    global _protect_count
-    async with _protect_lock:
-        _protect_count = max(0, _protect_count - 1)
-        if _protect_count == 0:
-            await _set_protection(False)
-
 
 async def heartbeat(receipt: str, stop: asyncio.Event):
     """Uzun taramalarda mesajin baska worker'a gorunmesini engelle:
@@ -120,7 +66,7 @@ async def process_message(body: str, receipt: str):
     hb = asyncio.create_task(heartbeat(receipt, stop))
     # Korumayi mesaji ISLEMEDEN once al: prewarm/bilinmeyen tur dallari erken
     # return ediyor ve finally'ye dusuyor, sayac orada dengeleniyor.
-    await _acquire_protection()
+    await task_protection.acquire()
     delete_after = True
     try:
         payload = json.loads(body)
@@ -165,7 +111,7 @@ async def process_message(body: str, receipt: str):
         # Koruma EN SONDA birakilir: mesaj silindikten sonra. Once biraksaydik,
         # silme ile koruma kalkmasi arasindaki pencerede gorev oldurulup mesaj
         # tekrar teslim edilebilirdi — kapatmaya calistigimiz yarisin aynisi.
-        await _release_protection()
+        await task_protection.release()
 
 
 async def run():
