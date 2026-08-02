@@ -170,6 +170,13 @@ async def check_robots_ai_access(domain: str) -> dict:
         "openai": arama["oai_searchbot"] or arama["chatgpt_user"],
         "anthropic": arama["claude_searchbot"] or egitim["claudebot"],
         "perplexity": arama["perplexitybot"] or arama["perplexity_user"],
+        # Gemini'nin BOT IZNI: Google-Extended, Google'in uretken AI'sinin
+        # (Gemini/Vertex grounding) icerigi kullanmasini yoneten robots.txt
+        # jetonudur -- "Gemini bu siteyi kullanabilir mi" sorusunun tek dogru
+        # karsiligi budur. Eskiden bu alan HIC uretilmiyordu ve main.py bosluga
+        # Google SONUC SAYISINI koyuyordu (bkz. asagidaki not) -> rapor
+        # "Gemini sitenize erisemiyor" diye YANLIS uyari basiyordu.
+        "google": egitim["google_extended"],
     }
 
 
@@ -260,6 +267,7 @@ async def check_indexing_status(pages: list[dict], brand_name: str = "", domain:
           "openai": bool,      # geriye donuk uyumluluk (arama botlarina gore)
           "anthropic": bool,   # geriye donuk uyumluluk
           "perplexity": bool,
+          "google_bot_allowed": bool,  # Google-Extended izni (Gemini)
         }
     """
     from urllib.parse import urlparse
@@ -272,6 +280,7 @@ async def check_indexing_status(pages: list[dict], brand_name: str = "", domain:
         "bot_access": {"egitim": {}, "arama": {}, "robots_found": False},
         "llms_txt": False, "brave_indexed": None, "bot_protection_suspected": False,
         "openai": False, "anthropic": False, "perplexity": False,
+        "google_bot_allowed": False,
     }
     if not eff_domain:
         return _empty  # gercekten domain yok -> olculemez, tam-bos
@@ -316,4 +325,7 @@ async def check_indexing_status(pages: list[dict], brand_name: str = "", domain:
         "openai": ai_access.get("openai", True),
         "anthropic": ai_access.get("anthropic", True),
         "perplexity": ai_access.get("perplexity", True),
+        # DIKKAT: ustteki "google" anahtari Google SONUC SAYISI (int).
+        # Bot izni AYRI adla tasinir ki bir daha karistirilmasin.
+        "google_bot_allowed": ai_access.get("google", True),
     }

@@ -357,7 +357,14 @@ async def _build_audit_result_payload(request: AuditRequest, crawl_result: dict,
             "chatgpt": indexing_status.get("openai", False),
             "anthropic": indexing_status.get("anthropic", False),
             "perplexity": indexing_status.get("perplexity", False),
-            "google": indexing_status.get("google", 0),
+            # YANLIS BULGU DUZELTMESI (2026-08-02): burada eskiden
+            # indexing_status["google"] vardi -- o Google SONUC SAYISI (int),
+            # digerleri ise bot-izni boolean'i. Arayuz hepsini boolean sanip
+            # `!platforms.google` yaziyordu; 0 sonuc = "Gemini sitenize
+            # erisemiyor" diye okunuyordu. geoni.ai'nin kendi robots.txt'inde
+            # `Google-Extended: Allow: /` OLMASINA RAGMEN rapor "Gemini Bot
+            # Izni: Hayir" basti ve olmayan bir soruna HIZMET onerdi.
+            "google": indexing_status.get("google_bot_allowed", True),
         },
         "bot_access": indexing_status.get("bot_access", {}),
         "llms_txt": indexing_status.get("llms_txt", False),
