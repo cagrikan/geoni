@@ -6,7 +6,7 @@ ozellik sessizce oldu. Bu test o sinifi commit aninda yakalar: client'in
 okudugu her anahtar (BRAND_CLIENT_KEYS) build_brand_payload ciktisinda VAR mi?
 """
 from result_contract import (
-    BRAND_CLIENT_KEYS, SOV_CLIENT_KEYS, build_brand_payload,
+    BRAND_CLIENT_KEYS, SOV_CLIENT_KEYS, SOV_OPTIONAL_CLIENT_KEYS, build_brand_payload,
 )
 
 
@@ -51,6 +51,33 @@ def test_sov_subcontract_keys_present():
     sov = payload.get("sov") or {}
     missing = SOV_CLIENT_KEYS - set(sov.keys())
     assert not missing, f"sov'dan dusen client anahtarlari: {missing}"
+
+
+def test_opsiyonel_sov_anahtarlari_zorunluyla_cakismaz():
+    """
+    Opsiyonel alan zorunlu listeye SIZMAMALI: sizarsa golden test uretimde
+    hicbir zaman dolmayan bir alani "dusmus" sayip surekli kirmizi yanar ya da
+    (fixture'a eklenirse) yalan soyler. Iki kume ayrik kalmali.
+    """
+    assert not (SOV_CLIENT_KEYS & SOV_OPTIONAL_CLIENT_KEYS)
+
+
+def test_ai_overview_alani_tasiniyor_ama_zorunlu_degil():
+    """
+    ai_overview kimlik varsa payload'a GECMELI (sessizce dusen alan = olu ozellik,
+    resolved_identity bug'inin aynisi), kimlik yoksa YOKLUGU normal olmali.
+    """
+    r = _sample_result()
+    r["sov"]["ai_overview"] = {"aio_present_count": 3, "aio_presence_rate": 1.0,
+                               "brand_mention_count": 0, "brand_mention_rate": 0.0,
+                               "queries": [], "top_cited_domains": []}
+    with_aio = build_brand_payload(r, "@garyvee", "x", {}, "t")
+    assert with_aio["sov"]["ai_overview"]["aio_present_count"] == 3
+
+    without = build_brand_payload(_sample_result(), "@garyvee", "x", {}, "t")
+    assert "ai_overview" not in (without.get("sov") or {})
+    # ...ve yoklugu golden testi KIRMAMALI
+    assert not (SOV_CLIENT_KEYS - set((without.get("sov") or {}).keys()))
 
 
 def test_missing_source_field_defaults_not_crash():

@@ -41,6 +41,18 @@ SOV_CLIENT_KEYS = {
     "queries", "competitors", "sources", "citation_gap", "own_cited_count",
 }
 
+# OPSIYONEL sov alt-anahtarlari: istemci OKUR ama payload'da OLMAYABILIR.
+# Golden-payload testi bunlari "dusmus alan" saymaz -- yoklugu tasarim geregidir.
+# Zorunlu listeye koymak testi YALANCI yapar: uretimde kimlik yoksa alan zaten yok.
+SOV_OPTIONAL_CLIENT_KEYS = {
+    # Google AI Overview (2026-08-02): SOV'un AYNI sorgulari gercek SERP'te de
+    # olculur. SOV "sohbet motoru seni aniyor mu", bu "Google aramanin ustundeki
+    # AI kutusunda var misin" sorusudur -- farkli yuzeyler, biri otekinin yerine
+    # gecmez. SKORA KATILMAZ (WEIGHTS'e dokunulmadi); rapor bolumu olarak gosterilir.
+    # Kimlik (DATAFORSEO_*) yoksa anahtar HIC yazilmaz -> istemci bolumu gizler.
+    "ai_overview",
+}
+
 
 def build_brand_payload(result: dict, name, topic, stability, created_at: str, lang: str = "tr") -> dict:
     """brand_recall.check_brand_recall sonucundan client payload'i uretir.

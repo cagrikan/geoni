@@ -45,6 +45,7 @@ import httpx
 from db import log_provider_call, get_pinned_sov_queries, count_provider_calls_today
 from perplexity_admin import record_perplexity_call
 from sov import check_share_of_voice, has_usable_topic, infer_topic
+import ai_overview
 from ssrf_guard import assert_public_host, BlockedHostError
 from result_contract import SHADOW_ENGINES  # golge-mod motorlar (skora katkisiz; recognition_count'tan haric)
 
@@ -1757,6 +1758,28 @@ async def check_brand_recall(
             location=location,  # O6: yerel SOV sorgusu ("<sehir>'de en iyi X")
             pinned_queries=pinned_q_,
         )
+
+        # Google AI Overview: SOV'un URETTIGI AYNI sorgular gercek SERP'te de
+        # olculur. Ayri sorgu uretmiyoruz -- rapor "ayni soruyu ChatGPT'ye ve
+        # Google'a sorduk" diyebilsin, iki olcum kiyaslanabilir olsun.
+        #
+        # YALNIZ PRIMARY sorgular: adjacent (komsu alan) sorgulari tanim geregi
+        # markanin alani DISINDA; orada AIO cikip cikmamasi musteriye bir sey
+        # anlatmaz, sadece maliyet ekler. 3 sorgu ≈ $0.012/tarama.
+        #
+        # try: bu ozellik hicbir kosulda taramayi dusuremez. check_ai_overview
+        # sorgu bazinda zaten yutuyor; buradaki kalkan modulun kendisinde
+        # (import/yapilandirma) beklenmedik bir hata olursa diye.
+        try:
+            aio_qs = [q.get("query") for q in (result_.get("queries") or [])
+                      if q.get("query") and not q.get("adjacent")]
+            aio_ = await ai_overview.check_ai_overview(
+                aio_qs, name, website or "", lang) if aio_qs else None
+            if aio_:
+                result_["ai_overview"] = aio_
+        except Exception as e:
+            logger.warning(f"AI Overview atlandi: {_hata(e)}")
+
         return sov_topic_, result_
 
     emit("sov")
