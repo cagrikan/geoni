@@ -984,15 +984,18 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
 @app.post("/api/prewarm")
 async def prewarm():
     """Tarama niyeti sinyali (frontend, kullanici tarama ekranina girince/domain
-    yazmaya baslayinca cagirir). Worker'i onceden isitir ki cold-start kullanicinin
-    form-doldurma suresinin arkasinda kalsin. LLM maliyeti YOK; global 25sn cooldown
-    ile kuyruk sismesi/istismar engellenir. Her zaman 200 doner (sinyal, fire-and-forget)."""
-    warmed = False
-    if sqs_enabled():
-        try:
-            warmed = await enqueue_prewarm()
-        except Exception as e:
-            logger.warning(f"prewarm enqueue failed: {e}")
+    yazmaya baslayinca cagirir). Worker'i onceden ayaga kaldirir ki cold-start
+    kullanicinin form-doldurma suresinin arkasinda kalsin. LLM maliyeti YOK;
+    global 25sn cooldown ile istismar engellenir. Her zaman 200 doner
+    (sinyal, fire-and-forget).
+
+    `sqs_enabled()` sarti KALDIRILDI: olcegi buyutmek artik kuyruga mesaj
+    atmakla degil dogrudan ECS UpdateService ile yapiliyor, SQS'e bagli degil."""
+    try:
+        warmed = await enqueue_prewarm()
+    except Exception as e:
+        logger.warning(f"prewarm failed: {e}")
+        warmed = False
     return {"ok": True, "warmed": warmed}
 
 
