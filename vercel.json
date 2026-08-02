@@ -58,6 +58,10 @@
       "destination": "/rehber/ai-gorunurluk-araclari.html"
     },
     {
+      "source": "/guides/ai-visibility-tools",
+      "destination": "/guides/ai-visibility-tools.html"
+    },
+    {
       "source": "/indir",
       "destination": "/indir.html"
     },

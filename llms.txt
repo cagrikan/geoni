@@ -41,6 +41,7 @@ Each service ships with a work-breakdown checklist, in-app messaging with the as
 - [Why isn't my brand in ChatGPT?](https://geoni.ai/guides/brand-not-in-chatgpt): the seven reasons a brand is missing from AI answers, and where to start.
 - [How does your brand become visible in ChatGPT?](https://geoni.ai/guides/chatgpt-visibility): six concrete steps from bot access to trusted-source mentions.
 - [What is llms.txt and how do you add it?](https://geoni.ai/guides/what-is-llms-txt): format, a minimal example, and the robots.txt rules that go with it.
+- [AI visibility tracking tools compared](https://geoni.ai/guides/ai-visibility-tools): what these tools measure, seven selection criteria, and a five-minute self-test that needs no tool.
 - [All guides](https://geoni.ai/guides): index of the English guide library.
 
 ## Guides (Türkçe)
