@@ -8,7 +8,10 @@ provider_usage call counts GEONI already logs (log_provider_call "grok" /
 - "grok"     = parametric recall SHADOW engine (brand_recall._ask_grok). Cheap:
                grok-4.20 non-reasoning, ~1.5k in + 0.5k out ≈ $0.0007/call.
 - "grok_web" = Agent Tools API SOV SHADOW engine (_ask_grok_web, web+x search).
-               Expensive: grok-4.5, ~20k input tokens + tool turns ≈ $0.05/call.
+               2026-08-03 OLCULDU: eski "~20k token" varsayimi YANLISTI — grok-4.5
+               gercekte 49k-173k girdi tokeni yakiyordu (3 istem, ort ~125k), yani
+               bu satirdaki tahmin ~6x DUSUK hesapliyordu. Model grok-4.3'e alindi
+               (%82-90 ucuz, atif denk); yeni gercekci aralik ~12k-34k girdi.
 
 Same summary shape as perplexity_admin/openai_admin so the admin panel reuses
 the same stat-tile + TopupSection + low-balance layout. `estimated: True`.

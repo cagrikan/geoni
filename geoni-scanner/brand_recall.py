@@ -891,15 +891,23 @@ async def _ask_claude_web(prompt: str, temperature: float = 0.0, max_tokens: int
     return None
 
 
-GROK_WEB_MODEL = os.environ.get("XAI_WEB_MODEL", "grok-4.5")
+# MALIYET (2026-08-03 OLCULDU, 3 istem): grok-4.5 ayni istemde grok-4.3'un
+# 2-7 KATI girdi tokeni yakiyor (49k-173k vs 12k-34k) ve atif sayisi DENK
+# (4.5: 7/11/12 atif, 4.3: 13/9/11). Goreli maliyet 0.10x-0.18x -> %82-90 ucuz.
+# Agent Tools (web_search + x_search) grok-4.3 ile CALISIYOR (canli test: HTTP 200,
+# status=completed, atiflar geliyor). Skor riski YOK: grok golge modda, WEIGHTS 0.
+GROK_WEB_MODEL = os.environ.get("XAI_WEB_MODEL", "grok-4.3")
 
 
 async def _ask_grok_web(prompt: str, temperature: float = 0.0, max_tokens: int = 500) -> dict | None:
     """Grok-web SOV motoru — xAI Agent Tools API (/v1/responses + web_search/x_search).
     Parametrik _ask_grok'tan FARKLI: canli web + X araması yapar (xAI'nin benzersiz X
     erişimi — TR influencer/hesaplarini parametrik grok'un bilmedigi yerde bulur).
-    SHADOW + social-only + env-kapili: PAHALI (~20k token/cagri, 10-30sn) oldugundan yalniz
-    GROK_WEB_SHADOW=1 iken ve sosyal SOV'da cagrilir; canli skoru DEGISTIRMEZ. Donus
+    SHADOW + env-kapili: GROK_WEB_SHADOW=1 iken SOV kosan HER tarama tipinde cagrilir
+    (social/marka/kisi/web) ve GUNLUK CAGRI TAVANINA tabidir (GROK_WEB_DAILY_CAP,
+    varsayilan 5) -> tarama basina degil, GUN basina maliyet. Canli skoru DEGISTIRMEZ
+    (WEIGHTS['grok']=0). NOT: bu satir 2026-08-03'e kadar 'social-only' diyordu ama
+    gating (bkz. ~1751) o gun de tum tiplerde kosuyordu — belge kodla uyusmuyordu. Donus
     {"text", "citations"} — _ask_openai_web/_ask_claude_web ile ayni sozlesme. Atiflar
     output_text.annotations[url_citation].url'de. (Eski Live Search deprecated -> Agent Tools.)"""
     if not GROK_API_KEY:
