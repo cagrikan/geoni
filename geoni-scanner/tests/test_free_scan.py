@@ -313,3 +313,35 @@ def test_sosyal_bedel_marka_bedelinden_dusuk():
     """Yari fiyat kurali: sosyal < marka. Esitlenirse viral kanca kapanir."""
     from scan_costs import SOCIAL_SCAN_COST, BRAND_SCAN_COST
     assert 0 < SOCIAL_SCAN_COST < BRAND_SCAN_COST
+
+
+def test_login_duvari_mesaji_tarama_tipine_gore():
+    """Uc uc da 401 doner ama metin AYNI olmamali.
+
+    2026-08-03 canli dogrulamada yakalandi: anonim tarama kapatilinca mesaj uc
+    yerden birden donmeye basladi ama metni yalnizca marka akisini anlatiyordu —
+    site taramasi yapan kullanici "Kişi/marka taraması için giriş yapın"
+    goruyordu.
+
+    NOT: `import main` YAPILMAZ — main.py fastapi/pydantic cekiyor, deploy
+    kapisi testleri minimal ortamda kosuyor (bkz. scan_costs.py basligi ve
+    [[feedback-ci-ortaminda-dogrula]]). Kaynak metni uzerinden dogrulanir.
+    """
+    kaynak = (_KOK / "main.py").read_text(encoding="utf-8")
+    # Fonksiyon tip parametresi almali ve uc tipi de tanimali
+    assert "def _login_required_message(lang: str, kind: str" in kaynak
+    for tip in ('"site":', '"social":', '"brand":'):
+        assert tip in kaynak, f"login mesajinda {tip} karsiligi yok"
+    # Cagrilar tipsiz kalmamali — tipsiz cagri notr metin dondurur ve
+    # kullaniciyi yanlis akisa yonlendirir.
+    for tip in ('"tr", "site"', '"tr", "social"', '"tr", "brand"'):
+        assert f'_login_required_message(request.lang or {tip})' in kaynak, \
+            f"login duvarindan {tip} gecirilmiyor"
+
+
+def test_login_duvari_uc_uctada_kurulu():
+    """Anonim tarama kapisi uc tarama ucunda da olmali; biri unutulursa o kanal
+    sinirsiz bedava tarama kapisi olarak acik kalir."""
+    kaynak = (_KOK / "main.py").read_text(encoding="utf-8")
+    assert kaynak.count("_login_required_message(request.lang") == 3, \
+        "tarama uclarindan birinde login duvari eksik ya da fazladan eklenmis"

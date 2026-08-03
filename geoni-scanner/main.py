@@ -267,10 +267,21 @@ def _rate_limit_message(lang: str, seconds: int) -> str:
     return f"Çok fazla istek gönderdiniz. Lütfen {t} sonra tekrar deneyin."
 
 
-def _login_required_message(lang: str) -> str:
+def _login_required_message(lang: str, kind: str = "") -> str:
+    """Giris duvari mesaji. `kind`: site | social | person/brand (bos = genel).
+
+    2026-08-03: anonim tarama kapatilinca bu mesaj UC uctan birden donmeye
+    basladi ama metni yalnizca marka akisini anlatiyordu — site taramasi yapan
+    kullanici "Kişi/marka taraması için giriş yapın" goruyordu (canli
+    dogrulamada yakalandi). Tip verilmezse notr metin doner.
+    """
     if lang == "en":
-        return "Please sign in to run a person/brand check."
-    return "Kişi/marka taraması için lütfen giriş yapın."
+        ne = {"site": "run a site scan", "social": "run a social scan",
+              "brand": "run a person/brand check"}.get(kind, "run a scan")
+        return f"Please sign in to {ne}."
+    ne = {"site": "Site taraması", "social": "Sosyal tarama",
+          "brand": "Kişi/marka taraması"}.get(kind, "Tarama")
+    return f"{ne} için lütfen giriş yapın."
 
 
 def _free_limit_message(lang: str, n: int | None = None, creator: bool = False) -> str:
@@ -886,7 +897,7 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
     user_id_rl = await get_user_id_from_token(token_rl) if token_rl else None
     if not user_id_rl and not _is_internal_scan(http_request):
         raise HTTPException(status_code=401,
-                            detail=_login_required_message(request.lang or "tr"))
+                            detail=_login_required_message(request.lang or "tr", "site"))
 
     try:
         # Skip rate limit for premium/admin users
@@ -1143,7 +1154,8 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
     token_rl2 = auth_header_rl2.replace("Bearer ", "") if auth_header_rl2.startswith("Bearer ") else ""
     user_id_rl2 = await get_user_id_from_token(token_rl2) if token_rl2 else None
     if not user_id_rl2:
-        raise HTTPException(status_code=401, detail=_login_required_message(request.lang or "tr"))
+        raise HTTPException(status_code=401,
+                            detail=_login_required_message(request.lang or "tr", "brand"))
     if await is_user_suspended(user_id_rl2):
         raise HTTPException(status_code=403, detail=_suspended_message(request.lang or "tr"))
 
@@ -1243,7 +1255,7 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
         sc_uid = await get_user_id_from_token(token) if token else None
         if not sc_uid:
             raise HTTPException(status_code=401,
-                                detail=_login_required_message(request.lang or "tr"))
+                                detail=_login_required_message(request.lang or "tr", "social"))
         sc_premium = await check_is_premium(sc_uid)
         if not sc_premium:
             allowed, gate_info = await free_scan_gate(sc_uid, request.device_token,
