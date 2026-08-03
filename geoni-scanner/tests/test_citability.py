@@ -107,3 +107,40 @@ def test_site_ozeti_GOLGE_MOD_isaretli():
 def test_veri_yoksa_None():
     assert citability.site_ozeti([]) is None
     assert citability.site_ozeti([{"headings": [], "paragraphs": []}]) is None
+
+
+# ---------- arayuz esikleri (2026-08-03: golge moddan RAPORA gecti) ----------
+
+def test_ARAYUZ_ESIGI_gercek_veride_tetiklenir():
+    """
+    🎯 Bulgu artik kullaniciya GOSTERILIYOR (skora hala girmiyor). Esikler
+    web ResultsPage.jsx (CIT_MIN_SAYFA=5, CIT_ESIK=0.10) ve mobil
+    app/result/[jobId].tsx ile BIREBIR ayni olmali.
+
+    Girdi geoni.ai'nin 2026-08-03 CANLI olcumu: 51 sayfa, alintilanabilir
+    oran 0, ortanca pasaj 18 kelime (ideal 134-167).
+    """
+    MIN_SAYFA, ESIK = 5, 0.10
+    canli = {"sayfa": 51, "alintilanabilir_oran": 0.0, "ortanca_pasaj_kelime": 18}
+    assert canli["sayfa"] >= MIN_SAYFA and canli["alintilanabilir_oran"] < ESIK
+
+
+def test_ARAYUZ_ESIGI_yanlis_alarm_uretmez():
+    """Kucuk site ve saglikli site bulgu URETMEMELI."""
+    MIN_SAYFA, ESIK = 5, 0.10
+    kucuk = {"sayfa": 2, "alintilanabilir_oran": 0.0}      # tek paragraf orani belirler
+    saglikli = {"sayfa": 40, "alintilanabilir_oran": 0.35}
+    assert not (kucuk["sayfa"] >= MIN_SAYFA)
+    assert not (saglikli["alintilanabilir_oran"] < ESIK)
+
+
+def test_GOLGE_BAYRAGI_korunur():
+    """
+    `shadow` dusrese arayuz "deneysel · skora katilmiyor" etiketini basmaz ve
+    kullanici DOGRULANMAMIS bir olcumu puanini dusuren kusur sanar.
+    """
+    import citability as c
+    ozet = c.site_ozeti([{"headings": [{"level": 1, "text": "Baslik"}],
+                          "paragraphs": ["kelime " * 150], "list_count": 0,
+                          "table_count": 0, "faq": False}])
+    assert ozet is not None and ozet["shadow"] is True

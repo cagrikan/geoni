@@ -71,6 +71,10 @@ WEB_CLIENT_KEYS = {
     # 2026-08-02'de eklendi; web `FixSuggestions` bunlari okuyup "neden" cumlesi
     # kuruyor (ResultsPage.jsx:122,131). Mobil'de HENUZ YOK — acik is.
     "ssr", "page_type_gap",
+    # 2026-08-03: golge modda uretiliyordu ve HICBIR istemci okumuyordu. Artik
+    # rapor bulgusu olarak gosteriliyor (SKORA hala girmiyor — dayandigi
+    # arastirmayi bagimsiz dogrulamadik, "shadow": true bayragi bunu soyler).
+    "citability",
 }
 
 # Istemcinin OKUMADIGI ama payload'da tasinan alanlar. Burada olmak bir SUC
@@ -79,9 +83,6 @@ WEB_CLIENT_KEYS = {
 WEB_INTERNAL_KEYS = {
     "lang", "scoring_version", "weights_used", "diagnostics", "sitemap_found",
     "site_assets", "bot_access", "pages", "model_results",
-    # GOLGE MOD: hesaplaniyor, tasiniyor, HICBIR istemci okumuyor (olculdu
-    # 2026-08-02: web+mobil sifir eslesme). Ya baglanacak ya bitis tarihi alacak.
-    "citability",
 }
 
 
