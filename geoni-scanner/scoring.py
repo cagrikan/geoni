@@ -46,6 +46,18 @@ logger = logging.getLogger(__name__)
 # yapilandirilmamisti ve otorite fiilen Tavily bahis sayacina dusuyordu
 # (7 dis domain = 90'a doyum; buyuk markalara gurultulu/dusuk deger).
 # Formul agirliklari degismedi; yalnizca authority'nin ic bilesimi duzeldi.
+# 🤔 NEDEN SSR CEZASI SURUM ATLATMADI (bilincli karar, 2026-08-03):
+# compute_ai_access_score'a 0-40 puanlik SSR kesintisi eklendi (2026-08-02) —
+# formul degisti ama etiket "v4" kaldi. Gerekce:
+#   1) BUGUN bir bug yok: 24 saatlik idempotent onbellek yalniz /api/brand-check
+#      ve /api/social-check akislarinda calisir ve brand_recall'in KENDI
+#      surumunu (v6) kullanir; web taramalari o onbellekten GECMEZ.
+#   2) Bedeli agir: lig (get_ai_friendly_list) ve trend, scoring_version
+#      eslesmesine bakiyor -> v4.1 demek mevcut 67 v4 taramasini ligden ve
+#      trend grafiklerinden DUSURMEK demek.
+# Kabul edilen risk: ayni "v4" etiketi artik iki davranisi (SSR cezali/cezasiz)
+# ortuyor. Ileride bu alani "ayni metodoloji" varsayimiyla kullanan bir
+# karsilastirma yazilirsa BU YORUM okunmali ve surum o zaman atlanmali.
 SCORING_VERSION = "v4"
 
 OPENPAGERANK_API_KEY = __import__("os").environ.get("OPENPAGERANK_API_KEY", "")

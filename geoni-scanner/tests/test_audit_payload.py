@@ -165,3 +165,31 @@ def test_submit_yolu_WWW_SOYAN_normalize_kullanir():
     # cagrilamasin. Bu satir geri gelirse tuzak da geri gelmis demektir.
     assert "from crawler import crawl_domain, normalize_domain" not in src, \
         "crawler.normalize_domain main.py'ye yeniden import edilmis — ad tuzagi geri geldi"
+
+
+# ---------- kirilim bulgulari: esik paritesi (2026-08-03) ----------
+
+def test_KIRILIM_ESIKLERI_web_ve_mobil_AYNI():
+    """
+    🎯 Dort boyut (index_coverage/authority/freshness/engagement) cikPlak sayi
+    olarak duruyordu — teshis vardi, tedavi yoktu. Artik ikisinde de bulgu
+    uretiyor. Esikler AYRI iki dosyada yaziliyor; sapmasinlar diye burada
+    karsilastirilir (ayni bulgu iki platformda farkli tetiklenirse kullanici
+    "mobilde vardi webde yok" der).
+    """
+    import pathlib, re
+    kok = pathlib.Path(__file__).parent.parent.parent.parent  # ~/
+    web = (kok / "geoni-frontend/src/ResultsPage.jsx")
+    mob = (kok / "geoni-mobile/app/result/[jobId].tsx")
+    if not (web.exists() and mob.exists()):
+        import pytest
+        pytest.skip("istemci depolari bu ortamda yok (CI backend-only)")
+
+    w = web.read_text(encoding="utf-8")
+    m = mob.read_text(encoding="utf-8")
+    for alan, esik in (("index_coverage", 50), ("authority", 40),
+                       ("freshness", 50), ("engagement", 40)):
+        assert re.search(rf"score_breakdown\.{alan} \?\? 100\) < {esik}", w), \
+            f"web'de {alan} esigi {esik} degil"
+        assert re.search(rf"'{alan}', esik: {esik}", m), \
+            f"mobilde {alan} esigi {esik} degil"
