@@ -230,3 +230,41 @@ def test_SILINMIS_sonuc_icin_MUSTERI_METNI_var():
     import api_errors
     kod = api_errors.MESAJLAR["ozel_tarama_silindi"]
     assert "e-posta" in kod["tr"].lower() and "email" in kod["en"].lower()
+
+
+# ---------- ic dogrulama taramasi: ucuz AMA lige girmez (2026-08-03) ----------
+
+def test_IC_DOGRULAMA_damgasi_ve_LIG_disi():
+    """
+    Ic dogrulama taramasinda SOV atlanir (maliyetin ~%65'i) — ama bu SKORU
+    DEGISTIRIR. O yuzden damga SART: damgasiz kalirsa eksik skorlu bir kayit
+    herkese acik lige sizar.
+    """
+    p = _payload(auto_monitor=False)
+    assert "internal" not in p, "normal taramada damga OLMAMALI"
+    pi = _payload(ic_dogrulama=True)
+    assert pi.get("internal") is True
+
+    db = _src("db.py")
+    assert 'internal:result_json->>internal' in db, "lig sorgusu alani cekmiyor"
+    assert 'if row.get("internal"):' in db, "lig ic taramalari elemiyor"
+
+
+def test_IC_DOGRULAMA_bayragi_PUBLIC_API_de_DEGIL():
+    """
+    🔒 Bayrak AuditRequest'e KONMAMALI: konsaydi istemci kendi gonderip
+    SOV'suz (farkli skorlu) tarama uretebilirdi. Yalnizca dogrulanmis
+    X-Internal-Scan basligindan set edilir ve kuyruk mesajinda tasinir.
+    """
+    src = _src("main.py")
+    assert "ic_dogrulama: Optional[bool]" not in src, "bayrak public modele sizmis"
+    assert '"ic_dogrulama": _ic_dogrulama_taramasi(http_request)' in src
+    assert "X-Internal-SOV" in src, "SOV'u geri acan kacis kapisi yok"
+
+
+def test_SOV_ATLAMA_yalniz_bayrakla():
+    """need_sov varsayilani True kalmali; yanlislikla kapanirsa TUM musteri
+    taramalari SOV'suz kalir ve skorlar sessizce degisir."""
+    br = _src("brand_recall.py")
+    assert "need_sov: bool = True," in br
+    assert "need_sov=not ic_dogrulama" in _src("main.py")

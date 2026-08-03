@@ -1558,6 +1558,14 @@ def _build_tavily_query(name: str, topic: str = "", role: str = "", company: str
 
 async def check_brand_recall(
     name: str,
+    # need_topics=False: cagiran performing/opportunity_topics'i KULLANMIYOR demektir
+    # (web taramasi boyle — konulari topics.py uretir). O zaman topic-gen cagrisi
+    # yalnizca rakip yedegi gerekince yapilir. Skor DEGISMEZ (topics skora girmez).
+    need_topics: bool = True,
+    # need_sov=False: SOV tamamen atlanir (yalnizca IC dogrulama taramalari).
+    # Maliyetin ~%65'ini kaldirir ama SKORU DEGISTIRIR -> sonuc `internal`
+    # damgalanir ve lige girmez.
+    need_sov: bool = True,
     topic: str = "",
     email: str = "",
     role: str = "",
@@ -1802,8 +1810,20 @@ async def check_brand_recall(
 
         return sov_topic_, result_
 
-    emit("sov")
-    sov_task = asyncio.create_task(_run_sov())
+    # need_sov=False: IC DOGRULAMA taramasi. SOV taramanin en pahali parcasi
+    # (5 sorgu x 4 ucretli motor = maliyetin ~%65'i, olculdu 2026-08-03) ve ic
+    # dogrulamada cogu zaman crawl/indeks/payload sekli test edilir, SOV degil.
+    # ⚠️ SKORU DEGISTIRIR (sov'un agirligi var) — bu yuzden bu yolla uretilen
+    # taramalar `internal` damgasi tasir ve LIGE GIRMEZ (bkz. db.get_ai_friendly_list).
+    # Musteri taramalarinda ASLA kullanilmaz: bayrak yalniz X-Internal-Scan
+    # basligiyla gelen isteklerde set edilir (main.py).
+    if need_sov:
+        emit("sov")
+        sov_task = asyncio.create_task(_run_sov())
+    else:
+        async def _sov_atlandi():
+            return topic, {"checked": False, "skipped": "internal"}
+        sov_task = asyncio.create_task(_sov_atlandi())
 
     # Step 2: Her model icin 3-formulasyonlu iki asamali tanima (paralel)
     async def _tracked(coro, label):
@@ -2205,9 +2225,28 @@ async def check_brand_recall(
 
     # Topic-gen (musteriye gorunur performing/opportunity_topics) SOV ile paralel
     # calisir; golge motor metni bağlama girmesin (live_texts, grok haric).
-    topics_task = _generate_brand_topics(name, topic, web_results, live_texts,
-                                         lang=lang, social=social)
-    (sov_topic, sov_result), topics = await asyncio.gather(sov_task, topics_task)
+    #
+    # MALIYET (2026-08-03): WEB taramasinda bu cagrinin CIKTISI KULLANILMIYOR —
+    # rapordaki konular topics.py'den gelir, `performing_topics`/`opportunity_topics`
+    # web payload'ina hic girmez (canli veriyle dogrulandi). Skora da girmez:
+    # _finalize'in formulu topics'i okumaz. Geriye TEK kullanim kalir: asagidaki
+    # rakip YEDEGI (sov.competitors bossa). Olculdu: son 9 web taramasinin 2'sinde
+    # sov.competitors bos, 1'inde yedek fiilen kullanilmis -> ~%85 vakada bu cagri
+    # BOSA gidiyordu. Artik yalniz GEREKINCE yapilir; cikti birebir ayni kalir.
+    # Bedeli: yedegin gerektigi ~%15'te tarama bir sonnet cagrisi kadar uzar
+    # (artik paralel degil, SOV'dan SONRA).
+    if need_topics:
+        topics_task = _generate_brand_topics(name, topic, web_results, live_texts,
+                                             lang=lang, social=social)
+        (sov_topic, sov_result), topics = await asyncio.gather(sov_task, topics_task)
+    else:
+        sov_topic, sov_result = await sov_task
+        topics = {"performing_topics": [], "opportunity_topics": []}
+        _yedek_gerek = (isinstance(sov_result, dict) and sov_result.get("checked")
+                        and not sov_result.get("competitors"))
+        if _yedek_gerek:
+            topics = await _generate_brand_topics(name, topic, web_results, live_texts,
+                                                  lang=lang, social=social)
 
     # A1-4 (QA 2026-07-19): rakip TEK KAYNAK. Iki liste vardi — sov.competitors
     # (kategori hesaplari) ve opportunity_topics[].competitors (konu-bazli domainler);

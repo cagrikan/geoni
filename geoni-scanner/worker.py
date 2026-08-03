@@ -87,7 +87,8 @@ async def process_message(body: str, receipt: str):
                                    "domain": request.domain, "email": request.email,
                                    "created_at": "", "result": None, "error": None}
         logger.info(f"tarama basliyor: {job_id} {request.domain}")
-        await main.run_audit_job(job_id, request, payload.get("token", ""))
+        await main.run_audit_job(job_id, request, payload.get("token", ""),
+                                 ic_dogrulama=bool(payload.get("ic_dogrulama")))
         status = main.jobs_store.get(job_id, {}).get("status")
         logger.info(f"tarama bitti: {job_id} status={status}")
         # failed dahil siliyoruz: uygulama-ici hata deterministiktir, retry

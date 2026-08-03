@@ -342,7 +342,7 @@ async def set_job_status(job_id: str, status: str):
 
 async def _build_audit_result_payload(request: AuditRequest, crawl_result: dict, indexing_status: dict,
                                        brand_recall_result: dict, score_result: dict, topics: dict,
-                                       identity: dict) -> dict:
+                                       identity: dict, ic_dogrulama: bool = False) -> dict:
     """Musteriye donen tarama sonucunun TEK insa noktasi (Fable 2026-07-24).
     Govde audit_payload.py'ye tasindi (2026-08-02): ayni payload'i monitor.py de
     kurmak zorunda ve elle kopyalanan iki surum birbirinden SAPMISTI (bkz.
@@ -350,10 +350,16 @@ async def _build_audit_result_payload(request: AuditRequest, crawl_result: dict,
     return await build_audit_result_payload(
         domain=request.domain, lang=request.lang, crawl_result=crawl_result,
         indexing_status=indexing_status, brand_recall_result=brand_recall_result,
-        score_result=score_result, topics=topics, identity=identity)
+        score_result=score_result, topics=topics, identity=identity,
+        ic_dogrulama=ic_dogrulama)
 
 
-async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
+async def run_audit_job(job_id: str, request: AuditRequest, token: str = '',
+                        ic_dogrulama: bool = False):
+    """ic_dogrulama=True: X-Internal-Scan ile gelen KENDI dogrulama taramamiz.
+    SOV atlanir (maliyetin ~%65'i) ve sonuc `internal` damgasi tasir -> lige
+    girmez. Musteri isteklerinde ASLA True olmaz (bayrak yalnizca dogrulanmis
+    ic anahtarla set edilir; bkz. start_audit)."""
     queue = audit_events.get(job_id)
     msgs = AUDIT_PROGRESS_MESSAGES.get(request.lang, AUDIT_PROGRESS_MESSAGES["tr"])
 
@@ -441,7 +447,7 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
                 "performing_topics": [], "opportunity_topics": []}
             partial_payload = await _build_audit_result_payload(
                 request, crawl_result, indexing_status, partial_brand_recall_result,
-                partial_score_result, partial_topics, identity)
+                partial_score_result, partial_topics, identity, ic_dogrulama)
             jobs_store[job_id].update({"status": "partial", "result": partial_payload})
             if sqs_enabled():
                 await update_audit_status(job_id, "partial", result=partial_payload,
@@ -449,7 +455,12 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
             logger.info(f"PARTIAL_READY job={job_id} domain={request.domain} "
                         f"t={time.perf_counter() - _t0:.1f}s score={partial_payload.get('score')}")
 
-        brand_recall_result = await check_brand_recall(identity["name"], identity["topic"], on_progress=emit, lang=request.lang, custom_queries=request.custom_queries, website=request.domain, on_partial=_on_partial)
+        brand_recall_result = await check_brand_recall(identity["name"], identity["topic"], on_progress=emit, lang=request.lang, custom_queries=request.custom_queries, website=request.domain, on_partial=_on_partial,
+                                                       # WEB raporunun konulari topics.py'den gelir; brand_recall'in
+                                                       # urettigi konular payload'a girmez -> bosa cagri yapma.
+                                                       need_topics=False,
+                                                       # Ic dogrulama: SOV atlanir (maliyetin ~%65'i).
+                                                       need_sov=not ic_dogrulama)
         emit(msgs["scoring"])
         _t_recall = time.perf_counter()
 
@@ -468,7 +479,7 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
 
         result_payload = await _build_audit_result_payload(
             request, crawl_result, indexing_status, brand_recall_result,
-            score_result, topics, identity)
+            score_result, topics, identity, ic_dogrulama)
 
         jobs_store[job_id].update({
             "status": "complete",
@@ -709,6 +720,19 @@ async def scan_count():
     """Public daily counter for the landing page social-proof line."""
     return {"count": _daily_display_count()}
 
+def _ic_dogrulama_taramasi(http_request) -> bool:
+    """Bu istek BIZIM dogrulama taramamiz mi (SOV atlanabilir mi)?
+
+    Ic anahtar dogrulanmis olmali. `X-Internal-SOV: 1` gonderilirse SOV YINE
+    kosar — SOV kodunun kendisini test ederken bu sart."""
+    try:
+        if not _is_internal_scan(http_request):
+            return False
+        return not http_request.headers.get("X-Internal-SOV")
+    except Exception:
+        return False
+
+
 def _is_internal_scan(http_request) -> bool:
     """
     Ic dogrulama anahtari: X-Internal-Scan basligi INTERNAL_SCAN_TOKEN env
@@ -940,8 +964,14 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
         if not await create_pending_audit(job_id, "web", request.domain, row_user_id):
             raise ApiHata(503, "tarama_baslatilamadi")
         try:
+            # ic_dogrulama AuditRequest'e KONMAZ: oraya koysak istemci kendi
+            # gonderip SOV'suz (dolayisiyla farkli skorlu) tarama uretebilirdi.
+            # Yalnizca dogrulanmis X-Internal-Scan basligiyla set edilir ve
+            # kuyruk mesajinda tasinir. `X-Internal-SOV: 1` ile geri acilir
+            # (SOV kodunu test ederken lazim).
             await enqueue_scan({"kind": "web_audit", "job_id": job_id,
-                                "request": request.model_dump(), "token": token})
+                                "request": request.model_dump(), "token": token,
+                                "ic_dogrulama": _ic_dogrulama_taramasi(http_request)})
         except Exception as e:
             logger.error(f"SQS enqueue failed for {job_id}: {e}")
             await update_audit_status(job_id, "failed")

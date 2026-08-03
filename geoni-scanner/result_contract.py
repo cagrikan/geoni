@@ -51,6 +51,13 @@ SOV_OPTIONAL_CLIENT_KEYS = {
     # gecmez. SKORA KATILMAZ (WEIGHTS'e dokunulmadi); rapor bolumu olarak gosterilir.
     # Kimlik (DATAFORSEO_*) yoksa anahtar HIC yazilmaz -> istemci bolumu gizler.
     "ai_overview",
+    # Grok gölge motoru (2026-08-03): xAI'nin X-native aramasi, ayni SOV
+    # sorgularinda AYRICA kosar. SKORA GIRMEZ (WEIGHTS['grok']=0) ama musteriye
+    # BILGI NOTU olarak gosterilir — ozellikle `unique_sources` degerli: diger
+    # motorlarin (perplexity/gemini/openai-web/claude-web) KACIRDIGI kaynaklar.
+    # GUNLUK TAVANA tabi (GROK_WEB_DAILY_CAP) -> cogu taramada alan HIC OLMAZ,
+    # bu yuzden ZORUNLU degil opsiyonel.
+    "grok_web_shadow",
 }
 
 

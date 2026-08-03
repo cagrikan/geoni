@@ -71,6 +71,10 @@ async def _scan_web_item(item: dict) -> int | None:
         custom_queries=item.get("custom_queries"),
         website=domain,
         lang=item_lang,
+        # Web izleme taramasi da konulari topics.py'den aliyor (asagida) ->
+        # brand_recall'in topic-gen cagrisi bosa gider; yalniz rakip yedegi
+        # gerekince yapilsin. main.py'deki web yolu ile AYNI davranis.
+        need_topics=False,
     )
     score_result = await compute_ai_visibility_score(crawl_result, indexing_status, brand_recall_result)
     topics = await generate_topics_and_opportunities(domain, crawl_result["pages"], item_lang)

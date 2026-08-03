@@ -37,7 +37,8 @@ def sxo_uyumsuzlugu(crawl_result: dict, sov_payload: dict | None) -> dict | None
 async def build_audit_result_payload(*, domain: str, lang: str | None, crawl_result: dict,
                                      indexing_status: dict, brand_recall_result: dict,
                                      score_result: dict, topics: dict, identity: dict,
-                                     auto_monitor: bool = False) -> dict:
+                                     auto_monitor: bool = False,
+                                     ic_dogrulama: bool = False) -> dict:
     """Musteriye donen web tarama sonucu.
 
     Hem ARA (partial, SOV beklenirken) hem FINAL sonuc hem de izleme taramasi
@@ -135,4 +136,9 @@ async def build_audit_result_payload(*, domain: str, lang: str | None, crawl_res
     }
     if auto_monitor:
         payload["auto_monitor"] = True  # rapor basliginda "otomatik izleme taramasi"
+    if ic_dogrulama:
+        # 🚩 Ic dogrulama taramasi: SOV atlandigi icin skoru musteri taramalariyla
+        # KIYASLANAMAZ. Damga sart — db.get_ai_friendly_list bu satirlari ligden
+        # eler, yoksa eksik skorlu bir kayit herkese acik siralamaya sizar.
+        payload["internal"] = True
     return payload

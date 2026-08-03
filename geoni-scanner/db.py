@@ -1375,7 +1375,7 @@ async def get_ai_friendly_list(limit: int = 10) -> list:
             r = await client.get(
                 f"{SUPABASE_URL}/rest/v1/audits?type=eq.web&status=eq.complete"
                 f"&result_json->>scoring_version=eq.{SCORING_VERSION_SHOWN}"
-                f"&select=id,domain,score,created_at,pages:result_json->>total_pages"
+                f"&select=id,domain,score,created_at,pages:result_json->>total_pages,internal:result_json->>internal"
                 f"&order=score.desc,created_at.desc&limit=300",
                 headers=_headers(), timeout=10,
             )
@@ -1387,6 +1387,11 @@ async def get_ai_friendly_list(limit: int = 10) -> list:
                 # "." sarti: domain alanina yazilmis serbest metinleri
                 # (kisi adi vb.) site liginden dislar.
                 if not d or "." not in d or d in hidden:
+                    continue
+                # 🚩 IC DOGRULAMA taramalari ligden ELENIR: bunlarda SOV atlanir
+                # (maliyet), dolayisiyla skor musteri taramalariyla KIYASLANAMAZ.
+                # Elenmezse eksik skorlu bir kayit herkese acik siralamaya sizar.
+                if row.get("internal"):
                     continue
                 try:
                     if int(row.get("pages") or 0) < MIN_CRAWLED_PAGES:
