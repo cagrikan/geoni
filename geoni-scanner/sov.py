@@ -890,6 +890,20 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
     adjacent_mentions = sum(1 for pq in per_query if pq.get("adjacent") and pq["mentioned"])
     mention_count = primary_mentions + adjacent_mentions  # ham sayim (rapor + geriye uyum)
 
+    # 🐞 "4/3 sorguda oneriliyor" (olculdu 2026-08-03, gercek Semrush taramasi).
+    # Ozet satiri musteriye `mention_count/query_count` diye gosteriliyor
+    # (SovSection.jsx:54, mobil result/[jobId].tsx:376, mailer.py:200) ama PAY
+    # komsu buluslari da sayarken (primary + adjacent) PAYDA yalniz birincil
+    # sorgulardi. Komsu sorguda marka gecer gecmez pay paydayi asiyor ve rapor
+    # "4/3" yaziyordu. Kurucu karari: payda TUM yanit veren sorgular olsun -> "4/5".
+    #
+    # ⚠️ BU YALNIZ OZET SAYISIDIR, SKOR DEGIL. SOV skoru asagida `answered_cells`
+    # (birincil sorgu x motor hucreleri) uzerinden hesaplanir; Y6 komsu-alan kurali
+    # aynen korunur (komsu hucreler numerator'a girer, PAYDAYA GIRMEZ). Bu satiri
+    # skor paydasi sanip degistiren biri Y6'yi kirar.
+    answered_all = sum(1 for pq in per_query
+                       if any(e["answered"] for e in pq["engines"].values()))
+
     # v6 (F-Y1 determinizm, Fable re-test 2026-07-19): SOV skoru artik SORGU degil
     # (SORGU × MOTOR) HÜCRE tabanli. Eski payda = yanit veren primary sorgu sayisi (~3);
     # tek mention farki = 33 puan × 0.55 sosyal agirlik = manşette ±18 -> force×4'te Δ24.
@@ -1005,7 +1019,7 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
         "checked": True,
         "score": score,
         "mention_count": mention_count,
-        "query_count": answered,
+        "query_count": answered_all,  # ozet paydasi — skor paydasi DEGIL (bkz. yukarisi)
         # Soru basina motor tablosundan sonra `engines` artik "kayitli motorlar"
         # demek; FIILEN cagrilan kume ondan kucuk (ornek: ChatGPT yalniz ilk iki
         # birincil soruda). Rapor gercekte sorulani soylemeli.

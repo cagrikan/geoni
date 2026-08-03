@@ -110,3 +110,46 @@ def test_cagri_sayisi_dustu():
     assert sum(len(v) for v in cagrilar.values()) == 13
     claudesuz = sum(len(v) for k, v in cagrilar.items() if k != "claude")
     assert claudesuz == 12
+
+
+# ── Ozet satiri paydasi (2026-08-03) ────────────────────────────────────────
+# Rapor "4/3 sorguda oneriliyor" yaziyordu: PAY komsu buluslari sayiyor
+# (mention_count = primary + adjacent) ama PAYDA yalniz birincil sorgulardi.
+# Kurucu karari: payda TUM yanit veren sorgular olsun.
+
+def _kosum_bulus(bulunan: set[str]):
+    """`bulunan` sorgularda marka gecer; digerlerinde gecmez."""
+    async def _motor(query, max_tokens=400):
+        var = query in bulunan
+        return {"text": "Acme onerilir." if var else "Baska secenekler var.",
+                "citations": []}
+
+    async def fake_llm(prompt):
+        return None
+
+    return asyncio.run(sov.check_share_of_voice(
+        "Acme", "test alani", _motor, fake_llm,
+        ask_google=_motor, ask_openai_web=_motor,
+        pinned_queries=BES_SORU,
+    ))
+
+
+def test_ozet_paydasi_pay_asamaz():
+    """Komsu sorguda bulus varken pay paydayi ASMAMALI ("4/3" hatasi)."""
+    r = _kosum_bulus({"b1", "b2", "b3", "k1"})
+    assert r["mention_count"] == 4
+    assert r["query_count"] == 5, "payda tum yanit veren sorgular olmali"
+    assert r["mention_count"] <= r["query_count"], \
+        "pay paydayi asiyor -> rapor '4/3 sorguda oneriliyor' yazar"
+
+
+def test_ozet_paydasi_skoru_degistirmez():
+    """Y6 korunur: komsu sorgular SKOR paydasina hala girmiyor.
+
+    Yalniz birincil sorgularda bulus varsa skor %100 olmali — komsu iskalari
+    skoru asagi cekmemeli. Ozet paydasinin buyumesi skora yansimamali.
+    """
+    r = _kosum_bulus({"b1", "b2", "b3"})
+    assert r["score"] == 100.0, "komsu iskalari SOV skorunu dusurmemeli (Y6)"
+    assert r["query_count"] == 5
+    assert r["mention_count"] == 3
