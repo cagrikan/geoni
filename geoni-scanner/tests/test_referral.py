@@ -90,9 +90,16 @@ def _odul_calistir(monkeypatch, referrer, davetli="davetli-1"):
 
 
 def test_odul_tam_tarama_degerinde(monkeypatch):
-    """+1 kontor DEGIL: tam bir kisi/marka taramasi kadar (10) odenmeli."""
+    """+1 kontor DEGIL: TAM BIR TARAMA kadar odenmeli.
+
+    Sayiyi sabitlemek yerine kurali dogruluyoruz: bedel degistiginde odul de
+    degismeli. 2026-08-03'te bedel 10->20 oldu; odul 10'da kalsaydi davetli
+    odulüyle hicbir sey yapamazdi ([[geoni-ucretsiz-kapi-token-catismasi]]).
+    """
+    from scan_costs import BRAND_SCAN_COST
     rpc, _ = _odul_calistir(monkeypatch, referrer="davet-eden-1")
-    assert db.REFERRAL_REWARD_CREDITS == 10
+    assert db.REFERRAL_REWARD_CREDITS == BRAND_SCAN_COST, \
+        "odul tam bir tarama etmeli — bedel degisti, odul guncellenmedi"
     assert len(rpc) == 2                       # davetli + davet eden
     for c in rpc:
         assert c["p_amount"] == db.REFERRAL_REWARD_CREDITS

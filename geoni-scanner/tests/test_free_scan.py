@@ -283,14 +283,33 @@ def test_public_uc_gercek_bedelleri_donuyor():
     marka = _sabit((_KOK / "scan_costs.py").read_text(encoding="utf-8"), "BRAND_SCAN_COST")
     assert scan_costs.SCAN_COSTS["web"] == web
     assert scan_costs.SCAN_COSTS["person"] == marka == scan_costs.SCAN_COSTS["brand"]
-    # Sosyal ucretsiz kalmali: bedel gelirse asagidaki test de kirilir.
-    assert scan_costs.SCAN_COSTS["social"] == 0
+    # Sosyal bedel de uctan donmeli (2026-08-03: 0 degil, yari fiyat).
+    sosyal = _sabit((_KOK / "scan_costs.py").read_text(encoding="utf-8"), "SOCIAL_SCAN_COST")
+    assert scan_costs.SCAN_COSTS["social"] == sosyal
 
 
-def test_sosyal_tarama_hala_dusumsuz():
-    """Sosyal taramaya bedel gelirse kapiya verilen `scan_cost=0` cokerdi:
-    bakiyesi olan herkes sinirsiz bedava sosyal tarama yapardi."""
+def test_sosyal_tarama_da_bedel_duser():
+    """2026-08-03 (kurucu karari): sosyal tarama artik UCRETSIZ DEGIL.
+
+    Once `deduct=not social` ile hic dusum yapilmiyordu ve kapiya `scan_cost=0`
+    geciliyordu. "Bir kisi bir kere ucretsiz tarar" kurali tokenle uygulaninca
+    bedava bir kanal birakmak o kuralin TEK DELIGI olurdu: login sonrasi
+    sinirsiz sosyal tarama. Sosyal yari fiyat (10) — viral kanca korunur.
+
+    Kapiya gecen bedel ile fiilen dusulen bedel AYNI kaynaktan gelmeli; ayrisirsa
+    kullanici kapidan gecer ama bakiyesi yetmez (ya da tersi).
+    """
     main_kaynak = (_KOK / "main.py").read_text(encoding="utf-8")
-    assert 'deduct=not bool(getattr(request, "social", False))' in main_kaynak, \
-        "sosyal taramanin deduct=False kurali degismis — scan_cost=0 varsayimi gecersiz"
-    assert "scan_cost=0)  # sosyal tarama token DUSMEZ" in main_kaynak
+    db_kaynak = (_KOK / "db.py").read_text(encoding="utf-8")
+    assert 'deduct=not bool(getattr(request, "social", False))' not in main_kaynak, \
+        "sosyal tarama yine dusumsuz yapilmis — 20 token kuralinin deligi geri geldi"
+    assert "scan_cost=SOCIAL_SCAN_COST" in main_kaynak, \
+        "kapiya gercek sosyal bedel gecirilmeli (scan_cost=0 varsayimi olu)"
+    assert 'SOCIAL_SCAN_COST if entity_type == "social"' in db_kaynak, \
+        "dusum tarafi tipe gore bedel secmeli"
+
+
+def test_sosyal_bedel_marka_bedelinden_dusuk():
+    """Yari fiyat kurali: sosyal < marka. Esitlenirse viral kanca kapanir."""
+    from scan_costs import SOCIAL_SCAN_COST, BRAND_SCAN_COST
+    assert 0 < SOCIAL_SCAN_COST < BRAND_SCAN_COST

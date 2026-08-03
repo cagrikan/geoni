@@ -48,7 +48,7 @@ from devicecheck import MAX_FREE_SCANS as FREE_SCAN_LIMIT
 # AYRI yaziliydi; biri degisip digeri kalirsa `audits.credits_spent` gercek
 # dusumle tutmuyor (2026-07-28'deki 1120 hayali kredi tam bu bicimdeydi) ve
 # ucretsiz-tarama kapisi yanlis karar veriyor.
-from scan_costs import WEB_SCAN_COST, BRAND_SCAN_COST, SCAN_COSTS
+from scan_costs import WEB_SCAN_COST, BRAND_SCAN_COST, SOCIAL_SCAN_COST, SCAN_COSTS
 from free_scan import free_scan_gate, record_free_scan
 import attest  # Apple App Attest: mobil muafiyetini imzaya baglar (bkz. _mobile_exempt)
 from db import (
@@ -656,10 +656,12 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
                     return
             logger.info(f"Private brand check job {job_id} completed for '{request.name}', not saved")
         else:
-            # Sosyal taramalar ucretsiz (website audit gibi) - kaydet ama kredi dusme.
+            # 2026-08-03: sosyal tarama artik UCRETSIZ DEGIL (SOCIAL_SCAN_COST=10,
+            # yari fiyat). Bedeli db.save_brand_check tipe gore secer; burada
+            # deduct hep True — "bir kisi bir kere ucretsiz tarar" kurali artik
+            # tokenle uygulaniyor, ayri bir bedava kanal birakmak o kurali deler.
             await save_brand_check(job_id, request.__dict__, brand_checks_store[job_id]["result"], user_id,
-                                   deduct=not bool(getattr(request, "social", False)),
-                                   started_at=baslangic.isoformat())
+                                   deduct=True, started_at=baslangic.isoformat())
             logger.info(f"Brand check job {job_id} completed for '{request.name}'"  )
 
         # Rapor e-postasi (web taramasindaki ile ayni ates-et-unut deseni).
@@ -871,11 +873,23 @@ async def attest_register(request: AttestRegisterRequest, http_request: Request)
 async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, http_request: Request):
     client_ip = get_client_ip(http_request)
 
+    # 2026-08-03 (kurucu karari): ANONIM TARAMA YOK — web taramasi da login ister.
+    # NEDEN: "bir kisi bir kere ucretsiz tarar" kurali kimlik olmadan
+    # uygulanamiyordu. free_scan.py:100-117'de anonim istek hem cihaz hem hesap
+    # katmanini bos gecip `False or False` ile kapidan geciyordu; yani web'den
+    # SINIRSIZ ucretsiz tarama mumkundu (tek fren IP basina 5/10dk). Login
+    # zorunlu olunca hesap katmani devreye giriyor ve 20 token = 1 tarama tutuyor.
+    # Istemci bu 401'i yakalayip formu saklar, giristen sonra taramayi otomatik
+    # baslatir (App.jsx `geoni_pending_scan`) — kullanici formu bastan doldurmaz.
+    auth_header_rl = http_request.headers.get("Authorization", "")
+    token_rl = auth_header_rl.replace("Bearer ", "") if auth_header_rl.startswith("Bearer ") else ""
+    user_id_rl = await get_user_id_from_token(token_rl) if token_rl else None
+    if not user_id_rl and not _is_internal_scan(http_request):
+        raise HTTPException(status_code=401,
+                            detail=_login_required_message(request.lang or "tr"))
+
     try:
         # Skip rate limit for premium/admin users
-        auth_header_rl = http_request.headers.get("Authorization", "")
-        token_rl = auth_header_rl.replace("Bearer ", "") if auth_header_rl.startswith("Bearer ") else ""
-        user_id_rl = await get_user_id_from_token(token_rl) if token_rl else None
         is_premium = await check_is_premium(user_id_rl) if user_id_rl else False
         if not is_premium and not _is_internal_scan(http_request):
             enforce_audit_rate_limits(client_ip, request.email, request.domain,
@@ -1221,14 +1235,19 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
     auth_header = http_request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
 
-    # Ucretsiz-tarama tavani (cihaz + hesap). Sosyal tarama anonim+ucretsiz →
-    # asil abuse vektoru; cihaz katmani (DeviceCheck) anonimi de kapsar. Premium muaf.
+    # 2026-08-03 (kurucu karari): ANONIM TARAMA YOK. Kimlik olmadan "bir kisi
+    # bir kere" kurali uygulanamiyordu — anonim istekte ne hesap ne cihaz jetonu
+    # var, kapi `False or False` ile geciyordu (free_scan.py:100-117). Login
+    # zorunlu olunca hesap katmani devreye giriyor ve kural gercekten tutuyor.
     if not _is_internal_scan(http_request):
         sc_uid = await get_user_id_from_token(token) if token else None
-        sc_premium = await check_is_premium(sc_uid) if sc_uid else False
+        if not sc_uid:
+            raise HTTPException(status_code=401,
+                                detail=_login_required_message(request.lang or "tr"))
+        sc_premium = await check_is_premium(sc_uid)
         if not sc_premium:
             allowed, gate_info = await free_scan_gate(sc_uid, request.device_token,
-                                                      scan_cost=0)  # sosyal tarama token DUSMEZ
+                                                      scan_cost=SOCIAL_SCAN_COST)
             if not allowed:
                 raise HTTPException(status_code=402, detail={
                     "error": "free_limit_reached",

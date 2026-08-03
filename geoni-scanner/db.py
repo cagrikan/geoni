@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse, parse_qs, quote
 import httpx
 
-from scan_costs import WEB_SCAN_COST, BRAND_SCAN_COST
+from scan_costs import WEB_SCAN_COST, BRAND_SCAN_COST, SOCIAL_SCAN_COST
 
 logger = logging.getLogger(__name__)
 
@@ -41,11 +41,13 @@ def _headers():
 # eklenerek buyumeye devam eder (kullanici karari, 2026-07-09).
 SCAN_COUNT_DISPLAY_BASE = int(os.environ.get("SCAN_COUNT_DISPLAY_BASE", "1200"))
 
-# Referral odulu (kontor). NEDEN 10: kontor birimi TARAMA DEGIL — web taramasi 5,
-# kisi/marka taramasi 10 kontor. Onceki deger 1'di ve aciklamasi "+1 tarama" diyordu;
-# yani vaadin 1/10'u odeniyordu ve tesvik pratikte sifirdi (kurucu karari 2026-07-25).
-# 10 = tam bir kisi/marka taramasi: davetli ilk taramasini bedavaya getirmis olur.
-REFERRAL_REWARD_CREDITS = int(os.environ.get("REFERRAL_REWARD_CREDITS", "10"))
+# Referral odulu (kontor). KURAL: odul = TAM BIR TARAMA. Onceki deger 1'di,
+# aciklamasi "+1 tarama" diyordu ama vaadin 1/10'u odeniyordu (kurucu karari
+# 2026-07-25 -> 10). 2026-08-03'te tarama bedeli 20'ye cikinca odul de 20 oldu:
+# aksi halde davetli 10 tokenla HICBIR SEY yapamaz ve odul dogdugu anda olur —
+# bu tam olarak [[geoni-ucretsiz-kapi-token-catismasi]]'nda yasanan hataydi.
+# Bedel degisirse bu sayi da degismeli; ikisi ayni kurala baglidir.
+REFERRAL_REWARD_CREDITS = int(os.environ.get("REFERRAL_REWARD_CREDITS", "20"))
 
 # Token'in "referans" USD degeri: 1000'lik paketin kuru ($79.99/1000).
 # YALNIZ RAPORLAMA — muhasebe defterinde bir isin liste degerini gostermek icin.
@@ -239,7 +241,11 @@ async def save_brand_check(job_id: str, request_data: dict, result: dict, user_i
     entity_type = request_data.get("type", "person")
     # save_audit ile ayni kural: dusum `if user_id and deduct` ile yapiliyor,
     # yazilan maliyet de ayni kosula bagli olmali (anonim taramada 0).
-    credits = BRAND_SCAN_COST if (deduct and user_id) else 0
+    # 2026-08-03: sosyal tarama artik ucretsiz DEGIL (SOCIAL_SCAN_COST=10, yari
+    # fiyat). Bedel tipe gore secilir; tek yerde durur ki `credits_spent` ile
+    # fiilen dusulen tutar ayrisamasin (scan_costs.py basligindaki hata bicimi).
+    _bedel = SOCIAL_SCAN_COST if entity_type == "social" else BRAND_SCAN_COST
+    credits = _bedel if (deduct and user_id) else 0
 
     payload = {
         "id": job_id,

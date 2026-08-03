@@ -11,6 +11,7 @@ ve düşüm fonksiyonu hiç çağrılmaz.
 import asyncio
 
 import db
+from scan_costs import WEB_SCAN_COST, BRAND_SCAN_COST
 
 
 class FakeResp:
@@ -84,8 +85,8 @@ def test_girisli_tarama_maliyet_yazar(monkeypatch):
     kutu, dusumler, _y = _kur(monkeypatch)
     asyncio.run(db.save_audit("job-user", {"domain": "example.com"},
                               {"score": 80}, user_id="u1"))
-    assert kutu[0]["credits_spent"] == 5
-    assert dusumler == [("u1", 5, "web_audit")]
+    assert kutu[0]["credits_spent"] == WEB_SCAN_COST
+    assert dusumler == [("u1", WEB_SCAN_COST, "web_audit")]
 
 
 def test_izleme_taramasi_ucretsiz(monkeypatch):
@@ -110,8 +111,8 @@ def test_girisli_marka_kontrolu_maliyet_yazar(monkeypatch):
     kutu, dusumler, _y = _kur(monkeypatch)
     asyncio.run(db.save_brand_check("job-brand", {"type": "person", "name": "X"},
                                     {"score": 50}, user_id="u1"))
-    assert kutu[0]["credits_spent"] == 10
-    assert dusumler == [("u1", 10, "person_check")]
+    assert kutu[0]["credits_spent"] == BRAND_SCAN_COST
+    assert dusumler == [("u1", BRAND_SCAN_COST, "person_check")]
 
 
 # --- Düşüm BAŞARISIZ olursa (2026-07-29, aynı ailenin 3. üyesi) -------------
@@ -124,7 +125,7 @@ def test_dusum_basarisizsa_maliyet_sifirlanir(monkeypatch):
     kutu, dusumler, yamalar = _kur(monkeypatch, dusum_sonucu=False)
     asyncio.run(db.save_audit("job-fail", {"domain": "example.com"},
                               {"score": 80}, user_id="u1"))
-    assert dusumler == [("u1", 5, "web_audit")], "düşüm denenmiş olmalı"
+    assert dusumler == [("u1", WEB_SCAN_COST, "web_audit")], "düşüm denenmiş olmalı"
     assert yamalar == [("eq.job-fail", {"credits_spent": 0})], \
         "düşüm başarısızken satırdaki maliyet 0'a çekilmeli"
 
@@ -133,7 +134,7 @@ def test_dusum_basarisizsa_marka_maliyeti_sifirlanir(monkeypatch):
     kutu, dusumler, yamalar = _kur(monkeypatch, dusum_sonucu=False)
     asyncio.run(db.save_brand_check("job-bfail", {"type": "person", "name": "X"},
                                     {"score": 50}, user_id="u1"))
-    assert dusumler == [("u1", 10, "person_check")]
+    assert dusumler == [("u1", BRAND_SCAN_COST, "person_check")]
     assert yamalar == [("eq.job-bfail", {"credits_spent": 0})]
 
 
@@ -142,7 +143,7 @@ def test_dusum_basariliysa_duzeltme_yapilmaz(monkeypatch):
     kutu, dusumler, yamalar = _kur(monkeypatch, dusum_sonucu=True)
     asyncio.run(db.save_audit("job-ok", {"domain": "example.com"},
                               {"score": 80}, user_id="u1"))
-    assert kutu[0]["credits_spent"] == 5
+    assert kutu[0]["credits_spent"] == WEB_SCAN_COST
     assert yamalar == []
 
 
