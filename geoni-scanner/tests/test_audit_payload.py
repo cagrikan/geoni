@@ -127,3 +127,37 @@ def test_sozlesme_ile_payload_ARASINDA_kacak_yok():
     assert not kacak, (
         f"payload'da siniflandirilmamis alan(lar): {kacak}. "
         "Istemci okuyorsa WEB_CLIENT_KEYS'e, okumuyorsa WEB_INTERNAL_KEYS'e ekle.")
+
+
+# ---------- iki normalize_domain tuzagi (2026-08-03 canlida olculdu) ----------
+
+def test_IKI_normalize_domain_FARKLI_davranir():
+    """
+    🪤 YASANDI: main.py'de cikPlak `normalize_domain` adi CRAWLER'inkine bagli
+    (main.py:26), db'ninkine degil. Submit yolunda yanlisini cagirdim ve canli
+    olcumde audits.domain "www.geoni.ai" olarak kaydedildi — ne ham string ne de
+    beklenen "geoni.ai".
+
+    Bu test iki fonksiyonun AYNI OLMADIGINI belgeler; birleştirilirlerse
+    kirmizi yanar ve o zaman main.py'deki uyari yorumu da guncellenmeli.
+    """
+    import crawler
+    from db import normalize_domain as db_normalize
+    ham = "https://www.geoni.ai/rehber"
+    assert crawler.normalize_domain(ham) == "www.geoni.ai"   # www KALIR
+    assert db_normalize(ham) == "geoni.ai"                    # www SOYULUR
+
+
+def test_submit_yolu_WWW_SOYAN_normalize_kullanir():
+    """
+    Kaynak seviyesinde: main.py fastapi ister, CI minimal ortaminda import
+    edilemez. "www." soyulmazsa domain'e gore gruplanan HER SEY bolunur —
+    lig satiri, stability trend gecmisi ve bilet on-kosulu (purchase_ticket
+    db.normalize_domain ile "geoni.ai" arar, "www.geoni.ai" kaydini bulamaz).
+    """
+    src = _src("main.py")
+    assert "temiz_domain = _valid_domain(request.domain)" in src, \
+        "submit yolu dogrulamanin dondurdugu temiz degeri kullanmali"
+    assert "request.domain = temiz_domain" in src
+    assert "request.domain = normalize_domain(request.domain)" not in src, \
+        "CRAWLER'in normalize_domain'i submit yolunda kullanilmis — www kalir"

@@ -857,19 +857,27 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
 
     # F-Y4 (Fable 2026-07-19): geçersiz domain (boşluk/@/bozuk yapı) submit'te reddedilir.
     # Yoksa crawler 0 sayfa tarayıp "complete" + uydurma skor (34) üretir + LLM parası yakar.
-    if not _valid_domain(request.domain):
-        raise ApiHata(422, "gecersiz_alan_adi")
-
     # 🔒 KOK NEDEN (2026-08-02 guvenlik denetimi): buraya kadar HAM string
-    # tasiniyordu. _valid_domain yalniz ilk "/" ONCESINI dogrular, ham degeri
-    # DEGISTIRMEZ — yani "site.com/</script><script>..." dogrulamayi GECIYOR ve
-    # audits.domain'e oldugu gibi yaziliyordu (create_pending_audit/save_audit).
-    # Oradan herkese acik /ai-friendly ligine tasinip JSON-LD icinde depolanan
-    # XSS'e donusuyordu. Tek noktada normalize edilir: asagidaki TUM kullanimlar
+    # tasiniyordu. Dogrulama ham degeri DEGISTIRMIYORDU — yani
+    # "site.com/</script><script>..." dogrulamayi GECIYOR ve audits.domain'e
+    # oldugu gibi yaziliyordu (create_pending_audit/save_audit). Oradan herkese
+    # acik /ai-friendly ligine tasinip JSON-LD icinde depolanan XSS'e
+    # donusuyordu. Tek noktada normalize edilir: asagidaki TUM kullanimlar
     # (kayit, log, e-posta, stability anahtari, crawl) ayni temiz degeri gorur.
-    # Yan fayda: crawl zaten normalize edilmis host'u geziyordu — gosterilen
-    # domain artik gercekten taranan domain.
-    request.domain = normalize_domain(request.domain)
+    #
+    # 🪤 IKI FARKLI normalize_domain VAR, KARISTIRMA (2026-08-03 canlida olculdu):
+    #   crawler.normalize_domain -> yalniz scheme+path soyar, "www." KALIR, str doner
+    #   db.normalize_domain (_valid_domain) -> "www." de soyar, gecersizse None
+    # main.py'de cikPlak `normalize_domain` adi CRAWLER'inkine bagli (satir 26).
+    # Yanlisini cagirmak "www.geoni.ai" kaydeder ve domain'e gore gruplanan HER
+    # SEYI boler: lig satiri, stability trend gecmisi ve en onemlisi bilet
+    # on-kosulu (purchase_ticket db.normalize_domain kullanir -> "geoni.ai" arar,
+    # bulamaz). Bu yuzden dogrulamanin DONDURDUGU deger kullanilir: tek cagri,
+    # tek gercek.
+    temiz_domain = _valid_domain(request.domain)
+    if not temiz_domain:
+        raise ApiHata(422, "gecersiz_alan_adi")
+    request.domain = temiz_domain
 
     # SSRF: ic/ozel adrese cozulen hedefleri erken reddet (crawler'da da guard
     # var; buradaki kontrol kullaniciya bozuk tarama beklemeden 400 dondurur).
