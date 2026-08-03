@@ -23,7 +23,14 @@ from datetime import datetime, timezone
 import logging
 import httpx
 
-from crawler import crawl_domain, normalize_domain
+# NOT: crawler.normalize_domain BILEREK import EDILMIYOR. Iki farkli
+# normalize_domain var (crawler "www."yi BIRAKIR, db soyar) ve cikPlak ad
+# crawler'inkine baglaniyordu -> 2026-08-03'te yanlisi cagrildi, audits.domain
+# "www.geoni.ai" kaydedildi ve domaine gore gruplanan her sey (lig, trend,
+# bilet on-kosulu) bolundu. Ad namespace'e HIC girmezse tuzak da kalmaz;
+# db'ninki `_valid_domain` (asagida) ve `normalize_service_domain` adlariyla
+# gelir -> hangisinin cagrildigi okurken bellidir.
+from crawler import crawl_domain
 from db import normalize_domain as _valid_domain  # geçersiz domain -> None (F-Y4 submit validasyonu)
 from ssrf_guard import assert_public_host, BlockedHostError
 from indexing import check_indexing_status

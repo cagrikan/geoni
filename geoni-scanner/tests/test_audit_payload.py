@@ -161,3 +161,7 @@ def test_submit_yolu_WWW_SOYAN_normalize_kullanir():
     assert "request.domain = temiz_domain" in src
     assert "request.domain = normalize_domain(request.domain)" not in src, \
         "CRAWLER'in normalize_domain'i submit yolunda kullanilmis — www kalir"
+    # KALICI COZUM: ad main.py namespace'ine HIC girmesin ki yanlisi
+    # cagrilamasin. Bu satir geri gelirse tuzak da geri gelmis demektir.
+    assert "from crawler import crawl_domain, normalize_domain" not in src, \
+        "crawler.normalize_domain main.py'ye yeniden import edilmis — ad tuzagi geri geldi"
