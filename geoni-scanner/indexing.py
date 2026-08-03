@@ -28,9 +28,20 @@ from ssrf_guard import assert_public_host, BlockedHostError, safe_get
 
 logger = logging.getLogger(__name__)
 
-# T5: Brave Search API anahtari. Claude'un retrieval indeksi Brave'dir; bu
-# anahtar MUHTEMELEN YOK — o durumda check_brave_index None doner ve hicbir
-# davranis degismez (scoring.compute_index_coverage brave bacagini atlar).
+# T5: Brave Search API anahtari. Claude'un retrieval indeksi Brave'dir.
+#
+# 2026-08-03 DUZELTME: burada "anahtar MUHTEMELEN YOK" yaziyordu — YANLIS.
+# Olculdu: her iki ECS gorev ailesinde de BRAVE_API_KEY secret olarak TANIMLI
+# ve canli cagri HTTP 200 donuyor. Yani brave bacagi uretimde FIILEN CALISIYOR
+# ve her site taramasinda 1 cagri yapiliyor (indexing.py:329). Yorumu "yok"
+# sanip bu kalemi maliyet tablosundan dusurmek hataya yol acti.
+#
+# Ucret: API hangi plandan faturalandigini SOYLEMIYOR (hesap panosu disinda
+# okunamiyor). Olculen `x-ratelimit-policy: 50;w=1` Brave'in ucretsiz
+# katmaninin (1/sn) UZERINDE; en pahali senaryoda ($9 CPM) tarama basina
+# ~$0.009 — toplamin %4'unun altinda, karar degistirmiyor.
+# Anahtar kaldirilirsa check_brave_index None doner ve
+# scoring.compute_index_coverage brave bacagini atlar (davranis bozulmaz).
 BRAVE_API_KEY = os.environ.get("BRAVE_API_KEY", "")
 
 # M6: Cloudflare / bot-koruma challenge sayfalarinin kaba imzalari. robots.txt
@@ -108,10 +119,13 @@ def _looks_like_bot_challenge(status_code: int, headers: dict, body: str) -> boo
 
 async def check_brave_index(domain: str, brand_name: str = "") -> dict | None:
     """
-    T5 (ISKELET): Brave Search API ile "domain Brave'de indeksli mi" kontrolu.
+    T5: Brave Search API ile "domain Brave'de indeksli mi" kontrolu.
     Brave, Claude'un retrieval indeksidir; burada indeksli olmak = Claude
-    aramasinda var olmak. BRAVE_API_KEY MUHTEMELEN YOK -> None doner ve
-    scoring tarafinda brave bacagi hic devreye girmez (mevcut davranis korunur).
+    aramasinda var olmak.
+
+    URETIMDE AKTIF (olculdu 2026-08-03): BRAVE_API_KEY tanimli, her site
+    taramasinda 1 cagri yapiliyor. Anahtar kaldirilirsa None doner ve scoring
+    tarafinda brave bacagi devreye girmez (davranis bozulmaz).
 
     Donus: {"brave_indexed": bool, "results": int} veya None (olculemedi).
     brand_name verilirse ileride "markayi Brave'de kim aniyor" icin ek sorgu
