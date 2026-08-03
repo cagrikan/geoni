@@ -34,6 +34,7 @@ from db import (
     list_due_watchlist_items, update_watchlist_after_scan, get_auth_email,
     save_audit, save_brand_check, get_credit_balance,
     _claim_daily_job, run_attachment_retention, run_audit_retention, run_low_balance_alert,
+    sweep_private_results,
 )
 from mailer import send_monitor_email
 from pushnotify import send_score_change_push
@@ -230,7 +231,13 @@ async def monitor_loop():
             if await _claim_daily_job("retention"):
                 att = await run_attachment_retention()
                 slim = await run_audit_retention(None)
-                logger.info(f"monitor: retention -> ekler {att}, rapor sadelestirme {slim}")
+                # Ozel taramanin sonucu teslim aninda silinir; ama silme OKUMA
+                # anina bagli — kullanici sekmeyi kapatir ya da hic pollemezse
+                # sonuc satirda kalirdi, yani soz yalniz "polleyen kullanici"
+                # icin tutulmus olurdu. Bu supurge sozu HERKES icin tutar.
+                ozel = await sweep_private_results()
+                logger.info(f"monitor: retention -> ekler {att}, rapor sadelestirme {slim}, "
+                            f"ozel tarama sonucu {ozel}")
         except Exception as e:
             logger.warning(f"monitor: retention hatasi: {e}")
         await asyncio.sleep(MONITOR_CYCLE_SECONDS)

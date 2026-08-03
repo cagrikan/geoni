@@ -193,3 +193,40 @@ def test_KIRILIM_ESIKLERI_web_ve_mobil_AYNI():
             f"web'de {alan} esigi {esik} degil"
         assert re.search(rf"'{alan}', esik: {esik}", m), \
             f"mobilde {alan} esigi {esik} degil"
+
+
+# ---------- ozel tarama: soz TUTULUYOR mu (2026-08-03) ----------
+
+def test_OZEL_TARAMA_sonucu_isaretleniyor_ve_siliniyor():
+    """
+    🪤 YASANDI: musteriye "sonuc hicbir yerde kaydedilmedi" diyorduk ama SQS
+    modunda (uretimde ACIK) sonuc, polling okuyabilsin diye audits satirina
+    yaziliyor ve orada KALIYORDU. Soz tutulmuyordu. O gune kadar hic ozel
+    tarama satin alinmamisti (olculdu) — kimse yanilmadi, ama duzeltildi.
+
+    Uc parca birlikte calismali; biri dusrese soz yine bozulur:
+      1) sonuc `private` isaretiyle yazilir (satirda private'i gosteren baska
+         alan YOK: user_id ozel ve anonim taramada ayni sekilde bostur)
+      2) teslimde silinir
+      3) hic pollenmeyenler icin supurge var
+    """
+    src = _src("main.py")
+    assert 'result_payload["private"] = True' in src, "ozel sonuc isaretlenmiyor"
+    assert "await purge_private_result(job_id)" in src, "teslimde silme yok"
+    assert '"ozel_tarama_silindi"' in src, "silinmis sonuc icin acik cevap yok"
+
+    db = _src("db.py")
+    assert "async def purge_private_result" in db
+    assert "async def sweep_private_results" in db
+
+    mon = _src("monitor.py")
+    assert "sweep_private_results()" in mon, \
+        "supurge gunluk ise baglanmamis — sekmeyi kapatan kullanici icin soz tutulmaz"
+
+
+def test_SILINMIS_sonuc_icin_MUSTERI_METNI_var():
+    """410 + aciklayici metin: 'tarama basarisiz' demek kullaniciyi yaniltirdi.
+    Metin ayrica kopyasinin NEREDE oldugunu soylemeli (e-posta)."""
+    import api_errors
+    kod = api_errors.MESAJLAR["ozel_tarama_silindi"]
+    assert "e-posta" in kod["tr"].lower() and "email" in kod["en"].lower()

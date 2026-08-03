@@ -5483,3 +5483,60 @@ async def get_dataforseo_cost_monthly(lookback_days: int = 365) -> dict[str, flo
     except Exception as e:
         logger.warning(f"get_dataforseo_cost_monthly error: {e}")
     return {k: round(v, 5) for k, v in aylik.items()}
+
+
+# ---------- Ozel (private) tarama: sonuc SAKLANMAZ ----------
+# Musteriye verilen soz: "sonuc hicbir yerde kaydedilmedi". SQS modunda bu soz
+# TUTULMUYORDU: is baska process'te (worker) kostugu icin sonuc, polling'in
+# okuyabilmesi adina audits satirina yaziliyordu ve orada KALIYORDU
+# (2026-08-03'te olculdu; o gune kadar hic ozel tarama satin alinmamisti, yani
+# kimse etkilenmedi). Cozum: sonuc teslim edilir edilmez satirdan silinir.
+# Kullanici raporsuz kalmaz — e-posta HER taramada gidiyor (main.py:505),
+# yani kalici kopya kendi posta kutusunda, bizde degil.
+
+async def purge_private_result(job_id: str) -> bool:
+    """Ozel taramanin sonucunu satirdan siler. Satir SILINMEZ: polling'in ve
+    'bu is gercekten vardi' kontrolunun calismasi icin durum kalir, ICERIK gider."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/audits?id=eq.{job_id}",
+                headers=_headers(), json={"result_json": None, "score": None}, timeout=10,
+            )
+            return r.status_code in (200, 204)
+    except Exception as e:
+        logger.warning(f"purge_private_result({job_id}) error: {e}")
+        return False
+
+
+async def sweep_private_results(max_age_hours: int = 6) -> int:
+    """Teslimde silinemeyenleri supurur.
+
+    NEDEN GEREKLI: silme, sonucun OKUNDUGU ana bagli. Kullanici sekmeyi kapatir
+    ya da hic pollemezse sonuc satirda kalirdi — yani soz yalnizca 'polleyen
+    kullanici' icin tutulmus olurdu. Bu supurge sozü HERKES icin tutar.
+    Pencere kisa degil ki ayni oturumda sayfa yenilemesi calissin."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return 0
+    sinir = (datetime.now(timezone.utc) - timedelta(hours=max_age_hours)).strftime("%Y-%m-%d %H:%M:%S")
+    silinen = 0
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/audits"
+                f"?select=id&result_json->>private=eq.true&created_at=lt.{sinir}"
+                f"&result_json=not.is.null&limit=200",
+                headers=_headers(), timeout=15,
+            )
+            if r.status_code != 200:
+                return 0
+            for row in r.json():
+                if await purge_private_result(row["id"]):
+                    silinen += 1
+    except Exception as e:
+        logger.warning(f"sweep_private_results error: {e}")
+    if silinen:
+        logger.info(f"sweep_private_results: {silinen} ozel tarama sonucu silindi")
+    return silinen

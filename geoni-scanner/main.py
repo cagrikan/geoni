@@ -54,6 +54,7 @@ import attest  # Apple App Attest: mobil muafiyetini imzaya baglar (bkz. _mobile
 from db import (
     promo_kodu_kullan, promo_toplu_uret, promo_parti_ozeti,
     create_pending_audit, update_audit_status, get_audit_row, get_auth_email,
+    purge_private_result,
     save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits, get_credit_balance,
     is_strict_admin, get_admin_summary, get_admin_scans_daily, get_admin_credits_stats, get_admin_provider_usage,
     admin_list_users, admin_list_audits, admin_get_audit, admin_adjust_credits, admin_set_is_admin,
@@ -493,6 +494,10 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = ''):
             # SQS modunda 'queued' satiri onceden acildi (user_id=None ile,
             # gecmis listesinde gorunmez); sonucu satira isle ki polling bitsin.
             if sqs_enabled():
+                # `private` isareti: sonucun TESLIMDEN SONRA silinecegini bilen
+                # tek sey bu (satirda private'i gosteren baska alan yok —
+                # user_id ozel ve anonim taramada ayni sekilde bostur).
+                result_payload["private"] = True
                 await update_audit_status(job_id, "complete", result=result_payload,
                                           score=result_payload.get("score"))
             logger.info(f"Private audit job {job_id} completed, not saved")
@@ -989,7 +994,19 @@ async def get_audit_status(job_id: str):
         if row is None:
             raise ApiHata(404, "tarama_bulunamadi")
         if row["status"] == "complete":
-            return {"job_id": job_id, "status": "complete", "result": row.get("result_json"), "email_sent": True}
+            sonuc = row.get("result_json")
+            # 🔒 OZEL TARAMA: sonuc teslim edilir edilmez satirdan SILINIR.
+            # Musteriye "sonuc hicbir yerde kaydedilmedi" diyoruz; SQS modunda
+            # sonuc polling icin satira yaziliyor ve orada kaliyordu — soz
+            # tutulmuyordu. Kullanici raporsuz kalmaz: e-posta HER taramada
+            # gidiyor, kalici kopya kendi posta kutusunda.
+            if isinstance(sonuc, dict) and sonuc.get("private"):
+                await purge_private_result(job_id)
+            elif sonuc is None:
+                # Zaten silinmis ozel tarama: 500 yerine ACIK cevap ver, yoksa
+                # kullanici "tarama basarisiz" saniyor.
+                raise ApiHata(410, "ozel_tarama_silindi")
+            return {"job_id": job_id, "status": "complete", "result": sonuc, "email_sent": True}
         if row["status"] == "failed":
             raise ApiHata(500, "tarama_basarisiz")
         if row["status"] == "partial":

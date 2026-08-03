@@ -47,6 +47,16 @@ MESAJLAR: dict[str, dict[str, str]] = {
         "tr": "Tarama bulunamadı.",
         "en": "Scan not found.",
     },
+    # Ozel tarama sonucu TESLIM EDILDIKTEN SONRA silinir (musteriye verilen soz:
+    # "sonuc hicbir yerde kaydedilmedi"). Ikinci kez istenirse 500 "basarisiz"
+    # demek YANLIS olur — kullanici bir hata oldugunu saniyor. Ne oldugunu ve
+    # kopyasinin nerede oldugunu soyleriz.
+    "ozel_tarama_silindi": {
+        "tr": "Bu özel bir taramaydı: sonuç size gösterildikten sonra sunucudan silindi. "
+              "Kalıcı kopyası e-postanızda.",
+        "en": "This was a private scan: the result was deleted from our servers after it "
+              "was shown to you. Your permanent copy is in your email.",
+    },
     "tarama_basarisiz": {
         # Ic hata metni BILEREK gosterilmiyor: eskiden `f"Audit failed: {error}"`
         # ile ham istisna metni istemciye gidiyordu (bilgi sizmasi). Ayrinti loga.
