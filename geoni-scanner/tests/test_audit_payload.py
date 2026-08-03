@@ -268,3 +268,29 @@ def test_SOV_ATLAMA_yalniz_bayrakla():
     br = _src("brand_recall.py")
     assert "need_sov: bool = True," in br
     assert "need_sov=not ic_dogrulama" in _src("main.py")
+
+
+# ---------- Claude SOV motoru kapali, judge acik (2026-08-03) ----------
+
+def test_CLAUDE_SOV_MOTORU_KAPALI_ama_JUDGE_ACIK():
+    """
+    Kurucu karari: Claude'un SOV web-arama motoru kapatildi (Turkce kaynak
+    derinligi en dusuk, maliyeti Perplexity'nin 3,7 kati) — ama Claude MODELI
+    judge olarak KALDI. Ikisi karisirsa ya para bosa gider ya judge coker.
+    """
+    br = _src("brand_recall.py")
+    # SOV motoru env-kapili
+    assert 'os.environ.get("CLAUDE_SOV")' in br, "Claude SOV motoru kapali degil"
+    assert "ask_claude_web=(_ask_claude_web" in br
+    # judge DOKUNULMADI
+    assert 'JUDGE_MODEL_ANTHROPIC = "claude-sonnet-4-6"' in br, \
+        "judge modeli degismis — Claude judge olarak KALMALI"
+    assert "model=JUDGE_MODEL_ANTHROPIC" in br, "judge cagrisi kopmus"
+
+
+def test_SOV_MOTORLARI_ucu_acik():
+    """ChatGPT + Perplexity + Gemini acik kalmali; biri sessizce duserse
+    SOV paydasi kucuulur ve skorlar sessizce kayar."""
+    br = _src("brand_recall.py")
+    assert "ask_openai_web=_ask_openai_web if OPENAI_API_KEY else None" in br
+    assert "ask_google=_ask_gemini_grounded if GOOGLE_API_KEY else None" in br

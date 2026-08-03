@@ -222,11 +222,21 @@ RECALL_TEMPERATURE = 0.0
 # (redundans YOK, sinyal katiyor). Eski 0.24 payin YARISI (~%15 motor kutlesi)
 # konservatif olarak geri verildi; tam parite 30-60 gun izleme sonrasi (v6?).
 # score_model_version=v5-gemini damgasi eski (v4) skorlari GRANDFATHER birakir.
+# 🔻 CLAUDE AGIRLIGI SIFIRLANDI (kurucu karari, 2026-08-03).
+# Claude SOV web-arama motoru kapatildi (Turkce kaynak derinligi olculdu: bir
+# sorguda 14 kaynagin SIFIRI .tr, Perplexity ayni soruda 4 / ikinci soruda 11).
+# Agirlik uc motora dagitildi; kurucu sarti "Perplexity en az %50 alsin" ->
+# Perplexity %55, kalan openai/gemini arasinda MEVCUT oranlariyla bolundu.
+# Claude MODELI cikmadi: judge olarak duruyor (JUDGE_MODEL_ANTHROPIC).
+# 0.0 = olculur, musteriye gosterilir, SKORA GIRMEZ.
+# ⚠️ Claude BILEREK SHADOW_ENGINES'e EKLENMEDI: oraya konsaydi recognition_count'tan
+# ("kac motor seni taniyor") ve oz-gelisim own_recognition sinyalinden de duserdi.
+# Kurucunun istegi AGIRLIKTI; izlemeyi kormek gerekmiyor. Grok'tan farki bu.
 WEIGHTS = {
-    "claude":           0.20,
-    "openai":           0.28,
-    "gemini":           0.12,
-    "perplexity":       0.20,
+    "claude":           0.0,     # 2026-08-03: 0.20 dagitildi (agirlik 0, SHADOW_ENGINES'e EKLENMEDI)
+    "openai":           0.343,   # 0.28 + 0.063
+    "gemini":           0.147,   # 0.12 + 0.027
+    "perplexity":       0.310,   # 0.20 + 0.110  <- payin %55'i
     "grok":             0.0,    # SHADOW (2026-07-23): golge-mod, manseti DEGISTIRMEZ; backtest sonrasi acilir
     "response_quality": 0.10,
     "topic_relevance":  0.10,
@@ -236,10 +246,10 @@ WEIGHTS = {
 # Tanima (recall) markayi BILEN kullaniciyi, SOV ise markayi BILMEYEN
 # kullaniciyi temsil eder — GEO'nun asil ticari degeri ikincisidir.
 WEIGHTS_SOV = {
-    "claude":           0.15,
-    "openai":           0.20,
-    "gemini":           0.10,     # v5: golge moddan cikti (bkz. WEIGHTS notu)
-    "perplexity":       0.15,
+    "claude":           0.0,     # 2026-08-03: 0.15 dagitildi (SHADOW)
+    "openai":           0.245,   # 0.20 + 0.045
+    "gemini":           0.122,   # 0.10 + 0.022  (v5: golge moddan cikti)
+    "perplexity":       0.233,   # 0.15 + 0.083  <- payin %55'i
     "grok":             0.0,    # SHADOW
     "response_quality": 0.05,
     "topic_relevance":  0.05,
@@ -250,10 +260,10 @@ WEIGHTS_SOV = {
 # (who-to-follow = SOV), tanima degil. Report 18: SOV birincil. SOV %55, recall
 # (modeller) %25, dogruluk %15, web/relevance %5. Yalniz social + SOV olculduyse.
 WEIGHTS_SOCIAL = {
-    "claude":           0.07,
-    "openai":           0.07,
-    "gemini":           0.04,     # v5: golge moddan cikti
-    "perplexity":       0.07,
+    "claude":           0.0,     # 2026-08-03: 0.07 dagitildi (SHADOW)
+    "openai":           0.090,   # 0.07 + 0.020
+    "gemini":           0.051,   # 0.04 + 0.011  (v5: golge moddan cikti)
+    "perplexity":       0.109,   # 0.07 + 0.039  <- payin %56'si
     "grok":             0.0,    # SHADOW
     "response_quality": 0.15,
     "topic_relevance":  0.05,
@@ -1777,7 +1787,21 @@ async def check_brand_recall(
             # T2: ChatGPT + Claude web-arama motorlari. Pahali olduklarindan YALNIZ
             # SOV'un sorgularinda calisir (recall'da degil). Anahtar yoksa None gecer.
             ask_openai_web=_ask_openai_web if OPENAI_API_KEY else None,
-            ask_claude_web=_ask_claude_web if ANTHROPIC_API_KEY else None,
+            # 🔻 KAPALI (kurucu karari, 2026-08-03): Claude SOV motoru devre disi.
+            # GEREKCE — canli olculdu: Turkce yerel sorgularda Claude'un kaynak
+            # derinligi en dusuk. "Istanbul'da dijital ajans" sorusunda 14
+            # kaynagin *sifiri* .tr; ayni soruda Perplexity 4, ChatGPT 1.
+            # Ikinci soruda Claude 5, Perplexity 11. Yanitlari da en kisa
+            # (1.5-2.0k karakter vs Perplexity 2.5k / ChatGPT 4.0k).
+            # Maliyeti ise Perplexity'nin 3,7 KATI ($0,0200 vs $0,0054/sorgu).
+            # Claude MODELI cikmiyor — judge olarak kaliyor (claude-sonnet-4-6,
+            # bkz. JUDGE_MODEL_ANTHROPIC); yalnizca SOV'daki web-arama motoru
+            # kapandi. Geri acmak icin: CLAUDE_SOV=1 env.
+            # ETKI (olculdu, 5 tarama): SOV skoru +8,3 ile -5,6 puan arasi kayar
+            # (Claude'un bulamadigi hedeflerde payda kuculdugu icin YUKSELIR).
+            ask_claude_web=(_ask_claude_web
+                            if (ANTHROPIC_API_KEY and os.environ.get("CLAUDE_SOV"))
+                            else None),
             ask_grok_web=grok_web_fn_,  # gating + gunluk tavan yukarida hesaplandi
             custom_queries=custom_queries,
             own_domain=website or "",

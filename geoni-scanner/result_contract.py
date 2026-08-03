@@ -34,6 +34,8 @@ BRAND_CLIENT_KEYS = {
 # WEIGHTS notu). Artik agirliga katiliyor -> golge listesi BOS. Ileride yeni bir deney
 # motoru eklenirse buraya yazilir; etiketleme altyapisi (client shadow_engines okur) durur.
 SHADOW_ENGINES = ["grok"]  # 2026-07-23: Grok (xAI) golge-modda eklendi (WEIGHTS['grok']=0)
+# NOT (2026-08-03): Claude'un da agirligi 0 ama bu listeye EKLENMEDI — eklenirse
+# recognition_count ve oz-gelisim own_recognition sinyali de kayardi.
 
 # sov alt-sozlesmesi: SovSection (web) + mobil brand sonucu bu alanlari okur.
 SOV_CLIENT_KEYS = {

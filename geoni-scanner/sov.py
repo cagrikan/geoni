@@ -779,8 +779,53 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
         except Exception:
             return None
 
-    # Tum (sorgu x motor) ciftleri paralel
-    pairs = [(qi, eng) for qi in range(len(queries)) for eng in engines]
+    # ── SORU BASINA MOTOR TABLOSU (2026-08-03, kurucu karari) ──────────────
+    # ONCE: her motor her soruya giderdi (5 sorgu x 4 motor = 20 canli arama).
+    # Ucret ARAMA CAGRISI basinadir, model jetonu degil — dolayisiyla maliyeti
+    # dusurmenin tek gercek yolu cagri sayisini dusurmek.
+    #
+    # OLCULDU (13 tarama, birincil sorgularda buluş dagilimi):
+    #   ChatGPT 6 · Perplexity 1 · Claude 1 · Gemini 1
+    # ChatGPT tek basina buluslarin ~%70'ini yapiyor ama arama basi $0.0298 —
+    # Perplexity'nin 5,5 katı, Gemini'nin 21 katı. Claude 1/10 bulus getirip
+    # $0.0200 istiyor (bu yuzden zaten kapali, bkz. brand_recall CLAUDE_SOV).
+    #
+    # KURGU: Perplexity + Gemini HER soruda (ucuz taban, $0.0068/soru);
+    #        ChatGPT yalniz ilk IKI birincil soruda;
+    #        komsu sorgularda pahali motor YOK — komsu zaten SOV paydasina
+    #        girmiyor (Y6, asagida), yalnizca bonus/istihbarat uretir.
+    # Tarama maliyeti: site $0.3412 -> $0.2518, kisi/marka/sosyal $0.2570 ->
+    # $0.1676.
+    #
+    # ⚠️ BEDELI — bilincli kabul edildi: birincil hucre 9'dan 8'e iner, yani
+    # tek bir "gecti/gecmedi" karari SOV skorunu 12,5 puan oynatir (onceden
+    # 8,3). Sosyal taramada SOV agirligi 0,55 oldugu icin (WEIGHTS_SOCIAL) bu
+    # ~6,9 GENEL puana denk gelir ve SCORE_CHANGE_THRESHOLD=5'i (monitor.py)
+    # asar: ayni hesap iki taramada tek hucre farkiyla bildirim tetikleyebilir.
+    # Bunu duzeltmenin yolu motor eklemek DEGIL, sosyalde SOV agirligini ya da
+    # esigi ayrica ele almaktir — skor sozlesmesi karari, ayri tutuldu.
+    #
+    # Sorgu sayisi sabit varsayilmaz: custom_queries/pinned_queries yollarinda
+    # 5'ten az ya da cok olabiliyor (olculdu: ort. 4,56-5,00). Bu yuzden secim
+    # INDEKSE degil, sorgunun `adjacent` bayragina gore yapilir.
+    UCUZ_MOTORLAR = ("perplexity", "google")
+    CHATGPT_BIRINCIL_LIMIT = 2
+    birincil_sirasi = 0
+    soru_motorlari: list[list[str]] = []
+    for q in queries:
+        secili = [e for e in UCUZ_MOTORLAR if e in engines]
+        if not q.get("adjacent"):
+            birincil_sirasi += 1
+            if birincil_sirasi <= CHATGPT_BIRINCIL_LIMIT and "chatgpt" in engines:
+                secili.append("chatgpt")
+            # Claude varsayilan olarak KAPALI. CLAUDE_SOV=1 ile geri acilirsa
+            # eski davranisa (her soru) donmez — yalnizca ILK birincil soruya
+            # girer; aksi halde tek env degiskeni maliyeti $0.10 sicratir.
+            if birincil_sirasi == 1 and "claude" in engines:
+                secili.append("claude")
+        soru_motorlari.append(secili)
+
+    pairs = [(qi, eng) for qi, engs in enumerate(soru_motorlari) for eng in engs]
     raw = await asyncio.gather(*[_safe_ask(engines[eng], queries[qi]["query"]) for qi, eng in pairs])
 
     per_query = [{"query": q["query"], "mentioned": False, "engines": {}, "answer_snippet": "",
@@ -961,7 +1006,10 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
         "score": score,
         "mention_count": mention_count,
         "query_count": answered,
-        "engines_used": list(engines),
+        # Soru basina motor tablosundan sonra `engines` artik "kayitli motorlar"
+        # demek; FIILEN cagrilan kume ondan kucuk (ornek: ChatGPT yalniz ilk iki
+        # birincil soruda). Rapor gercekte sorulani soylemeli.
+        "engines_used": sorted({eng for engs in soru_motorlari for eng in engs}),
         "custom_queries_used": bool(custom),
         "queries": per_query,
         "competitors": competitors,
