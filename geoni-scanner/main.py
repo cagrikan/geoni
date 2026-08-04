@@ -49,6 +49,7 @@ from devicecheck import MAX_FREE_SCANS as FREE_SCAN_LIMIT
 # dusumle tutmuyor (2026-07-28'deki 1120 hayali kredi tam bu bicimdeydi) ve
 # ucretsiz-tarama kapisi yanlis karar veriyor.
 from scan_costs import WEB_SCAN_COST, BRAND_SCAN_COST, SOCIAL_SCAN_COST, SCAN_COSTS
+import job_store
 from free_scan import free_scan_gate, record_free_scan
 
 # Ucretsiz-tarama hakki tarama BASARIYLA bitince yakilir (kor denetim
@@ -680,6 +681,10 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
             "completed_at": datetime.now().isoformat(),
         })
         await _hakki_yak(job_id)   # ucretsiz hak ANCAK simdi yakilir
+        # Ozel tarama DB'ye yazilmadigi icin cok-instance'ta bulunamiyordu;
+        # TTL'li paylasimli depoya da koy (kalici kayit DEGIL, teslim kuyrugu).
+        if request.private:
+            job_store.yaz(job_id, brand_checks_store[job_id])
         # Ozel/gecici tarama: Dashboard/Tarama Gecmisi'nde hic gorunmesin diye
         # audits tablosuna hicbir kayit yazilmaz. Gercek AI sorgu maliyeti
         # aynen olustugu icin kontor yine de dusulur (suistimali onlemek icin).
@@ -1337,6 +1342,14 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
 async def get_brand_check_status(job_id: str):
     _valid_job_id(job_id)
     if job_id not in brand_checks_store:
+        # Ozel (private) tarama DB'ye HIC yazilmaz; bellek miss'inde tek yedegi
+        # paylasimli depodur (kor denetim 2026-08-04). Bu olmadan cok-instance'ta
+        # kullanici kredisini odeyip raporunu asla goremiyordu.
+        ozel = job_store.oku(job_id)
+        if ozel is not None:
+            if ozel.get("status") == "complete":
+                job_store.sil(job_id)   # tek kullanimlik teslim
+            return ozel
         # T1: bellek miss (API restart / coklu-instance ALB) -> DB fallback.
         # brand/person/social sonucu save_brand_check ile audits'e yaziliyor;
         # kredisi dusulmus tarama sonsuza dek "not found" donmesin (web'deki desen).
