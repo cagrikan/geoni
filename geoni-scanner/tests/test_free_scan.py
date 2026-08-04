@@ -375,3 +375,42 @@ def test_brand_check_hatasi_dogru_store_a_yazilir():
     kod = "\n".join(l for l in govde.splitlines() if not l.strip().startswith("#"))
     assert "jobs_store[" not in kod, \
         "run_brand_check_job icinde jobs_store kullanilmis — brand_checks_store olmali"
+
+
+# ── Premium = "ödeme yaptı", "bakiyesi var" DEĞİL (kör denetim 2026-08-04) ──
+
+def test_bakiyesi_biten_premium_sinirsiz_tarama_yapamaz(monkeypatch):
+    """KRITIK regresyon: check_is_premium yalniz `total_credits_purchased>0`e
+    bakar, GUNCEL BAKIYEYI sorgulamaz. Kapi eskiden premium'u kosulsuz
+    geciriyordu -> tek kucuk paket almis kullanici bakiyesi SIFIRLANDIKTAN
+    sonra da sinirsiz bedava tarama cekebiliyordu (tarama basina ~$0.32).
+    """
+    _install(monkeypatch, premium=True, balance=0, account_used=1,
+             device_state={"used": True, "other": False})
+    allowed, info = asyncio.run(free_scan.free_scan_gate("u1", "devtok", scan_cost=20))
+    assert not allowed, "bakiyesi biten premium hala sinirsiz tarama yapabiliyor"
+    assert info["reason"] == "free_limit_reached"
+
+
+def test_bakiyesi_yeten_premium_gecer(monkeypatch):
+    """Bedeli karsilayabilen premium tavansiz gecmeye devam etmeli."""
+    _install(monkeypatch, premium=True, balance=100)
+    allowed, info = asyncio.run(free_scan.free_scan_gate("u1", "devtok", scan_cost=20))
+    assert allowed and info["reason"] == "premium"
+
+
+def test_bedelsiz_cagri_premium_davranisi_bozulmaz(monkeypatch):
+    """scan_cost<=0 (bedelsiz yol) eski davranisi korumali."""
+    _install(monkeypatch, premium=True, balance=0)
+    allowed, info = asyncio.run(free_scan.free_scan_gate("u1", "devtok", scan_cost=0))
+    assert allowed and info["reason"] == "premium"
+
+
+def test_uclarda_premium_kapiyi_atlamiyor():
+    """Endpoint'ler `not is_premium` ile kapiyi ATLAMAMALI — karari gate verir."""
+    kaynak = (_KOK / "main.py").read_text(encoding="utf-8")
+    import re
+    kod = "\n".join(l for l in kaynak.splitlines() if not l.strip().startswith("#"))
+    kotu = re.findall(r"not is_premium\d?\s+and\s+not _is_internal_scan\(http_request\):\s*\n\s*allowed", kod)
+    assert not kotu, "bir uc premium'da free_scan_gate'i atliyor"
+    assert "if not sc_premium:" not in kod, "sosyal uc premium'da kapiyi atliyor"

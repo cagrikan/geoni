@@ -52,9 +52,22 @@ async def free_scan_gate(user_id: str | None, device_token: str | None,
     `scan_cost`: bu taramanin DUSECEGI token (web 5, kisi/marka 10, sosyal 0).
     Bakiye bunu karsiliyorsa tarama UCRETSIZ DEGILDIR -> tavan uygulanmaz.
     """
-    # Premium/kredi almis kullanici: tavan yok.
+    # 🔴 PREMIUM = "bir kez odeme yapmis" DEMEK, "bakiyesi var" DEMEK DEGIL.
+    # check_is_premium yalnizca `is_admin OR total_credits_purchased > 0`e bakar
+    # (db.py:507) — GUNCEL BAKIYEYI HIC SORGULAMAZ. Eskiden bu dal kosulsuz
+    # gecirdigi icin, tek kucuk paket almis bir kullanici bakiyesi SIFIRLANDIKTAN
+    # sonra da sinirsiz bedava tarama cekebiliyordu: ucretsiz-tavan kapisi
+    # atlaniyor, rate limit muaf, normal (private olmayan) taramada bakiye
+    # on-kontrolu yok ve dusum basarisiz olunca `_maliyeti_sifirla` maliyeti
+    # 0'a cekip raporu YINE teslim ediyordu (db.py:213). Tarama basina ~$0.32
+    # gercek maliyet, tavan yok. (Kor denetim 2026-08-04, KRITIK.)
+    #
+    # Artik: premium yalnizca BEDELI KARSILAYABILIYORSA tavansiz gecer. Bakiye
+    # yetmiyorsa asagi duser ve herkesle ayni ucretsiz-hak kapisina tabi olur.
+    # scan_cost<=0 (bedelsiz cagri) eski davranisi korur.
     if user_id and await check_is_premium(user_id):
-        return True, {"reason": "premium", "device_state": None}
+        if scan_cost <= 0 or await get_credit_balance(user_id) >= scan_cost:
+            return True, {"reason": "premium", "device_state": None}
 
     # ODENEN tarama ucretsiz tarama degildir.
     #

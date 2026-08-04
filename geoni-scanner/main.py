@@ -978,7 +978,12 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
     # da parasiz en fazla FREE_SCAN_LIMIT". private zaten kredili, premium muaf,
     # ic taramalar muaf. Sayac SUBMIT'te dusulur (masrafa girmeden hemen once) —
     # buraya gelen her tarama gercek API $ yakar. Kayit background'da (submit hizli).
-    if not request.private and not is_premium and not _is_internal_scan(http_request):
+    # NOT: `not is_premium` kosulu KALDIRILDI (kor denetim 2026-08-04). Premium
+    # kullanici da kapidan gecmeli — free_scan_gate icinde bakiyeyi kontrol edip
+    # yeterliyse "paid/premium" diye geciriyor, yetmiyorsa ucretsiz hakka bakiyor.
+    # Eskiden kapi HIC cagrilmadigi icin bakiyesi biten premium sinirsiz bedava
+    # tarama cekiyordu.
+    if not request.private and not _is_internal_scan(http_request):
         allowed, gate_info = await free_scan_gate(user_id_rl, request.device_token,
                                                   scan_cost=WEB_SCAN_COST)
         if not allowed:
@@ -1191,7 +1196,8 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
         await enforce_turnstile(request.turnstile_token, client_ip, request.lang or "tr", "brand-check")
 
     # Ucretsiz-tarama tavani (cihaz + hesap). private zaten 10 kredi, premium muaf.
-    if not request.private and not is_premium2 and not _is_internal_scan(http_request):
+    # `not is_premium2` kaldirildi — bkz. web taramasindaki ayni duzeltme.
+    if not request.private and not _is_internal_scan(http_request):
         allowed, gate_info = await free_scan_gate(user_id_rl2, request.device_token,
                                                   scan_cost=BRAND_SCAN_COST)
         if not allowed:
@@ -1268,19 +1274,20 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
         if not sc_uid:
             raise HTTPException(status_code=401,
                                 detail=_login_required_message(request.lang or "tr", "social"))
-        sc_premium = await check_is_premium(sc_uid)
-        if not sc_premium:
-            allowed, gate_info = await free_scan_gate(sc_uid, request.device_token,
-                                                      scan_cost=SOCIAL_SCAN_COST)
-            if not allowed:
-                raise HTTPException(status_code=402, detail={
-                    "error": "free_limit_reached",
-                    "limit": gate_info.get("limit", FREE_SCAN_LIMIT),
-                    "message": _free_limit_message(
-                        request.lang or "tr",
-                        gate_info.get("limit"), bool(gate_info.get("creator"))),
-                })
-            background_tasks.add_task(record_free_scan, sc_uid, request.device_token, gate_info)
+        # `if not sc_premium` KALDIRILDI (kor denetim 2026-08-04): kapiyi premium
+        # icin de cagiriyoruz, karari gate veriyor (icinde bakiye kontrolu var).
+        # Eskiden bakiyesi biten premium sinirsiz bedava sosyal tarama cekiyordu.
+        allowed, gate_info = await free_scan_gate(sc_uid, request.device_token,
+                                                  scan_cost=SOCIAL_SCAN_COST)
+        if not allowed:
+            raise HTTPException(status_code=402, detail={
+                "error": "free_limit_reached",
+                "limit": gate_info.get("limit", FREE_SCAN_LIMIT),
+                "message": _free_limit_message(
+                    request.lang or "tr",
+                    gate_info.get("limit"), bool(gate_info.get("creator"))),
+            })
+        background_tasks.add_task(record_free_scan, sc_uid, request.device_token, gate_info)
 
     brand_req = BrandCheckRequest(
         type="social",  # T3: sosyal tarama "brand" degil "social" kaydedilsin (gecmis/istatistik/kart ayirt etsin)
