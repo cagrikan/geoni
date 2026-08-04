@@ -48,7 +48,20 @@ MONITOR_CYCLE_SECONDS = 3600   # saatte bir kontrol
 MONITOR_INTERVAL_DAYS = 15     # hedef basina en cok 15 gunde bir otomatik tarama
 MONITOR_BATCH_SIZE = 3         # donem basina en cok 3 hedef (kota korumasi)
 MONITOR_PAGE_LIMIT = 30        # izleme taramasi hafif crawl
-SCORE_CHANGE_THRESHOLD = 5     # bildirim esigi (puan)
+SCORE_CHANGE_THRESHOLD = 5     # bildirim esigi (puan) — web/kisi/marka
+
+# SOSYALDE ESIK FARKLI (kurucu karari 2026-08-04). Sosyal taramada crawl/indeks/
+# skorlama yok; genel skor dogrudan brand_recall'dan gelir ve orada SOV'un
+# agirligi 0.55 (WEIGHTS_SOCIAL) — site taramasindaki 0.075'in yedi kati.
+# Olculdu: SOV birincil hucresi 8, yani TEK hucrenin oynamasi SOV'u 12,5 puan,
+# genel skoru 12,5 x 0,55 = ~6,9 puan degistiriyor. Esik 5 iken bu, hicbir sey
+# degismemisken "skorun dustu" bildirimi demekti — olcum gurultusu.
+# 10 esigi ikisini ayirir:  1 hucre = 6,9 (susar) · 2 hucre = 13,8 (duyulur).
+#
+# ⚠️ Bu sayi SOV agirligina ve hucre sayisina bagli. Ikisinden biri degisirse
+# yeniden hesaplanmali: esik, tek hucrenin genel skordaki karsiligindan BUYUK,
+# iki hucreninkinden KUCUK olmali.
+SOCIAL_SCORE_CHANGE_THRESHOLD = 10
 FREE_MONITOR_DAYS = 30         # ilk ay ucretsiz; sonrasi aktif bakiye sarti
 
 
@@ -198,9 +211,11 @@ async def _process_item(item: dict):
     await update_watchlist_after_scan(item.get("id"), new_score)
     logger.info(f"monitor: '{label}' otomatik tarandi, skor={new_score} (onceki={old_score})")
 
+    esik = (SOCIAL_SCORE_CHANGE_THRESHOLD if (item.get("type") == "social")
+            else SCORE_CHANGE_THRESHOLD)
     if (
         new_score is not None and old_score is not None
-        and abs(new_score - old_score) >= SCORE_CHANGE_THRESHOLD
+        and abs(new_score - old_score) >= esik
     ):
         email = await get_auth_email(item.get("user_id"))
         if email:
