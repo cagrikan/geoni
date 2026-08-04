@@ -466,7 +466,7 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = '',
             logger.info(f"PARTIAL_READY job={job_id} domain={request.domain} "
                         f"t={time.perf_counter() - _t0:.1f}s score={partial_payload.get('score')}")
 
-        brand_recall_result = await check_brand_recall(identity["name"], identity["topic"], on_progress=emit, lang=request.lang, custom_queries=request.custom_queries, website=request.domain, on_partial=_on_partial,
+        brand_recall_result = await check_brand_recall(identity["name"], topic=identity["topic"], on_progress=emit, lang=request.lang, custom_queries=request.custom_queries, website=request.domain, on_partial=_on_partial,
                                                        # WEB raporunun konulari topics.py'den gelir; brand_recall'in
                                                        # urettigi konular payload'a girmez -> bosa cagri yapma.
                                                        need_topics=False,

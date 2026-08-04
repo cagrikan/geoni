@@ -80,7 +80,7 @@ async def _scan_web_item(item: dict) -> int | None:
     item_lang = item.get("lang") or "tr"
     identity = await infer_brand_identity(domain, crawl_result.get("pages", []), item_lang)
     brand_recall_result = await check_brand_recall(
-        identity["name"], identity["topic"],
+        identity["name"], topic=identity["topic"],
         custom_queries=item.get("custom_queries"),
         website=domain,
         lang=item_lang,
