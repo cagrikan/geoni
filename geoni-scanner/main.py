@@ -50,6 +50,24 @@ from devicecheck import MAX_FREE_SCANS as FREE_SCAN_LIMIT
 # ucretsiz-tarama kapisi yanlis karar veriyor.
 from scan_costs import WEB_SCAN_COST, BRAND_SCAN_COST, SOCIAL_SCAN_COST, SCAN_COSTS
 from free_scan import free_scan_gate, record_free_scan
+
+# Ucretsiz-tarama hakki tarama BASARIYLA bitince yakilir (kor denetim
+# 2026-08-04). job_id -> (user_id, device_token, gate_info). Tarama coker ya da
+# hic tamamlanmazsa kayit burada durur ve hak YAKILMAZ; surec yeniden baslarsa
+# sozluk bos doner, kullanici hakkini kaybetmez.
+_bekleyen_hak: dict = {}
+
+
+async def _hakki_yak(job_id: str) -> None:
+    """Tarama basarili bitti -> ucretsiz hakki simdi yak (bir kez)."""
+    kayit = _bekleyen_hak.pop(job_id, None)
+    if not kayit:
+        return
+    uid, dev, bilgi = kayit
+    try:
+        await record_free_scan(uid, dev, bilgi)
+    except Exception as e:
+        logger.warning(f"ucretsiz hak yakilamadi ({job_id}): {e}")
 import attest  # Apple App Attest: mobil muafiyetini imzaya baglar (bkz. _mobile_exempt)
 from db import (
     promo_kodu_kullan, promo_toplu_uret, promo_parti_ozeti,
@@ -500,6 +518,7 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = '',
             "result": result_payload,
             "completed_at": datetime.now().isoformat()
         })
+        await _hakki_yak(job_id)   # ucretsiz hak ANCAK simdi yakilir
 
         # Ozel/gecici tarama: Dashboard/Tarama Gecmisi'nde hic gorunmesin diye
         # audits tablosuna hicbir kayit yazilmaz. Gercek AI sorgu maliyeti
@@ -599,6 +618,7 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
                     "result": {**cached, "cached": True},
                     "completed_at": datetime.now().isoformat(),
                 })
+                await _hakki_yak(job_id)
                 emit("__done__")
                 return
         # Kredi kacagi (guvenlik #1): private kisi/marka taramasi 10 kontor,
@@ -659,6 +679,7 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
                                           lang=request.lang or "tr"),
             "completed_at": datetime.now().isoformat(),
         })
+        await _hakki_yak(job_id)   # ucretsiz hak ANCAK simdi yakilir
         # Ozel/gecici tarama: Dashboard/Tarama Gecmisi'nde hic gorunmesin diye
         # audits tablosuna hicbir kayit yazilmaz. Gercek AI sorgu maliyeti
         # aynen olustugu icin kontor yine de dusulur (suistimali onlemek icin).
@@ -993,7 +1014,13 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
                 "message": _free_limit_message(request.lang or "tr",
                     gate_info.get("limit"), bool(gate_info.get("creator"))),
             })
-        background_tasks.add_task(record_free_scan, user_id_rl, request.device_token, gate_info)
+        # 🔴 HAK BASARIDA YAKILIR, SUBMIT'TE DEGIL (kor denetim 2026-08-04).
+        # Eskiden burada add_task ile hemen yakiliyordu: tarama sonra coker/
+        # yarida kalirsa hak GERI VERILMIYORDU ve iade fonksiyonu da yok.
+        # Mobilde DeviceCheck biti kalici (reinstall'da resetlenmez), yani
+        # gecici bir crawl/LLM hatasi kullanicinin TEK hakkini kalici yakiyordu.
+        # Artik gate_info ise tasiniyor; run_audit_job basariyla bitince yakiyor.
+        _bekleyen_hak[job_id] = (user_id_rl, request.device_token, gate_info)
 
     if sqs_enabled():
         # DIKKAT: SQS modunda jobs_store/audit_events'e kayit ACILMAZ —
@@ -1207,7 +1234,7 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
                 "message": _free_limit_message(request.lang or "tr",
                     gate_info.get("limit"), bool(gate_info.get("creator"))),
             })
-        background_tasks.add_task(record_free_scan, user_id_rl2, request.device_token, gate_info)
+        _bekleyen_hak[job_id] = (user_id_rl2, request.device_token, gate_info)  # basarida yakilir
 
     job_id = str(uuid.uuid4())
     brand_checks_store[job_id] = {"job_id": job_id, "status": "queued", "name": request.name, "topic": request.topic, "created_at": datetime.now().isoformat(), "result": None, "error": None}
@@ -1287,7 +1314,7 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
                     request.lang or "tr",
                     gate_info.get("limit"), bool(gate_info.get("creator"))),
             })
-        background_tasks.add_task(record_free_scan, sc_uid, request.device_token, gate_info)
+        _bekleyen_hak[job_id] = (sc_uid, request.device_token, gate_info)  # basarida yakilir
 
     brand_req = BrandCheckRequest(
         type="social",  # T3: sosyal tarama "brand" degil "social" kaydedilsin (gecmis/istatistik/kart ayirt etsin)

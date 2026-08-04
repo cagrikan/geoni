@@ -414,3 +414,19 @@ def test_uclarda_premium_kapiyi_atlamiyor():
     kotu = re.findall(r"not is_premium\d?\s+and\s+not _is_internal_scan\(http_request\):\s*\n\s*allowed", kod)
     assert not kotu, "bir uc premium'da free_scan_gate'i atliyor"
     assert "if not sc_premium:" not in kod, "sosyal uc premium'da kapiyi atliyor"
+
+
+def test_ucretsiz_hak_basarida_yakilir_submitte_degil():
+    """Hak SUBMIT'te yakılırsa, tarama çökünce kullanıcı hakkını kaybeder ve
+    iade yolu YOK (mobilde DeviceCheck biti kalıcı — reinstall bile resetlemez).
+
+    Kaynak taraması: uçlar record_free_scan'i background_tasks ile SUBMIT anında
+    çağırmamalı; iş fonksiyonu BAŞARI noktasında yakmalı.
+    """
+    kaynak = (_KOK / "main.py").read_text(encoding="utf-8")
+    kod = "\n".join(l for l in kaynak.splitlines() if not l.strip().startswith("#"))
+    assert "add_task(record_free_scan" not in kod, \
+        "hak submit aninda yakiliyor — tarama cokerse geri verilmiyor"
+    # Uc basari noktasinin ucunde de yakma cagrisi olmali
+    assert kod.count("await _hakki_yak(job_id)") == 3, \
+        "hak yakma cagrisi eksik/fazla (web + marka-cache + marka-tam = 3)"

@@ -931,6 +931,18 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
                 # AI seni okuyor/kaynak gosteriyor ama adini metinde soylemiyor (or.
                 # turkiye.gov.tr 'e-Devlet' diye anilir). "gorunmuyor" ile esitlemek yanlis.
                 weighted_cells += 0.3 * pos_w
+    # ⚠️ min(100.0, ...) SUS PAYI DEGIL, Y6'nin ZORUNLU SONUCU (belgelendi
+    # 2026-08-04, kor denetim). Payda `answered_cells` YALNIZ birincil hucreleri
+    # sayar; pay `weighted_cells` ise TUM sorgulari gezer ve komsu-alan
+    # hucrelerindeki anilmalari da BONUS olarak ekler (Y6: komsu paya girer,
+    # paydaya girmez). Yani ham oran matematiksel olarak %100'u ASABILIR —
+    # gercek bir taramada %101,25 olculdu. Kirpma bu tasmayi kapatir.
+    #
+    # BEDELI: %100'e satüre olan skorlar birbirinden ayirt edilemez (biri %101
+    # biri %140 olsa ikisi de "100" gorunur). Bu, monitor'un skor-degisimi
+    # bildirimini tavana yakin bolgede korlestirebilir. Kabul edildi: alternatif
+    # (paydaya komsu eklemek) Y6'yi kirar ve komsu iskalari skoru mekanik olarak
+    # asagi ceker — tam da Y6'nin cozdugu sorun.
     score = round(min(100.0, (weighted_cells / answered_cells) * 100), 1)
     competitors = await _extract_competitors(answers, name, ask_llm, social=social)
 

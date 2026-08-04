@@ -245,7 +245,13 @@ async def save_brand_check(job_id: str, request_data: dict, result: dict, user_i
     # fiyat). Bedel tipe gore secilir; tek yerde durur ki `credits_spent` ile
     # fiilen dusulen tutar ayrisamasin (scan_costs.py basligindaki hata bicimi).
     _bedel = SOCIAL_SCAN_COST if entity_type == "social" else BRAND_SCAN_COST
-    credits = _bedel if (deduct and user_id) else 0
+    # F5 simetrisi (kor denetim 2026-08-04): HICBIR motor olculemediyse (tumu
+    # API hatasi + SOV yok) sonuc bos bir rapordur; kullaniciyi bunun icin
+    # ucretlendirme. `private` yolunda bu koruma zaten vardi (main.py:667),
+    # normal yolda YOKTU — asimetri kapatildi. Uretimde henuz zarar uretmemisti
+    # (144 taramanin 0'inda checked=false + credits_spent>0) ama kod acikti.
+    _olculdu = bool((result or {}).get("checked", True))
+    credits = _bedel if (deduct and user_id and _olculdu) else 0
 
     payload = {
         "id": job_id,
