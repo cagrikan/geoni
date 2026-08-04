@@ -345,3 +345,33 @@ def test_login_duvari_uc_uctada_kurulu():
     kaynak = (_KOK / "main.py").read_text(encoding="utf-8")
     assert kaynak.count("_login_required_message(request.lang") == 3, \
         "tarama uclarindan birinde login duvari eksik ya da fazladan eklenmis"
+
+
+def test_bakiye_kapilari_sabit_bedel_yazmaz():
+    """Bakiye on-kontrolleri scan_costs'tan gelmeli, koda gomulu olmamali.
+
+    2026-08-04: bedeller 5/10 -> 20/20/10 yapildi ama UC bakiye kapisi sabit
+    sayida kaldi (main.py'de iki kez `< 5`, bir kez `< 10`). Sonuc: bakiyesi
+    10 olan kullanici web tarama kapisini GECIYOR, sonra 20 dusulemiyor ve
+    tarama yarida kaliyor — kullanici "tarama tamamlanamadi" goruyor.
+    """
+    kaynak = (_KOK / "main.py").read_text(encoding="utf-8")
+    import re
+    kotu = re.findall(r"get_credit_balance\([^)]*\)\s*<\s*\d+", kaynak)
+    assert not kotu, f"bakiye kapisinda sabit bedel: {kotu}"
+
+
+def test_brand_check_hatasi_dogru_store_a_yazilir():
+    """run_brand_check_job hata yolunda jobs_store (WEB store'u) kullanilmamali.
+
+    Kullanilirsa KeyError firlar ve ASIL hatayi maskeler: kullanici
+    "insufficient_credits" yerine anlamsiz bir job_id hatasi gorur.
+    """
+    kaynak = (_KOK / "main.py").read_text(encoding="utf-8")
+    bas = kaynak.index("async def run_brand_check_job")
+    son = kaynak.index("async def ", bas + 10)
+    govde = kaynak[bas:son]
+    # yorum satirlari haric — aciklamada gecmesi serbest, KODDA gecmesi degil
+    kod = "\n".join(l for l in govde.splitlines() if not l.strip().startswith("#"))
+    assert "jobs_store[" not in kod, \
+        "run_brand_check_job icinde jobs_store kullanilmis — brand_checks_store olmali"

@@ -387,7 +387,10 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = '',
         # asagida (yalnizca basariyi ucretlendir). Anonim private de reddedilir.
         if request.private:
             pre_user = await get_user_id_from_token(token) if token else None
-            if not pre_user or await get_credit_balance(pre_user) < 5:
+            # Bedel SABIT 5 yaziliydi; WEB_SCAN_COST 20 olunca kapi yanlis
+            # esikten geciyordu (bakiyesi 10 olan kullanici gecip dusumde
+            # takiliyordu). scan_costs.py TEK KAYNAK — oradan gelmeli.
+            if not pre_user or await get_credit_balance(pre_user) < WEB_SCAN_COST:
                 jobs_store[job_id].update({"status": "failed", "error": "insufficient_credits"})
                 if sqs_enabled():
                     await update_audit_status(job_id, "failed")
@@ -603,8 +606,17 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
         # basarida atomik dusum asagida. Anonim private reddedilir.
         if request.private:
             pre_user2 = await get_user_id_from_token(token) if token else None
-            if not pre_user2 or await get_credit_balance(pre_user2) < 10:
-                jobs_store[job_id].update({"status": "failed", "error": "insufficient_credits"})
+            # 2026-08-04 iki duzeltme:
+            #  (a) Bedel SABIT 10 yaziliydi; BRAND_SCAN_COST 20 olunca kapi
+            #      yanlis esikten geciyordu — bakiyesi 15 olan kullanici kapiyi
+            #      gecip dusumde takiliyordu. Bedel tek kaynaktan gelmeli.
+            #  (b) Hata YANLIS STORE'a yaziliyordu (jobs_store = WEB taramasi).
+            #      brand_checks_store'da olan bir is icin jobs_store[job_id]
+            #      KeyError firlatiyor ve ASIL HATAYI MASKELIYOR: except blogu
+            #      "insufficient_credits" yerine job_id KeyError'i gosteriyordu.
+            _bedel2 = SOCIAL_SCAN_COST if bool(getattr(request, "social", False)) else BRAND_SCAN_COST
+            if not pre_user2 or await get_credit_balance(pre_user2) < _bedel2:
+                brand_checks_store[job_id].update({"status": "failed", "error": "insufficient_credits"})
                 if sqs_enabled():
                     await update_audit_status(job_id, "failed")
                 logger.warning(f"Private brand check {job_id} reddedildi: yetersiz bakiye / auth")
@@ -959,7 +971,7 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
         pre_uid = await get_user_id_from_token(token) if token else None
         if not pre_uid:
             raise ApiHata(401, "ozel_tarama_giris_gerekli")
-        if await get_credit_balance(pre_uid) < 5:
+        if await get_credit_balance(pre_uid) < WEB_SCAN_COST:   # sabit 5 degil, tek kaynak
             raise HTTPException(status_code=402, detail="insufficient_credits")
 
     # Ucretsiz-tarama tavani (MAX GUVENLIK: cihaz + hesap). "Giris olsa da olmasa
