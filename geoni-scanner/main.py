@@ -1080,7 +1080,22 @@ async def prewarm():
 def _valid_job_id(job_id: str) -> str:
     """Public job uclarinda job_id UUID olmali. Fable (guvenlik): ham job_id PostgREST
     filtresine f-string ile giriyordu; kolon uuid oldugu icin kaza eseri korunuyordu ama
-    kod-seviyesi savunma degildi. Gecersiz -> 404 (bilgi sizdirmadan)."""
+    kod-seviyesi savunma degildi. Gecersiz -> 404 (bilgi sizdirmadan).
+
+    ⚠️ SAHIPLIK KONTROLU YOK — BILINCLI KARAR (kurucu, 2026-08-04).
+    Bu uclar (`/api/audit/{job_id}`, `/api/brand-check/{job_id}`) isteyenin
+    taramanin sahibi olup olmadigina BAKMAZ; job_id'yi bilen sonucu okuyabilir.
+    Bu bir eksiklik degil, URUN KARARIDIR: rapor linki PAYLASILABILIR olsun
+    isteniyor. Uzerine kurulu ozellikler: web `ShareResult` (ResultsPage.jsx),
+    mobil `lib/share`, ve viral skor karti `geoni.ai/s/<jobId>` (geoni/api/s/[id].js).
+    Sahiplik kontrolu eklemek bu uc yuzeyi de kirardi.
+
+    Guvenlik dayanagi: UUIDv4 = 122 bit entropi, kaba kuvvet pratik degil
+    (Stripe checkout session ile ayni desen). Kalan risk URL'in KAZAYLA sizmasi
+    (tarayici gecmisi, ekran paylasimi, ucuncu-parti pixel Referer'i) — kabul
+    edildi. Kor denetim 2026-08-04'te "bulgu" olarak geldi; bir daha bulgu diye
+    gelmesin diye burada belgelendi.
+    """
     try:
         uuid.UUID(str(job_id))
     except (ValueError, TypeError, AttributeError):

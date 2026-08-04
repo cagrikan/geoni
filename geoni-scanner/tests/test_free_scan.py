@@ -430,3 +430,16 @@ def test_ucretsiz_hak_basarida_yakilir_submitte_degil():
     # Uc basari noktasinin ucunde de yakma cagrisi olmali
     assert kod.count("await _hakki_yak(job_id)") == 3, \
         "hak yakma cagrisi eksik/fazla (web + marka-cache + marka-tam = 3)"
+
+
+def test_rapor_linki_paylasilabilir_kalir():
+    """Sahiplik kontrolü BİLİNÇLİ olarak yok (kurucu kararı 2026-08-04): rapor
+    linki paylaşılabilir olsun isteniyor. Üzerine kurulu üç yüzey var: web
+    ShareResult, mobil lib/share, viral skor kartı geoni.ai/s/<jobId>.
+
+    Biri sonuç uçlarına sahiplik kontrolü eklerse bu üçü de kırılır — bu test
+    kararı kilitler ve değişiklik bilinçli yapılmaya zorlar.
+    """
+    kaynak = (_KOK / "main.py").read_text(encoding="utf-8")
+    assert "SAHIPLIK KONTROLU YOK — BILINCLI KARAR" in kaynak, \
+        "karar belgesi silinmiş — paylaşılabilir link kuralı kayboldu"
