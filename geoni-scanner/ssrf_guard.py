@@ -93,26 +93,63 @@ def assert_public_host(host: str) -> None:
     bad = [a for a in addrs if not _is_public_ip(a)]
     if bad:
         raise BlockedHostError(f"host ic adrese cozuluyor ({host} -> {', '.join(sorted(bad))})")
+    return sorted(addrs)
+
+
+def _baglanilan_ip(resp) -> str | None:
+    """httpx yanitindan FIILEN baglanilan sunucu IP'sini cikarir.
+
+    DNS-rebinding savunmasinin temeli: guard'in cozdugu IP ile baglantinin
+    gittigi IP AYNI OLMAYABILIR (httpx kendi resolver'ini kullanir). Burasi
+    gercegi soyler. `network_stream` yoksa (proxy/ozel transport) None doner ve
+    cagiran fail-open davranir — rate-limit gibi, guvenlik katmani uygulamayi
+    KIRMAMALI.
+    """
+    try:
+        st = resp.extensions.get("network_stream")
+        if st is None:
+            return None
+        addr = st.get_extra_info("server_addr")
+        return addr[0] if addr else None
+    except Exception:
+        return None
+
+
+def _baglantiyi_dogrula(resp, host: str) -> None:
+    """Baglanilan IP public degilse yanit REDDEDILIR (TOCTOU/DNS-rebinding).
+
+    Guard istekten ONCE dogruluyor ama DNS kaydi arada degisebilir (dusuk TTL).
+    Yalnizca GET yaptigimiz icin yaniti reddetmek yeterli korumadir: veri
+    cagirana ULASMAZ. (Yan etkili metotlar eklenirse bu yeterli OLMAZ; o zaman
+    baglanti-oncesi IP pinning gerekir.)
+    """
+    ip = _baglanilan_ip(resp)
+    if ip is None:
+        return                      # olculemedi -> fail-open (bkz. docstring)
+    if not _is_public_ip(ip):
+        raise BlockedHostError(
+            f"DNS rebinding: {host} dogrulamada public'ti ama baglanti {ip} adresine gitti")
 
 
 async def safe_get(client, url: str, *, max_redirects: int = 3, **kwargs):
     """SSRF-guvenli GET.
 
-    ⚠️ BILINEN SINIR — TOCTOU / DNS-rebinding (kor denetim 2026-08-04, ACIK):
-    assert_public_host host'u cozup "public" dogrulamasi yapip BIRAKIR; asil
-    baglantiyi httpx (ve crawler tarafinda Chromium) KENDI cozumuyle kurar.
-    Arada dusuk TTL'li kotu niyetli bir DNS kaydi (ilk sorguda public IP, hemen
-    ardindan 127.0.0.1 / 169.254.169.254) devreye girerse guard gecilip ic
-    adrese istek atilabilir. Kod icinde octal/hex/decimal IPv4, IPv6 literal ve
-    redirect-hop bypass'lari kapatilmistir; kapatilmayan tek kategori budur.
-    Istismari saldirganin kendi DNS altyapisini hassas zamanlamayla kontrol
-    etmesini gerektirir (kolay degil, ama otomatiklestirilebilir).
+    🔒 TOCTOU / DNS-REBINDING SAVUNMASI (2026-08-04, kor denetim bulgusu).
+    Bu fonksiyon istekten ONCE assert_public_host ile dogrular; ama asil
+    baglantiyi httpx KENDI resolver'iyla kurar. Dusuk TTL'li kotu niyetli bir
+    DNS kaydi (ilk sorguda public IP, hemen ardindan 127.0.0.1/169.254.169.254)
+    arada devreye girerse on-dogrulama yetmez. Bu yuzden HER YANITTAN SONRA
+    fiilen baglanilan peer IP dogrulanir (_baglantiyi_dogrula); public degilse
+    yanit REDDEDILIR.
 
-    KALICI COZUM (yapilmadi, bilincli): cozulen IP'yi pinleyen ozel bir httpx
-    transport + Playwright tarafinda uygulama katmaninda DNS sabitleme. URL'in
-    host'unu IP ile degistirmek YETMEZ — TLS SNI ve sanal barindirma bozulur,
-    sertifika dogrulamasi basarisiz olur. Yarim bir yama crawl'in tamamini
-    riske atar; bu yuzden sinir BELGELENDI, yamanmadi. follow_redirects KAPALI tutulur; her 3xx yanitinda
+    Neden "reddetmek" yeterli: bu yol yalnizca GET yapar, veri cagirana ULASMAZ.
+    Yan etkili metot (POST/PUT) eklenirse bu YETMEZ — o zaman baglanti-oncesi
+    IP pinning (ozel httpx transport) gerekir.
+
+    Crawler tarafi (Playwright) KISMI korumali: Chromium'a --host-resolver-rules
+    ile bilinen tehlikeli ADLAR yasaklandi, ama o bayrak cozulen IP'ye bakmaz —
+    rebinding'i tek basina engellemez. Tam koruma icin Chromium'u kendi
+    proxy'mize yoneltmek gerekir; yapilmadi (bkz. crawler.py yorumu). follow_redirects KAPALI tutulur; her 3xx yanitinda
     Location host'u assert_public_host ile dogrulanip elle takip edilir (en cok
     max_redirects hop). Boylece apex<->www gibi MESRU kanonik redirect'ler
     korunurken (robots/sitemap/llms sinyalleri kaybolmaz) 30x ile ic adrese
@@ -123,6 +160,7 @@ async def safe_get(client, url: str, *, max_redirects: int = 3, **kwargs):
     resp = None
     for _ in range(max_redirects + 1):
         resp = await client.get(current, follow_redirects=False, **kwargs)
+        _baglantiyi_dogrula(resp, urlparse(current).hostname or "")
         if resp.status_code in (301, 302, 303, 307, 308):
             loc = resp.headers.get("location")
             if not loc:

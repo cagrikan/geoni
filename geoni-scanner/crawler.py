@@ -358,7 +358,39 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
     semaphore = asyncio.Semaphore(DEFAULT_CONCURRENCY)
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        # 🔒 DNS SABITLEME (kor denetim 2026-08-04, TOCTOU/DNS-rebinding).
+        # `_ssrf_guard_route` her belge istegini dogruluyor ama dogrulamayi
+        # assert_public_host'un DNS cozumuyle yapiyor; ardindan `route.continue_()`
+        # deyince Chromium KENDI cozumunu yapiyor. Dusuk TTL'li kotu niyetli bir
+        # kayit (ilk sorguda public IP, hemen ardindan 169.254.169.254) arada
+        # devreye girerse guard gecilip ic adrese gidilebiliyordu.
+        #
+        # ⚠️ BU KURAL REBINDING'I TEK BASINA COZMEZ — dogrulugu icin acik yazalim:
+        # `--host-resolver-rules` HOST ADI eslesmesiyle calisir, cozulen IP'ye
+        # bakmaz. Yani "kotu.example -> 169.254.169.254" donduren bir DNS kaydini
+        # ENGELLEMEZ; yalnizca dogrudan `localhost` / `*.internal` /
+        # `metadata.google.internal` gibi BILINEN tehlikeli ADLARA gidisi keser.
+        # Derinlemesine savunmanin bir katmanidir, tek basina yeterli degildir.
+        #
+        # Rebinding'in ASIL savunmasi httpx tarafinda: baglanti sonrasi peer IP
+        # dogrulamasi (ssrf_guard._baglantiyi_dogrula). Playwright tarafinda ayni
+        # dogrulamayi yapmak icin Chromium'u kendi proxy'mize yoneltmek gerekir
+        # (--proxy-server) — ayri bir is, YAPILMADI. Bu yuzden crawl tarafinda
+        # rebinding riski TAM kapanmis DEGIL; robots/sitemap/llms.txt gibi httpx
+        # ile cekilen sinyaller korumali, sayfa gezintisi kismi korumali.
+        _COZUM_KURALI = (
+            "MAP localhost ~NOTFOUND,"
+            "MAP *.localhost ~NOTFOUND,"
+            "MAP 127.0.0.1 ~NOTFOUND,"
+            "MAP 169.254.169.254 ~NOTFOUND,"   # bulut metadata (AWS/GCP/Azure)
+            "MAP metadata.google.internal ~NOTFOUND,"
+            "MAP *.internal ~NOTFOUND,"
+            "MAP *.local ~NOTFOUND"
+        )
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[f"--host-resolver-rules={_COZUM_KURALI}"],
+        )
         context = await browser.new_context(
             user_agent="GeoniBot/1.0 (+https://geoni.ai/bot)"
         )
