@@ -33,6 +33,17 @@ BRAND_CLIENT_KEYS = {
 # NOT (v5, 2026-07-19): gemini golge moddan CIKTI (backtest gecti; bkz. brand_recall
 # WEIGHTS notu). Artik agirliga katiliyor -> golge listesi BOS. Ileride yeni bir deney
 # motoru eklenirse buraya yazilir; etiketleme altyapisi (client shadow_engines okur) durur.
+def _sifir_agirlikli_motorlar() -> list:
+    """WEIGHTS'te payi 0 olan motorlar. Import dairesel olmasin diye gec import."""
+    try:
+        from brand_recall import WEIGHTS
+        return sorted(k for k, v in WEIGHTS.items()
+                      if v == 0 and k not in ("response_quality", "topic_relevance",
+                                              "share_of_voice"))
+    except Exception:
+        return []
+
+
 SHADOW_ENGINES = ["grok"]  # 2026-07-23: Grok (xAI) golge-modda eklendi (WEIGHTS['grok']=0)
 # NOT (2026-08-03): Claude'un da agirligi 0 ama bu listeye EKLENMEDI — eklenirse
 # recognition_count ve oz-gelisim own_recognition sinyali de kayardi.
@@ -134,6 +145,13 @@ def build_brand_payload(result: dict, name, topic, stability, created_at: str, l
         "needs_niche": result.get("needs_niche", False),
         # A3-1: golge-mod motorlar (score_breakdown'da var ama skora katkisi 0).
         "shadow_engines": SHADOW_ENGINES,
+        # Skora AGIRLIGI SIFIR olan motorlar (kor denetim 2026-08-04).
+        # SHADOW_ENGINES'ten FARKLI: golge motor recognition_count'a hic
+        # katilmaz; buradakiler sayima girer ama skora katkisi 0'dir (ornek:
+        # Claude, WEIGHTS["claude"]=0.0). Arayuz Grok'u "skora katilmiyor" diye
+        # isaretlerken Claude'u ciplak gosteriyordu — kullanici "Claude beni
+        # taniyor, skorum neden dusuk" sorusuna cevap bulamiyordu.
+        "zero_weight_engines": _sifir_agirlikli_motorlar(),
         # A4-6: tarama telemetrisi (internal gozlemlenebilirlik; client okumaz).
         "telemetry": result.get("telemetry"),
         "stability": stability,

@@ -136,3 +136,22 @@ def test_bot_izni_kaynagi_BOOLEAN_uretir():
     assert isinstance(egitim["google_extended"], bool)
     # Alan adi degisirse sessizce True varsayilana dusmeyelim:
     assert "google_extended" in indexing.TRAINING_CRAWLER_AGENTS
+
+
+def test_sifir_agirlikli_motorlar_payloadda():
+    """Skora katkısı 0 olan motorlar istemciye bildirilmeli.
+
+    Kör denetim 2026-08-04: Grok "deneysel · skora katılmıyor" diye
+    işaretlenirken Claude (WEIGHTS["claude"]=0.0) çıplak gösteriliyordu —
+    kullanıcı "Claude beni tanıyor, skorum neden düşük" sorusuna cevap
+    bulamıyordu. Bu alan olmadan arayüz gerçeği bilemez.
+    """
+    from result_contract import _sifir_agirlikli_motorlar
+    from brand_recall import WEIGHTS
+
+    liste = _sifir_agirlikli_motorlar()
+    # WEIGHTS'te 0 olan her MOTOR listede olmalı (kalite/konu/sov bileşenleri hariç)
+    beklenen = {k for k, v in WEIGHTS.items()
+                if v == 0 and k not in ("response_quality", "topic_relevance", "share_of_voice")}
+    assert set(liste) == beklenen, f"{liste} != {sorted(beklenen)}"
+    assert "claude" in liste, "Claude ağırlığı 0 ama listede yok"
