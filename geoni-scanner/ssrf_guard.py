@@ -96,7 +96,23 @@ def assert_public_host(host: str) -> None:
 
 
 async def safe_get(client, url: str, *, max_redirects: int = 3, **kwargs):
-    """SSRF-guvenli GET. follow_redirects KAPALI tutulur; her 3xx yanitinda
+    """SSRF-guvenli GET.
+
+    ⚠️ BILINEN SINIR — TOCTOU / DNS-rebinding (kor denetim 2026-08-04, ACIK):
+    assert_public_host host'u cozup "public" dogrulamasi yapip BIRAKIR; asil
+    baglantiyi httpx (ve crawler tarafinda Chromium) KENDI cozumuyle kurar.
+    Arada dusuk TTL'li kotu niyetli bir DNS kaydi (ilk sorguda public IP, hemen
+    ardindan 127.0.0.1 / 169.254.169.254) devreye girerse guard gecilip ic
+    adrese istek atilabilir. Kod icinde octal/hex/decimal IPv4, IPv6 literal ve
+    redirect-hop bypass'lari kapatilmistir; kapatilmayan tek kategori budur.
+    Istismari saldirganin kendi DNS altyapisini hassas zamanlamayla kontrol
+    etmesini gerektirir (kolay degil, ama otomatiklestirilebilir).
+
+    KALICI COZUM (yapilmadi, bilincli): cozulen IP'yi pinleyen ozel bir httpx
+    transport + Playwright tarafinda uygulama katmaninda DNS sabitleme. URL'in
+    host'unu IP ile degistirmek YETMEZ — TLS SNI ve sanal barindirma bozulur,
+    sertifika dogrulamasi basarisiz olur. Yarim bir yama crawl'in tamamini
+    riske atar; bu yuzden sinir BELGELENDI, yamanmadi. follow_redirects KAPALI tutulur; her 3xx yanitinda
     Location host'u assert_public_host ile dogrulanip elle takip edilir (en cok
     max_redirects hop). Boylece apex<->www gibi MESRU kanonik redirect'ler
     korunurken (robots/sitemap/llms sinyalleri kaybolmaz) 30x ile ic adrese
