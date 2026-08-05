@@ -1364,10 +1364,40 @@ async def _get_leaderboard_hidden(client: "httpx.AsyncClient") -> set[str]:
 # guncellenir; import dongusune girmemek icin burada sabit).
 SCORING_VERSION_SHOWN = "v5"
 
+# ── LIG = TURKIYE VITRINI (kurucu karari) ───────────────────────────────────
+# Lig yalnizca TURK sitelerini listeler. Sebep: musteri kitlesi TR ve vitrinin
+# isi "bizim gibi siteler ne aliyor" gostermek. Vercel/Netlify/Heroku gibi
+# yabanci devler listeyi doldurunca vitrin amacini kaybediyor.
+# (Karar geoni-open-items'ta "sonra TR-only vitrin" olarak yaziliydi ama
+#  koda hic girmemisti — 2026-08-05'te uygulandi.)
+TR_TLD_SONEKLERI = (".tr",)          # .com.tr, .org.tr, .gov.tr, .net.tr, .tr
+
+# Jenerik uzantili (.com/.ai/.org) TURK markalari: TLD'den anlasilmiyor, elle
+# kurator listesi gerekiyor. YENI TURK SITESI EKLEMEK ICIN BURAYA YAZ.
+# Dogruluk sinirini bilerek kabul ediyoruz: .com'lu bir Turk sitesi bu listede
+# yoksa vitrine girmez. Vitrin kuratorlu bir yuzey oldugu icin bu kabul edilebilir;
+# alternatifi (site dilinden tahmin) yanlis pozitif uretir ve yabanci site sizar.
+TR_MARKALAR = {
+    "geoni.ai", "armut.com", "trendyol.com", "webtures.com", "obilet.com",
+    "parasut.com", "doktortakvimi.com", "dopinger.com", "zeo.org",
+    "hepsiburada.com", "yemeksepeti.com", "getir.com", "iyzico.com",
+    "sahibinden.com", "bircom.com", "ticimax.com", "ideasoft.com",
+    "n11.com", "ciceksepeti.com", "gittigidiyor.com", "migros.com",
+}
+
+
+def tr_sitesi_mi(domain: str) -> bool:
+    """Lig vitrini icin: bu domain TURK sitesi mi?"""
+    d = (domain or "").lower().strip()
+    if not d:
+        return False
+    return d.endswith(TR_TLD_SONEKLERI) or d in TR_MARKALAR
+
 
 async def get_ai_friendly_list(limit: int = 10) -> list:
-    """AI Friendly Ligi: en yuksek skorlu SITELER (type=web) — domain basina
-    en iyi tarama. 70 barajini gecenler seal=True ile muhur tasir; baraji
+    """AI Friendly Ligi: en yuksek skorlu TURK SITELERI (type=web) — domain
+    basina en iyi tarama. Yabanci siteler ELENIR (tr_sitesi_mi; kurucu karari:
+    lig bir Turkiye vitrinidir). 70 barajini gecenler seal=True ile muhur tasir; baraji
     gecemeyenler de listelenir (devlerin de kaldigi gorulsun). Yalnizca
     DOGRULANMIS taramalar listelenir: crawl en az 3 sayfa gezebilmis olmali —
     bot korumasina takilip 0 sayfayla biten taramalarin skoru "erisemedik"
@@ -1399,6 +1429,9 @@ async def get_ai_friendly_list(limit: int = 10) -> list:
                 # "." sarti: domain alanina yazilmis serbest metinleri
                 # (kisi adi vb.) site liginden dislar.
                 if not d or "." not in d or d in hidden:
+                    continue
+                # Lig TURKIYE vitrinidir (kurucu karari) — yabanci siteler elenir.
+                if not tr_sitesi_mi(d):
                     continue
                 # 🚩 IC DOGRULAMA taramalari ligden ELENIR: bunlarda SOV atlanir
                 # (maliyet), dolayisiyla skor musteri taramalariyla KIYASLANAMAZ.

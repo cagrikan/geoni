@@ -120,3 +120,37 @@ def test_surum_v5_ve_lig_sabiti_ESLESIYOR():
     Biri guncellenip digeri unutulursa lig SESSIZCE bosalir."""
     import db
     assert scoring.SCORING_VERSION == db.SCORING_VERSION_SHOWN
+
+
+# ── Lig = Türkiye vitrini (kurucu kararı, 2026-08-05) ───────────────────────
+# Karar geoni-open-items'ta "sonra TR-only vitrin" diye yazılıydı ama koda hiç
+# girmemişti; v5 yeniden taramasında lig Vercel/Netlify/Heroku ile doldu ve
+# kurucu fark etti. Bu testler süzgecin bir daha kaybolmamasını sağlar.
+
+def test_lig_yabanci_siteleri_eler():
+    import db
+    for yabanci in ("vercel.com", "netlify.com", "heroku.com", "cloudflare.com",
+                    "nuxt.com", "stripe.com", "figma.com", "deno.com"):
+        assert db.tr_sitesi_mi(yabanci) is False, f"{yabanci} vitrine girmemeli"
+
+
+def test_lig_tr_uzantiyi_kabul_eder():
+    import db
+    for tr in ("cagricakir.com.tr", "turkiye.gov.tr", "ornek.org.tr", "site.tr"):
+        assert db.tr_sitesi_mi(tr) is True, f"{tr} vitrine girmeli"
+
+
+def test_lig_jenerik_uzantili_turk_markalarini_kabul_eder():
+    """.com'lu Türk markaları TLD'den anlaşılmıyor — kürator listesinden gelir."""
+    import db
+    for marka in ("armut.com", "trendyol.com", "webtures.com", "geoni.ai"):
+        assert db.tr_sitesi_mi(marka) is True, f"{marka} vitrine girmeli"
+
+
+def test_tr_suzgeci_bos_ve_bozuk_girdide_patlamaz():
+    import db
+    assert db.tr_sitesi_mi("") is False
+    assert db.tr_sitesi_mi(None) is False
+    assert db.tr_sitesi_mi("  VERCEL.COM  ") is False
+    assert db.tr_sitesi_mi("  ARMUT.COM ") is True     # buyuk harf + bosluk
+    assert db.tr_sitesi_mi("example.str") is False     # ".tr" ekiyle karismasin
