@@ -136,8 +136,16 @@ def test_lig_yabanci_siteleri_eler():
 
 def test_lig_tr_uzantiyi_kabul_eder():
     import db
-    for tr in ("cagricakir.com.tr", "turkiye.gov.tr", "ornek.org.tr", "site.tr"):
+    for tr in ("cagricakir.com.tr", "ornek.org.tr", "site.tr", "firma.net.tr"):
         assert db.tr_sitesi_mi(tr) is True, f"{tr} vitrine girmeli"
+
+
+def test_lig_kamu_sitelerini_ELER():
+    """Kurucu 2026-08-05: "gov.tr bir daha arama". Kamu portali ne musteri
+    ne rakip; vitrine girmez ve tarama listesinde yer almaz."""
+    import db
+    for kamu in ("turkiye.gov.tr", "ankara.bel.tr", "odtu.edu.tr"):
+        assert db.tr_sitesi_mi(kamu) is False, f"{kamu} vitrine GIRMEMELI"
 
 
 def test_lig_jenerik_uzantili_turk_markalarini_kabul_eder():

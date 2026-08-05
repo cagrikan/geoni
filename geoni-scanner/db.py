@@ -1386,10 +1386,17 @@ TR_MARKALAR = {
 }
 
 
+# 🚫 Vitrine ASLA girmeyecekler (kurucu karari). Kamu portali ne musteri ne
+# rakip; kurucu 2026-08-05: "gov.tr bir daha arama".
+LIG_DISI_SONEKLER = (".gov.tr", ".bel.tr", ".edu.tr", ".tsk.tr", ".pol.tr")
+
+
 def tr_sitesi_mi(domain: str) -> bool:
-    """Lig vitrini icin: bu domain TURK sitesi mi?"""
+    """Lig vitrini icin: bu domain TURK sitesi mi (ve vitrine girebilir mi)?"""
     d = (domain or "").lower().strip()
     if not d:
+        return False
+    if d.endswith(LIG_DISI_SONEKLER):
         return False
     return d.endswith(TR_TLD_SONEKLERI) or d in TR_MARKALAR
 
