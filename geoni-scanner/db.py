@@ -1362,7 +1362,7 @@ async def _get_leaderboard_hidden(client: "httpx.AsyncClient") -> set[str]:
 
 # Ligde gosterilen skorlama surumu (scoring.py SCORING_VERSION ile birlikte
 # guncellenir; import dongusune girmemek icin burada sabit).
-SCORING_VERSION_SHOWN = "v4"
+SCORING_VERSION_SHOWN = "v5"
 
 
 async def get_ai_friendly_list(limit: int = 10) -> list:

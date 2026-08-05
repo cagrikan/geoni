@@ -58,7 +58,11 @@ logger = logging.getLogger(__name__)
 # Kabul edilen risk: ayni "v4" etiketi artik iki davranisi (SSR cezali/cezasiz)
 # ortuyor. Ileride bu alani "ayni metodoloji" varsayimiyla kullanan bir
 # karsilastirma yazilirsa BU YORUM okunmali ve surum o zaman atlanmali.
-SCORING_VERSION = "v4"
+# v5 (2026-08-05): "olculemedi" artik "yok" sayilmiyor — bot korumasi crawl'i
+# kestiginde index_coverage/schema formulden DUSER, agirliklari kalan boyutlara
+# dagitilir. Onceden 0 yaziliyordu ve 60 gunde 36 tarama (%35) ~19 puan haksiz
+# kaybediyordu. db.py SCORING_VERSION_SHOWN ile BIRLIKTE guncellenir.
+SCORING_VERSION = "v5"
 
 OPENPAGERANK_API_KEY = __import__("os").environ.get("OPENPAGERANK_API_KEY", "")
 # T8: Google Knowledge Graph varlik kontrolu icin mevcut GOOGLE_API_KEY
@@ -99,15 +103,22 @@ SOCIAL_DIRECTORY_DOMAINS = {
 }
 
 
-def _indexability_score(pages: list[dict]) -> float:
+def _indexability_score(pages: list[dict]) -> float | None:
     """
     Kendi kontrolumuzdeki durust indekslenebilirlik sinyali (v3):
     sayfalarin noindex TASIMAMASI (%70) + canonical varligi (%30).
     Google `site:` orneklemesi bot korumasina takildiginda skoru sifira
     cokertmemesi icin index boyutuyla harmanlanir.
+
+    v5 (2026-08-05): sayfa YOKSA artik 0.0 DEGIL, None doner — "olculemedi".
+    Eskiden bot korumasi crawl'i kesince bu 0.0 oluyordu ve "hicbir sayfan
+    indekslenebilir degil" anlamina geliyordu. 60 gunluk olcum: 103 web
+    taramasinin 36'si (%35) sifir sayfayla bitmis; bu taramalarda authority
+    81,7 ve ai_access 82,6 (yani site iyi) ama index_coverage 0,7'ye cokmus.
+    "Erisemedim" != "yok".
     """
     if not pages:
-        return 0.0
+        return None
     indexable = sum(1 for p in pages if not p.get("noindex"))
     canonical = sum(1 for p in pages if p.get("canonical_url"))
     return min(100.0, (indexable / len(pages)) * 70 + (canonical / len(pages)) * 30)
@@ -133,15 +144,24 @@ def compute_index_coverage(crawl_result: dict, indexing_status: dict) -> dict:
     # consent sayfasi, indexed_count hep 0; indexing.py Y8). Olu bacak her sitenin
     # index_coverage'ini ~yariya haksiz cezalandiriyordu -> SKORDAN CIKARILDI, agirligi
     # indexability(+brave)'e devredildi. google_coverage yalniz TESHIS icin raporda kalir.
-    if brave is None:
-        score = indexability
+    # v5: indexability None ise crawl hic sayfa gezemedi (bot korumasi). O zaman
+    # bu boyut ya TAMAMEN olculemez, ya da elimizde Brave sinyali varsa yalniz ona
+    # dayanir — uydurma 0 yazmak yerine durumu acikca bildiriyoruz.
+    if indexability is None:
+        if brave is None:
+            score, measured = None, False
+        else:
+            score, measured = (100.0 if brave else 0.0), True
+    elif brave is None:
+        score, measured = indexability, True
     else:
         brave_score = 100.0 if brave else 0.0
-        score = indexability * 0.75 + brave_score * 0.25
+        score, measured = indexability * 0.75 + brave_score * 0.25, True
     return {
         "score": score,
+        "measured": measured,
         "google_coverage": round(google_coverage, 1),
-        "indexability": round(indexability, 1),
+        "indexability": (round(indexability, 1) if indexability is not None else None),
         "brave_indexed": brave,
     }
 
@@ -571,8 +591,12 @@ def compute_schema_score(pages: list[dict], domain: str = "") -> dict:
     Playwright zaten her sayfayi render ettigi icin bu ek bir crawl
     maliyeti getirmez (bkz. crawler.py extract_page_metadata).
     """
+    # v5: sayfa yoksa "schema yok" DEMEK DEGIL — sayfayi hic goremedik.
+    # measured=False -> compute_ai_visibility_score bu boyutu formulden DUSURUR
+    # (agirligi kalan boyutlara dagitilir), 0 yazip cezalandirmaz.
     if not pages:
-        return {"score": 0.0, "presence_ratio": 0.0, "distinct_types": [], "critical_home": False, "critical_content": False}
+        return {"score": None, "measured": False, "presence_ratio": 0.0,
+                "distinct_types": [], "critical_home": False, "critical_content": False}
 
     pages_with_schema = [p for p in pages if p.get("schema_types")]
     presence_ratio = len(pages_with_schema) / len(pages)
@@ -608,6 +632,7 @@ def compute_schema_score(pages: list[dict], domain: str = "") -> dict:
 
     return {
         "score": score,
+        "measured": True,
         "presence_ratio": round(presence_ratio, 2),
         "distinct_types": sorted(all_types),
         "critical_home": critical_home,
@@ -704,44 +729,48 @@ async def compute_ai_visibility_score(crawl_result: dict, indexing_status: dict,
     brand_recall_checked = bool(brand_recall_result and brand_recall_result.get("checked"))
     brand_recall_score = brand_recall_result.get("score") if brand_recall_checked else None
 
-    if brand_recall_checked and brand_recall_score is not None:
-        score = (
-            (index_coverage * 0.20)
-            + (authority_score * 0.15)
-            + (freshness_score * 0.10)
-            + (schema_score * 0.10)
-            + (ai_access_score * 0.12)
-            + (engagement_score * 0.08)
-            + (brand_recall_score * 0.25)
-        )
-        weights_used = {"index_coverage": 0.20, "authority": 0.15, "freshness": 0.10,
-                         "schema": 0.10, "ai_access": 0.12, "engagement": 0.08,
-                         "brand_recall": 0.25}
+    # ── v5 (2026-08-05): OLCULEMEYEN BOYUT FORMULDEN DUSER ───────────────────
+    # Onceden bot korumasi crawl'i kesince index_coverage ve schema 0 yaziliyordu;
+    # yani "erisemedim" sessizce "yok" sayiliyordu. Artik olculemeyen boyut
+    # atlanir ve agirligi kalan boyutlara ORANTILI dagitilir. Bu desen kodda
+    # zaten vardi: brand_recall olculemediginde (checked=False) formul 6 boyuttan
+    # 5'e dusuyordu — burada ayni mantik butun boyutlara genellestirildi.
+    TAM_AGIRLIK = ({"index_coverage": 0.20, "authority": 0.15, "freshness": 0.10,
+                    "schema": 0.10, "ai_access": 0.12, "engagement": 0.08,
+                    "brand_recall": 0.25}
+                   if (brand_recall_checked and brand_recall_score is not None) else
+                   {"index_coverage": 0.28, "authority": 0.22, "freshness": 0.14,
+                    "schema": 0.14, "ai_access": 0.14, "engagement": 0.08})
+
+    degerler = {
+        "index_coverage": index_coverage if index.get("measured", True) else None,
+        "authority": authority_score,
+        "freshness": freshness_score,
+        "schema": schema_score if schema.get("measured", True) else None,
+        "ai_access": ai_access_score,
+        "engagement": engagement_score,
+        "brand_recall": brand_recall_score,
+    }
+    olculen = {ad: a for ad, a in TAM_AGIRLIK.items() if degerler.get(ad) is not None}
+    olculemeyen = sorted(set(TAM_AGIRLIK) - set(olculen))
+    toplam_agirlik = sum(olculen.values())
+
+    # Guvenlik agi: teorik olarak hicbir boyut olculemezse 0'a bolme olmasin.
+    if toplam_agirlik <= 0:
+        score = 0.0
+        weights_used = {}
     else:
-        score = (
-            (index_coverage * 0.28)
-            + (authority_score * 0.22)
-            + (freshness_score * 0.14)
-            + (schema_score * 0.14)
-            + (ai_access_score * 0.14)
-            + (engagement_score * 0.08)
-        )
-        weights_used = {"index_coverage": 0.28, "authority": 0.22, "freshness": 0.14,
-                         "schema": 0.14, "ai_access": 0.14, "engagement": 0.08}
+        # Agirliklar kalan boyutlara orantili dagitilir (toplam yine 1.0).
+        weights_used = {ad: round(a / toplam_agirlik, 4) for ad, a in olculen.items()}
+        score = sum(degerler[ad] * a for ad, a in weights_used.items())
 
     return {
         "overall_score": int(round(score)),
         "scoring_version": SCORING_VERSION,
         "weights_used": weights_used,
-        "breakdown": {
-            "index_coverage": round(index_coverage, 1),
-            "authority": round(authority_score, 1),
-            "freshness": round(freshness_score, 1),
-            "schema": round(schema_score, 1),
-            "ai_access": round(ai_access_score, 1),
-            "engagement": round(engagement_score, 1),
-            **({"brand_recall": round(brand_recall_score, 1)} if brand_recall_score is not None else {}),
-        },
+        # v5: olculemeyen boyut kirilimda YER ALMAZ (brand_recall'da zaten boyleydi;
+        # istemci eksik anahtari zaten kaldirabiliyor). "0 puan" gibi gorunmesin.
+        "breakdown": {ad: round(degerler[ad], 1) for ad in TAM_AGIRLIK if degerler.get(ad) is not None},
         "diagnostics": {
             "authority_legs": authority["legs"],
             "meta_health": round(meta_health_score, 1),  # Madde 2.3: ayri, durust alt gosterge
@@ -765,5 +794,10 @@ async def compute_ai_visibility_score(crawl_result: dict, indexing_status: dict,
             # M6: safe_get 403/Cloudflare-challenge dondurdu -> bot korumasi AI
             # crawler'larini (Brave/Perplexity) sessizce engelliyor OLABILIR.
             "bot_protection_suspected": bool(indexing_status.get("bot_protection_suspected")),
+            # v5: hangi boyutlar OLCULEMEDI ve skor dusuk guvenle mi hesaplandi.
+            # Rapor bunu kullaniciya durustce yazar: "sitenize erisemedik; skor
+            # erisilebilen sinyallerle hesaplandi" — sessizce 0 vermek yerine.
+            "unmeasured_dimensions": olculemeyen,
+            "low_confidence": bool(olculemeyen) and not pages,
         },
     }
