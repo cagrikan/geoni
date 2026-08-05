@@ -198,11 +198,17 @@ async def self_scan() -> int | None:
         return None
 
 
+# Dongu SIKLIGI takvim gunuyle AYNI SEY DEGIL: hangi gunde bir kez kosulacagini
+# _claim_daily_job belirler, bu sabit yalnizca "ne siklikta bakilir"i soyler.
+IMPROVEMENT_TICK_SECONDS = 3600   # saatte bir bak; gunde bir kez kosar (kilit)
+
+
 async def improvement_loop():
     """Always-on: gunde bir kez oz-gelisim dongusunu calistirir (harvest+analyze+
     yaz) + haftada bir geoni.ai self-scan. Riskli hicbir sey otomatik degistirmez;
     sadece sinyal/olcum uretir."""
     await asyncio.sleep(300)  # servis otursun
+    onceki_atlama = None
     while True:
         try:
             # Coklu-instance guvenli: yalnizca gunluk kilidi ALAN instance calisir
@@ -218,10 +224,21 @@ async def improvement_loop():
                 d = await run_improvement_cycle(days=7, notify=is_monday)
                 logger.info(f"improvement_loop ran: {d.get('signals_written')} signals")
             else:
-                logger.info("improvement_loop: bugun baska instance calisti, atlandi")
+                # Saatlik tik -> gunde ~23 kez atlanir; log sismesin diye gunde bir yaz.
+                bugun = datetime.now(timezone.utc).date()
+                if onceki_atlama != bugun:
+                    onceki_atlama = bugun
+                    logger.info("improvement_loop: bugun zaten kosuldu, atlandi")
         except Exception as e:
             logger.warning(f"improvement_loop error: {e}")
-        await asyncio.sleep(24 * 3600)  # gunluk
+        # NEDEN 24 saat DEGIL (canli kusur, 2026-08-05): App Runner bos ornegin
+        # vCPU'sunu askiya aliyor — o gun olculdu: 143/144/143/123 dakikalik log
+        # sessizligi. Sabit 24 saatlik uyku takvime capalanmadigi icin her donuste
+        # kayiyordu (12:38 -> 14:03 -> 09:16) ve 08-05 dongusu HIC kosmadi
+        # (job_last_run:improvement 08-04'te kalmisti, retention ise 08-05'ti —
+        # cunku retention monitor_loop'un SAATLIK tikinde kilidi deniyor).
+        # Cozum ayni desen: sik bak, gunde bir kez kilidi alan kossun.
+        await asyncio.sleep(IMPROVEMENT_TICK_SECONDS)
 
 
 async def _content_decay_signals(days: int = 30) -> list:
