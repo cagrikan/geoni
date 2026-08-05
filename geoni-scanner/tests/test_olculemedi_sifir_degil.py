@@ -154,3 +154,29 @@ def test_tr_suzgeci_bos_ve_bozuk_girdide_patlamaz():
     assert db.tr_sitesi_mi("  VERCEL.COM  ") is False
     assert db.tr_sitesi_mi("  ARMUT.COM ") is True     # buyuk harf + bosluk
     assert db.tr_sitesi_mi("example.str") is False     # ".tr" ekiyle karismasin
+
+
+# ── Askıya alınmış hesap para yakan uca giremez (2026-08-05) ────────────────
+# daktilo→GEONI brief'i "ülke süzgecini aynen uygula" dedi. ÖLÇÜM: GEONI'de o
+# yol ÇALIŞMAZ — api.geoni.ai doğrudan App Runner'a bağlı (server: envoy),
+# önünde CloudFront YOK, Vercel'den de geçmiyor. Yani `x-vercel-ip-country`
+# o uca HİÇ ulaşmıyor; brief'teki süzgeç kopyalansa sessizce hiçbir şeyi
+# engellemezdi. GEONI'de ülke KAYIT anında yakalanıp profile yazılıyor
+# (api/signup-country.js), kural çiğnenirse hesap `is_suspended=true` oluyor.
+# Dolayısıyla engelin doğru yeri: para yakan uçlarda süspansiyon kontrolü.
+# 2026-08-05'te ölçüldü: /api/audit/quick ve /api/social-check'te bu kontrol YOKTU.
+
+def test_para_yakan_uclarda_suspansiyon_kontrolu_var():
+    """🪤 main.py IMPORT EDILMEZ — CI'in asgari ortaminda fastapi yok
+    (bkz. feedback-ci-ortaminda-dogrula). Kaynak DOSYA olarak okunur."""
+    from pathlib import Path
+    kaynak = (Path(__file__).resolve().parent.parent / "main.py").read_text(encoding="utf-8")
+    for uc, imza in (("/api/audit/quick", 'post("/api/audit/quick"'),
+                     ("/api/social-check", 'post("/api/social-check"'),
+                     ("/api/brand-check", 'post("/api/brand-check"')):
+        i = kaynak.index(imza)
+        j = kaynak.find("\n@app.", i)          # uc govdesi: sonraki dekoratore kadar
+        govde = kaynak[i:j if j > 0 else len(kaynak)]
+        assert "is_user_suspended" in govde, (
+            f"{uc} askiya alinmis hesabi engellemiyor — ulke/VPN katmani "
+            f"bosa doner (para yakan uc)")

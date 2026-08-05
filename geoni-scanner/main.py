@@ -936,6 +936,14 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
     if not user_id_rl and not _is_internal_scan(http_request):
         raise HTTPException(status_code=401,
                             detail=_login_required_message(request.lang or "tr", "site"))
+    # Askiya alinmis hesap PARA YAKAN uca giremez (bkz. /api/brand-check).
+    # 2026-08-05'te olculdu: bu kontrol web taramasinda YOKTU — ulke/VPN katmani
+    # bir hesabi askiya alsa bile o hesap tarama kosturmaya devam edebiliyordu.
+    # GEONI'de ulke engelinin dogru yeri BURASI: istekte cografya basligi yok
+    # (api.geoni.ai dogrudan App Runner, Vercel/CloudFront araya girmiyor), ama
+    # ulke KAYIT aninda yakalanip profile yaziliyor -> burada uygulanir.
+    if user_id_rl and await is_user_suspended(user_id_rl):
+        raise HTTPException(status_code=403, detail=_suspended_message(request.lang or "tr"))
 
     try:
         # Skip rate limit for premium/admin users
@@ -1321,6 +1329,12 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
         if not sc_uid:
             raise HTTPException(status_code=401,
                                 detail=_login_required_message(request.lang or "tr", "social"))
+        # Askiya alinmis hesap PARA YAKAN uca giremez (bkz. /api/brand-check'teki
+        # ayni kontrol). Ulke/VPN katmani (signup-country) kurali cigneyen hesabi
+        # `is_suspended=true` yapiyor; kontrol burada olmazsa askiya alinmis
+        # kullanici sosyal tarama kosturmaya devam ederdi.
+        if await is_user_suspended(sc_uid):
+            raise HTTPException(status_code=403, detail=_suspended_message(request.lang or "tr"))
         # `if not sc_premium` KALDIRILDI (kor denetim 2026-08-04): kapiyi premium
         # icin de cagiriyoruz, karari gate veriyor (icinde bakiye kontrolu var).
         # Eskiden bakiyesi biten premium sinirsiz bedava sosyal tarama cekiyordu.
