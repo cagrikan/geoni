@@ -267,10 +267,30 @@ async def _content_decay_signals(days: int = 30) -> list:
     except Exception as e:
         logger.warning(f"content_decay fetch error: {e}")
         return out
+    return decay_from_rows(rows)
+
+
+def decay_from_rows(rows: list) -> list:
+    """content_decay'in SAF karari — ag yok, testlenebilir.
+
+    `rows`: audits satirlari, created_at DESC sirali (domain, result_json).
+    Domain basina en yeni iki OLCULMUS freshness'i kiyaslar; >=5 puan dusus -> sinyal.
+    """
+    out = []
     by_dom = defaultdict(list)  # domain -> [freshness] (created_at.desc sirali)
     for a in rows:
         rj = a.get("result_json") or {}
         if not isinstance(rj, dict):
+            continue
+        # 🪤 GEZILEMEYEN TARAMA "BAYATLAMA" DEGILDIR (2026-08-06'da olculdu).
+        # compute_freshness_score sayfa yoksa NOTR 50.0 doner — bu bir olcum degil,
+        # yer tutucu. Taramalarin ~%35'i bot korumasi yuzunden 0 sayfa donuyor
+        # (bkz. tests/test_olculemedi_sifir_degil.py). Filtre olmadan 100 -> 50
+        # dususu "icerigi bayatliyor" diye raporlaniyordu: 6 Agustos dongusunde
+        # 3 sinyalin 2'si (doktortakvimi.com, nuxt.com) tam bu sahte durumdu,
+        # ikisinin de son taramasi 0 sayfaydi. Ayni sinif hata v5'te skorlamada
+        # duzeltilmisti; burada gozden kacmisti.
+        if not (rj.get("pages") or []):
             continue
         fr = (rj.get("score_breakdown") or {}).get("freshness")
         dom = a.get("domain")
