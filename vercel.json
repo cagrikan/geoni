@@ -90,6 +90,10 @@
       "destination": "/guides/ai-crawlers-robots-txt.html"
     },
     {
+      "source": "/guides/how-a-geoni-scan-works",
+      "destination": "/guides/how-a-geoni-scan-works.html"
+    },
+    {
       "source": "/indir",
       "destination": "/indir.html"
     },
