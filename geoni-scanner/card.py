@@ -66,10 +66,25 @@ def _font(size: int, bold: bool = False):
     return ImageFont.load_default()
 
 
+# Skor renk esikleri — ISTEMCILERLE AYNI OLMAK ZORUNDA.
+#
+# 🪤 2026-08-07'de olculdu: kart 70 kullaniyordu, web ve mobil 65. Ayni skor
+# (or. 67) UYGULAMADA YESIL, paylasilan KARTTA AMBER cikiyordu — kullanicinin
+# X/LinkedIn/WhatsApp'ta gosterdigi kart, uygulamada gordugunden DAHA KOTU
+# gorunuyordu. Kart bir "statu nesnesi" olsun diye var; bu tam tersini yapiyor.
+# Tamamlanan 437 taramanin 45'i (%10,3) bu araliga dusuyordu.
+#
+# Web/mobil 2026-08-04'te 65'te birlestirilmisti (frontend `lib/skor.js`,
+# mobil `lib/skor.ts`) — kart o denetimde atlanmis. Uc istemci artik ayni.
+# 70 AYRI bir esiktir (muhur/rozet hakki) ve buradan TURETILMEZ.
+SKOR_IYI = 65
+SKOR_ORTA = 40
+
+
 def _score_color(score: int) -> tuple[int, int, int]:
-    if score >= 70:
+    if score >= SKOR_IYI:
         return (63, 185, 132)   # yesil
-    if score >= 40:
+    if score >= SKOR_ORTA:
         return (245, 166, 35)   # amber
     return (240, 97, 109)       # kirmizi
 
