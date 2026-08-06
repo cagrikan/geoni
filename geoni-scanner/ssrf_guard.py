@@ -15,6 +15,7 @@ reddeder. DNS cozumu bloklayici oldugu icin async baglamda
 import asyncio
 import ipaddress
 import socket
+import time
 from urllib.parse import urljoin, urlparse
 
 # Cozumden bagimsiz, isim bazli kara liste (bazilari DNS'e cikmadan yakalanir)
@@ -24,6 +25,40 @@ _BLOCKED_SUFFIXES = (".localhost", ".local", ".internal")
 
 class BlockedHostError(ValueError):
     """Hedef host ic/ozel/ayrilmis bir adrese cozuluyor — tarama reddedildi."""
+
+
+def host_cozuluyor_mu(host: str, deneme: int = 2) -> bool:
+    """Host adi DNS'te var mi? (SSRF kontrolu DEGIL — varlik kontrolu.)
+
+    NEDEN VAR (2026-08-06'da CANLIDA olculdu): `assert_public_host` icindeki
+    `except socket.gaierror: return` dali "crawler kendi hata yolunda 'failed'
+    isaretler" varsayimiyla yazilmisti. ISARETLEMIYOR. Var olmayan bir alan
+    (`bu-alan-yok-9x7z.invalid`) taramayi `complete` bitirdi ve **40/100 puan**
+    aldi: tarayici 0 sayfa dondu, skorlama yine de calisti. Yani alan adini
+    yanlis yazan kullanici, olmayan bir siteye ait uydurma gorunumlu bir puan
+    goruyor ve kredisi yaniyor.
+
+    Guvenlik dali DEGISTIRILMEDI (cozulemeyen host'ta ic sizinti riski yok);
+    bunun yerine tarama girisinde AYRI bir varlik kontrolu yapiliyor.
+
+    🪤 Tek denemede karar VERME: gecici DNS aksakligi gercek bir siteyi
+    reddettirir. Iki deneme, arada kisa bekleme.
+    """
+    h = (host or "").strip().strip(".").lower()
+    if not h:
+        return False
+    for i in range(max(1, deneme)):
+        try:
+            if socket.getaddrinfo(h, None):
+                return True
+        except socket.gaierror:
+            pass
+        except OSError:
+            # Ag katmani sorunu — kullanicinin alanini suclamayiz.
+            return True
+        if i + 1 < deneme:
+            time.sleep(0.4)
+    return False
 
 
 def _is_public_ip(ip_str: str) -> bool:

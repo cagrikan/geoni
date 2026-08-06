@@ -34,6 +34,12 @@ MESAJLAR: dict[str, dict[str, str]] = {
         "tr": "Geçersiz hedef: yalnızca herkese açık siteler taranabilir.",
         "en": "Invalid target: only publicly reachable sites can be scanned.",
     },
+    # Alan adi DNS'te YOK. Eskiden bu tarama calisiyor, 0 sayfa donuyor ve yine
+    # de puan uretiyordu (olculdu 2026-08-06: 40/100). Artik krediden ONCE durur.
+    "alan_cozulemedi": {
+        "tr": "Bu adres bulunamadı. Alan adını kontrol edin — örnek: example.com",
+        "en": "We couldn't find that address. Check the domain — example: example.com",
+    },
     "ozel_tarama_giris_gerekli": {
         "tr": "Özel tarama için giriş gerekli.",
         "en": "Sign in to run a private scan.",

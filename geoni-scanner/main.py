@@ -32,7 +32,7 @@ import httpx
 # gelir -> hangisinin cagrildigi okurken bellidir.
 from crawler import crawl_domain
 from db import normalize_domain as _valid_domain  # geçersiz domain -> None (F-Y4 submit validasyonu)
-from ssrf_guard import assert_public_host, BlockedHostError
+from ssrf_guard import assert_public_host, BlockedHostError, host_cozuluyor_mu
 from indexing import check_indexing_status
 from scoring import compute_ai_visibility_score
 from topics import generate_topics_and_opportunities
@@ -992,6 +992,15 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
         await asyncio.to_thread(assert_public_host, request.domain)
     except BlockedHostError:
         raise ApiHata(400, "gecersiz_hedef")
+
+    # Alan adi DNS'te var mi? SSRF kontrolu bunu KASITLI olarak gecirir (ic
+    # sizinti riski yok) ama var olmayan alan taranmaya devam ediyordu: crawler
+    # 0 sayfa donuyor, skorlama yine calisiyor ve kullanici OLMAYAN bir siteye
+    # ait puan goruyor — krediyi de yakarak. Canlida olculdu (2026-08-06):
+    # `bu-alan-yok-9x7z.invalid` -> status=complete, score=40, pages=0.
+    # Kontrol krediden ve ucretsiz-hak sayacindan ONCE, cunku ikisi de asagida.
+    if not await asyncio.to_thread(host_cozuluyor_mu, request.domain):
+        raise ApiHata(400, "alan_cozulemedi")
 
     job_id = str(uuid.uuid4())
     # Extract user_id from Authorization header if present
