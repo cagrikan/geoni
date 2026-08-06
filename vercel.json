@@ -78,6 +78,10 @@
       "destination": "/guides/ai-visibility-providers.html"
     },
     {
+      "source": "/guides/ai-engines-compared",
+      "destination": "/guides/ai-engines-compared.html"
+    },
+    {
       "source": "/indir",
       "destination": "/indir.html"
     },
