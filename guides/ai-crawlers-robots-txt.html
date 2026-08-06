@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Crawler List and robots.txt Rules (2026) — GEONI Guides</title>
+<meta name="description" content="GPTBot, ClaudeBot, PerplexityBot, Google-Extended and the rest: who owns each crawler, what it fetches for, and whether it obeys robots.txt. Copy-paste allow block and two commands to verify access.">
+<link rel="canonical" href="https://geoni.ai/guides/ai-crawlers-robots-txt">
+<link rel="alternate" hreflang="en" href="https://geoni.ai/guides/ai-crawlers-robots-txt">
+<link rel="alternate" hreflang="tr" href="https://geoni.ai/rehber/ai-botlari-robots-txt">
+<link rel="alternate" hreflang="x-default" href="https://geoni.ai/guides/ai-crawlers-robots-txt">
+<link rel="icon" href="/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/rehber.css">
+<script src="/theme-toggle.js"></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "AI Crawler List and robots.txt Rules (2026)",
+      "description": "The main AI crawlers, what they fetch for, whether they obey robots.txt, and a copy-paste allow block.",
+      "author": { "@type": "Organization", "name": "GEONI", "url": "https://geoni.ai" },
+      "publisher": { "@id": "https://geoni.ai/#organization" },
+      "datePublished":"2026-08-06","dateModified":"2026-08-06","mainEntityOfPage": "https://geoni.ai/guides/ai-crawlers-robots-txt",
+      "inLanguage": "en"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Which AI crawlers should I allow?",
+          "acceptedAnswer": { "@type": "Answer", "text": "If you want to appear in AI search, allow the crawlers that serve search surfaces: GPTBot and OAI-SearchBot from OpenAI, ClaudeBot and Claude-SearchBot from Anthropic, PerplexityBot from Perplexity, and Google-Extended for Google's generative surfaces. Whether you also allow training-only crawlers such as CCBot is a separate decision and does not directly affect your search visibility." }
+        },
+        {
+          "@type": "Question",
+          "name": "What happens if I block an AI crawler in robots.txt?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Your chance of appearing as a source in that engine's answers largely disappears. If the model cannot fetch your page, the quality of your content changes nothing. This is the most common technical reason behind complaints about missing from AI search, and it cannot be fixed by editing content." }
+        },
+        {
+          "@type": "Question",
+          "name": "Do user-triggered fetchers obey robots.txt?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. Fetchers such as ChatGPT-User, Perplexity-User and Google-Agent retrieve a single page because a person asked for it. By design they do not consult robots.txt, because the request is made on a user's behalf rather than by a crawler. You cannot block them with robots.txt; server-side access controls are needed if you must." }
+        },
+        {
+          "@type": "Question",
+          "name": "How do I verify my robots.txt actually works?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Confirm that yoursite.com/robots.txt opens as plain text, then request a page with a crawler user-agent and check that it returns 200. A 200 alone is not enough if your page is drawn only with JavaScript: the content must be present in the server-rendered HTML, because AI crawlers do not execute JavaScript." }
+        },
+        {
+          "@type": "Question",
+          "name": "Should I add llms.txt too?",
+          "acceptedAnswer": { "@type": "Answer", "text": "It is optional. Google states plainly that llms.txt is not consulted by its search or generative surfaces. It costs little, so you may add it for non-Google systems, but it should not be presented as a ranking or citation lever for Google." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<nav class="nav">
+  <a href="/"><img src="/favicon.png" alt="" width="26" height="26" style="border-radius:6px">geoni</a>
+  <span class="crumb"><a href="/guides">Guides</a> / AI crawlers</span>
+</nav>
+<main>
+  <span class="eyebrow">// GEONI Guides</span>
+  <h1>AI Crawler List and robots.txt Rules (2026)</h1>
+  <p class="updated">Last updated: 6 August 2026 · GEONI Team</p>
+
+  <p class="lead">The most common technical reason for missing from AI search is <b>access, not content.</b> If the model cannot fetch your page, the quality of the text on it changes nothing. Below: the main AI crawlers, what they come for, and a copy-paste allow block.</p>
+
+  <h2>The main AI crawlers</h2>
+  <div style="overflow-x:auto">
+  <table style="border-collapse:collapse;width:100%;min-width:600px;font-size:14.5px;margin:0 0 10px">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding:9px 12px;border-bottom:1px solid var(--border,#ddd)">User-agent</th>
+        <th style="text-align:left;padding:9px 12px;border-bottom:1px solid var(--border,#ddd)">Owner</th>
+        <th style="text-align:left;padding:9px 12px;border-bottom:1px solid var(--border,#ddd)">What it fetches for</th>
+        <th style="text-align:left;padding:9px 12px;border-bottom:1px solid var(--border,#ddd)">Obeys robots.txt</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td style="padding:9px 12px"><code>GPTBot</code></td><td style="padding:9px 12px">OpenAI</td><td style="padding:9px 12px">Crawling / model data</td><td style="padding:9px 12px">Yes</td></tr>
+      <tr><td style="padding:9px 12px"><code>OAI-SearchBot</code></td><td style="padding:9px 12px">OpenAI</td><td style="padding:9px 12px">Search surface</td><td style="padding:9px 12px">Yes</td></tr>
+      <tr><td style="padding:9px 12px"><code>ChatGPT-User</code></td><td style="padding:9px 12px">OpenAI</td><td style="padding:9px 12px">Single page, user-triggered</td><td style="padding:9px 12px"><b>No</b> (user-triggered)</td></tr>
+      <tr><td style="padding:9px 12px"><code>ClaudeBot</code></td><td style="padding:9px 12px">Anthropic</td><td style="padding:9px 12px">Crawling</td><td style="padding:9px 12px">Yes</td></tr>
+      <tr><td style="padding:9px 12px"><code>Claude-SearchBot</code></td><td style="padding:9px 12px">Anthropic</td><td style="padding:9px 12px">Search surface</td><td style="padding:9px 12px">Yes</td></tr>
+      <tr><td style="padding:9px 12px"><code>PerplexityBot</code></td><td style="padding:9px 12px">Perplexity</td><td style="padding:9px 12px">Search index</td><td style="padding:9px 12px">Yes</td></tr>
+      <tr><td style="padding:9px 12px"><code>Perplexity-User</code></td><td style="padding:9px 12px">Perplexity</td><td style="padding:9px 12px">Single page, user-triggered</td><td style="padding:9px 12px"><b>No</b> (user-triggered)</td></tr>
+      <tr><td style="padding:9px 12px"><code>Google-Extended</code></td><td style="padding:9px 12px">Google</td><td style="padding:9px 12px">Opt-in switch for generative surfaces</td><td style="padding:9px 12px">Yes</td></tr>
+      <tr><td style="padding:9px 12px"><code>CCBot</code></td><td style="padding:9px 12px">Common Crawl</td><td style="padding:9px 12px">Open dataset</td><td style="padding:9px 12px">Yes</td></tr>
+      <tr><td style="padding:9px 12px"><code>anthropic-ai</code></td><td style="padding:9px 12px">Anthropic</td><td style="padding:9px 12px">Legacy / general identifier</td><td style="padding:9px 12px">Yes</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="font-size:14px;color:var(--muted,#777)">Note: <code>Googlebot</code> is a separate crawler serving classic search; <code>Google-Extended</code> does not affect it.</p>
+
+  <h2>Copy-paste allow block</h2>
+  <p>Add this to <code>yoursite.com/robots.txt</code>. Always keep a sitemap line at the end — crawlers take your page list from there.</p>
+  <pre><code>User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-SearchBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: *
+Allow: /
+
+Sitemap: https://yoursite.com/sitemap.xml</code></pre>
+
+  <h2>User-triggered fetchers are a separate class</h2>
+  <p><code>ChatGPT-User</code>, <code>Perplexity-User</code> and similar agents fetch a page because a person asked for that address. It is <b>a single request made on a user's behalf</b>, not a crawl, and by design these do not consult robots.txt. You cannot block them there; server-side access control is the only route if you genuinely need to.</p>
+
+  <h2>Allowing access is not enough on its own</h2>
+  <p>A 200 is good but insufficient. <b>AI crawlers do not execute JavaScript.</b> If your page is drawn only in the browser by JS, the crawler sees an empty shell. The content must exist in the server-rendered HTML.</p>
+  <p>Check three things together: <b>(1)</b> does robots.txt allow it, <b>(2)</b> does a request with a crawler user-agent return 200, <b>(3)</b> does the returned HTML contain real text.</p>
+
+  <h2>Verify it: two commands</h2>
+  <pre><code># 1) Does robots.txt open, and is it plain text?
+curl -s https://yoursite.com/robots.txt
+
+# 2) What does the page return to a crawler user-agent?
+curl -s -o /dev/null -w "%{http_code}\n" \
+  -A "Mozilla/5.0 (compatible; GPTBot/1.0)" https://yoursite.com/</code></pre>
+  <p>Anything other than 200 (403, 503, a redirect) means bot protection or a WAF is in the way, and your provider needs an exception for AI crawlers.</p>
+
+  <h2>Is llms.txt required?</h2>
+  <p>Optional. Google states plainly that <code>llms.txt</code> is <b>not consulted</b> by its search or generative surfaces. It costs little, so you may add it for non-Google systems — but it should not be sold as a ranking or citation lever for Google. Detail: <a href="/guides/what-is-llms-txt" style="color:var(--accent)">what is llms.txt</a>.</p>
+
+  <h2>Frequently asked questions</h2>
+  <div class="faq">
+    <details><summary>Do I have to allow all of them?</summary><p>No. Allowing the search-serving crawlers is enough for AI visibility; blocking training-only crawlers is a separate choice and does not directly affect it.</p></details>
+    <details><summary>Does blocking protect my content?</summary><p>robots.txt is a courtesy protocol, not an access control. It stops the crawlers that respect it — not the ones that don't, and not user-triggered requests.</p></details>
+    <details><summary>How soon does a change take effect?</summary><p>Crawlers cache robots.txt; changes usually land within days. Pages appearing in answers additionally requires crawl and index time.</p></details>
+  </div>
+
+  <div class="also">
+    <h3>More from this guide</h3>
+    <ul>
+      <li><a href="/guides/brand-not-in-chatgpt">Why isn't my brand showing up in ChatGPT?</a></li>
+      <li><a href="/guides/ai-engines-compared">Why do the four AI engines answer differently?</a></li>
+      <li><a href="/guides/ai-visibility-tools">AI visibility tracking tools: a 2026 comparison</a></li>
+    </ul>
+  </div>
+
+  <div class="cta">
+    <h2>Let's measure whether crawlers can read your site</h2>
+    <p>A GEONI scan checks your robots.txt rules, crawler access and whether real text exists in your server-rendered HTML — then shows where you stand across four AI engines. Your first scan is free.</p>
+    <a href="https://app.geoni.ai">Run a free scan →</a>
+  </div>
+</main>
+<footer>
+  <span>© 2026 geoni — Generative Engine Optimization</span>
+  <a href="/guides">Guides</a>
+  <a href="/privacy">Privacy</a>
+  <a href="/terms">Terms</a>
+</footer>
+</body>
+</html>

@@ -86,6 +86,10 @@
       "destination": "/guides/ai-engines-compared.html"
     },
     {
+      "source": "/guides/ai-crawlers-robots-txt",
+      "destination": "/guides/ai-crawlers-robots-txt.html"
+    },
+    {
       "source": "/indir",
       "destination": "/indir.html"
     },
