@@ -85,3 +85,121 @@ def test_create_pending_audit_KANONIK_yaziyor(monkeypatch):
     ok = asyncio.run(db.create_pending_audit("j1", "web", "WWW.Geoni.AI", "u1"))
     assert ok is True
     assert yakalanan["domain"] == "geoni.ai"
+
+
+def _post_yakalayici(monkeypatch):
+    """save_audit'in POST gövdesini yakalar."""
+    yakalanan = {}
+
+    class SahteYanit:
+        status_code = 201
+        text = ""
+
+    class Sahte:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, headers=None, json=None, timeout=None):
+            yakalanan.update(json)
+            return SahteYanit()
+
+        async def patch(self, url, headers=None, json=None, timeout=None):
+            return SahteYanit()
+
+    monkeypatch.setattr(db, "SUPABASE_URL", "https://ornek.supabase.co")
+    monkeypatch.setattr(db, "SUPABASE_SERVICE_KEY", "test")
+    monkeypatch.setattr(db.httpx, "AsyncClient", Sahte)
+    return yakalanan
+
+
+def test_save_audit_de_KANONIK_yaziyor(monkeypatch):
+    """🪤 İKİNCİ yazma noktası. İzleme (monitor) yolu `create_pending_audit`'ten
+    DEĞİL buradan geçiyor: `monitor._scan_web_item` -> `save_audit`. İlk
+    düzeltmede atlanmıştı; yalnız birini kanonikleştirmek bölünmeyi SÜRDÜRÜR
+    (izleme listesindeki hedef `Cagricakir.com.tr` yazımıyla duruyor)."""
+    import asyncio
+    yakalanan = _post_yakalayici(monkeypatch)
+    asyncio.run(db.save_audit("j2", {"domain": "Cagricakir.com.tr", "email": ""},
+                              {"score": 71}, user_id=None, deduct=False))
+    assert yakalanan["domain"] == "cagricakir.com.tr"
+
+
+def test_save_audit_www_li_izleme_hedefi_TEK_seriye_yazar(monkeypatch):
+    """İzleme `www.geoni.ai` yazımıyla dursa bile audit satırı `geoni.ai` olur."""
+    import asyncio
+    yakalanan = _post_yakalayici(monkeypatch)
+    asyncio.run(db.save_audit("j3", {"domain": "www.geoni.ai"}, {"score": 80}))
+    assert yakalanan["domain"] == "geoni.ai"
+
+
+def test_HER_audits_yazma_noktasi_kanonikten_geciyor():
+    """🪤 Regresyon kapanı: `audits` satırına ham `domain` yazan yeni bir yol
+    eklenirse burada patlar. Yalnız YAZMA yolları sayılır — `params={"domain":
+    f"eq.{...}"}` bir okuma süzgeci, `{"domain": d}` ise yanıt sözlüğü."""
+    import re
+    from pathlib import Path
+    kaynak = (Path(__file__).resolve().parent.parent / "db.py").read_text(encoding="utf-8")
+    ham = re.findall(r'"domain":\s*(request_data|domain\b|ham\b)', kaynak)
+    assert not ham, f"kanonikten geçmeyen domain yazımı: {ham}"
+    # iki bilinen yazma noktası da yerinde mi
+    assert kaynak.count('"domain": kanonik_domain(') == 2
+
+
+def _get_yakalayici(monkeypatch, bulunanlar: dict):
+    """GET süzgecini yakalar; `bulunanlar[domain]` varsa o satırı döner."""
+    sorulanlar = []
+
+    class SahteYanit:
+        def __init__(self, veri):
+            self._veri = veri
+            self.status_code = 200
+
+        def json(self):
+            return self._veri
+
+    class Sahte:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, url, params=None, headers=None, timeout=None):
+            d = (params or {}).get("domain", "").removeprefix("eq.")
+            sorulanlar.append(d)
+            satir = bulunanlar.get(d)
+            return SahteYanit([satir] if satir else [])
+
+    monkeypatch.setattr(db, "SUPABASE_URL", "https://ornek.supabase.co")
+    monkeypatch.setattr(db, "SUPABASE_SERVICE_KEY", "test")
+    monkeypatch.setattr(db.httpx, "AsyncClient", Sahte)
+    return sorulanlar
+
+
+def test_okuma_KANONIK_bicimle_bulur(monkeypatch):
+    """Bilet hedefi `www.geoni.ai` yazılmış; satır `geoni.ai` olarak duruyor."""
+    import asyncio
+    sorulanlar = _get_yakalayici(monkeypatch, {"geoni.ai": {"id": "a1"}})
+    sonuc = asyncio.run(db.get_latest_web_audit_by_domain("www.geoni.ai"))
+    assert sonuc == {"id": "a1"}
+    assert sorulanlar[0] == "geoni.ai"          # önce kanonik denendi
+
+
+def test_okuma_kanonik_yoksa_HAM_bicime_duser(monkeypatch):
+    """Eski satırlar ham yazılmıştı — geriye düşüş olmazsa geçmiş kaybolur."""
+    import asyncio
+    sorulanlar = _get_yakalayici(monkeypatch, {"WWW.Geoni.AI": {"id": "eski"}})
+    sonuc = asyncio.run(db.get_latest_web_audit_by_domain("WWW.Geoni.AI"))
+    assert sonuc == {"id": "eski"}
+    assert sorulanlar == ["geoni.ai", "WWW.Geoni.AI"]
+
+
+def test_okuma_zaten_kanonikse_TEK_sorgu(monkeypatch):
+    """🪤 Sonsuz özyineleme/çift sorgu kapanı."""
+    import asyncio
+    sorulanlar = _get_yakalayici(monkeypatch, {"geoni.ai": {"id": "a1"}})
+    asyncio.run(db.get_latest_web_audit_by_domain("geoni.ai"))
+    assert sorulanlar == ["geoni.ai"]

@@ -210,7 +210,11 @@ async def _maliyeti_sifirla(client, job_id: str, user_id: str, amount: int, ne: 
 
 async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str = None, deduct: bool = True) -> bool:
     """Save domain audit result to Supabase audits table.
-    deduct=False: otomatik izleme taramalari kontor dusmez (izleme ucretsiz)."""
+    deduct=False: otomatik izleme taramalari kontor dusmez (izleme ucretsiz).
+
+    `domain` KANONIK yazilir (bkz. kanonik_domain). Bu IKINCI yazma noktasidir:
+    izleme (monitor) yolu `create_pending_audit`'ten DEGIL buradan geciyor.
+    Ilk duzeltmede atlanmisti — yalniz birini duzeltmek bolunmeyi surdururdu."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         logger.warning("Supabase not configured, skipping audit save")
         return False
@@ -219,7 +223,7 @@ async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str
         "id": job_id,
         "user_id": user_id,
         "type": "web",
-        "domain": request_data.get("domain"),
+        "domain": kanonik_domain(request_data.get("domain") or ""),
         "score": result.get("score"),
         "result_json": result,
         # Gercek dusumle ayni olmali (asagida ayni sabitle dusuluyor) -
@@ -2890,9 +2894,20 @@ async def get_latest_web_audit_by_domain(domain: str) -> dict | None:
     """En son TAMAMLANMIS 'web' taramasi - llms_robots bilet otomasyonu
     icin marka/konu/sayfa verisini buradan cekiyoruz. Eski taramalarda
     'pages' alani olmayabilir (bu alan sonradan eklendi) - cagiran taraf
-    bunu graceful fallback ile ele almali."""
+    bunu graceful fallback ile ele almali.
+
+    ARAMA KANONIK BICIMLE YAPILIR. Yazma tarafi (create_pending_audit +
+    save_audit) `kanonik_domain`den geciyor; biletteki hedef kullanicinin
+    yazdigi ham metin ("www.geoni.ai", "Cagricakir.com.tr"). Ham metinle
+    eq. arayinca satir BULUNAMAZ ve uzman gorevi tarama baglamsiz kalir.
+    Kanonik bulunmazsa ham bicime dusuyoruz: eski satirlar ham yazilmisti."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return None
+    kanonik = kanonik_domain(domain or "")
+    if kanonik and kanonik != (domain or "").strip():
+        bulunan = await get_latest_web_audit_by_domain(kanonik)
+        if bulunan:
+            return bulunan
     try:
         async with httpx.AsyncClient() as client:
             # F-ORTA-10: domain kullanici girdisi (bilet target'i). f-string'e
