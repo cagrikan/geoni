@@ -66,6 +66,10 @@
       "destination": "/rehber/ai-motorlari-karsilastirma.html"
     },
     {
+      "source": "/rehber/geoni-taramasi-nasil-calisir",
+      "destination": "/rehber/geoni-taramasi-nasil-calisir.html"
+    },
+    {
       "source": "/guides/ai-visibility-tools",
       "destination": "/guides/ai-visibility-tools.html"
     },

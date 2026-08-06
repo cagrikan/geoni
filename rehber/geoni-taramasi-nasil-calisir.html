@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GEONI Taraması Nasıl Çalışır? Adım Adım Ne Ölçülüyor — GEONI</title>
+<meta name="description" content="Bir GEONI taraması ne yapar: soru havuzu kurulur, dört AI motoruna ayrı ayrı sorulur, cevapların gösterdiği kaynaklar çıkarılır, Google AI Özeti kontrol edilir ve sitenizin AI botlarınca gezilebildiği doğrulanır. Raporda tam olarak ne çıkar.">
+<link rel="canonical" href="https://geoni.ai/rehber/geoni-taramasi-nasil-calisir">
+<link rel="alternate" hreflang="tr" href="https://geoni.ai/rehber/geoni-taramasi-nasil-calisir">
+<link rel="alternate" hreflang="x-default" href="https://geoni.ai/rehber/geoni-taramasi-nasil-calisir">
+<link rel="icon" href="/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/rehber.css">
+<script src="/theme-toggle.js"></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "GEONI Taraması Nasıl Çalışır? Adım Adım Ne Ölçülüyor",
+      "description": "Bir taramanın altı adımı, raporda çıkan bölümler ve token sisteminin işleyişi.",
+      "author": { "@type": "Organization", "name": "GEONI", "url": "https://geoni.ai" },
+      "publisher": { "@id": "https://geoni.ai/#organization" },
+      "datePublished":"2026-08-06","dateModified":"2026-08-06","mainEntityOfPage": "https://geoni.ai/rehber/geoni-taramasi-nasil-calisir",
+      "inLanguage": "tr"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "GEONI taraması tam olarak ne ölçüyor?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Bir tarama beş şeyi ölçer: markanızın ChatGPT, Claude, Gemini ve Perplexity cevaplarında geçip geçmediği; bu cevapların hangi kaynakları gösterdiği; Google'ın AI Özeti kutusunda yer alıp almadığınız; sitenizin AI botlarınca gezilip gezilemediği; ve sitenizin yapısal işaretleri (schema, tazelik, indekslenebilirlik). Sonuçta tek bir AI Tanınırlık Skoru ve bu skoru oluşturan kırılım çıkar." }
+        },
+        {
+          "@type": "Question",
+          "name": "Tarama ne kadar sürer?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Site taraması genellikle birkaç dakika sürer; çok sayfalı büyük sitelerde 45 dakikayı bulabilir. Ekranı kapatabilirsiniz, rapor hazır olduğunda e-posta ile gönderilir." }
+        },
+        {
+          "@type": "Question",
+          "name": "Sitemde değişiklik yapmam gerekiyor mu?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Hayır. Kurulum yok, siteye eklenecek kod yok, doğrulama dosyası yok. Alan adını yazmanız yeterli; tarama dışarıdan, tıpkı bir AI motorunun göreceği gibi çalışır." }
+        },
+        {
+          "@type": "Question",
+          "name": "Token nedir, bir tarama kaç token?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Token, tarama hakkıdır. Her tarama türünün bedeli uygulamada taramaya başlamadan önce gösterilir, yani sürprizle karşılaşmazsınız. Kayıt olan herkesin ilk taraması ücretsizdir." }
+        },
+        {
+          "@type": "Question",
+          "name": "Aynı hedefi tekrar tarayabilir miyim?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Evet, ve önerilen kullanım budur. AI cevapları taramadan taramaya değişir; tek ölçüm o anın fotoğrafıdır. İzleme listesine eklediğiniz hedeflerde skorun zaman içindeki hareketini görürsünüz." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<nav class="nav">
+  <a href="/"><img src="/favicon.png" alt="" width="26" height="26" style="border-radius:6px">geoni</a>
+  <span class="crumb"><a href="/rehber">Rehber</a> / Tarama nasıl çalışır</span>
+</nav>
+<main>
+  <span class="eyebrow">// GEONI Rehber</span>
+  <h1>GEONI Taraması Nasıl Çalışır? Adım Adım Ne Ölçülüyor</h1>
+  <p class="updated">Son güncelleme: 6 Ağustos 2026 · GEONI Ekibi</p>
+
+  <p class="lead">Bir tarama, <b>bir AI motorunun sizi nasıl gördüğünü dışarıdan taklit eder</b>: gerçek sorular sorar, gerçek cevapları okur, cevapların dayandığı kaynakları çıkarır. Kurulum yok, siteye eklenecek kod yok — alan adını yazmanız yeterli.</p>
+
+  <h2>Altı adım</h2>
+  <ol>
+    <li><b>Soru havuzu kurulur.</b> Alanınıza göre, müşterinizin gerçekten soracağı türden sorular üretilir: “en iyi X kim”, “X nasıl seçilir”, “X yapan firmalar”.</li>
+    <li><b>Dört motora ayrı ayrı sorulur.</b> ChatGPT, Claude, Gemini ve Perplexity. Ayrı sorulmasının sebebi, dördünün aynı soruya farklı cevap vermesi (<a href="/rehber/ai-motorlari-karsilastirma" style="color:var(--accent)">karşılaştırma</a>).</li>
+    <li><b>Cevaplar okunur.</b> Markanız geçti mi, nasıl tarif edildi, hangi rakiplerle birlikte anıldı.</li>
+    <li><b>Kaynaklar çıkarılır.</b> Cevabın dayandığı siteler listelenir — yapay zekânın sizin alanınızda güvendiği yerler bunlardır.</li>
+    <li><b>Google AI Özeti kontrol edilir.</b> Arama sonuçlarının üstündeki AI kutusu ayrı bir yüzeydir; klasik sıralamadan bağımsız değerlendirilir.</li>
+    <li><b>Siteniz dışarıdan gezilir.</b> AI botlarının sayfalarınıza erişip erişemediği, yapısal veri, sayfa tazeliği ve indekslenebilirlik ölçülür.</li>
+  </ol>
+
+  <h2>Raporda ne çıkar</h2>
+  <ul>
+    <li><b>AI Tanınırlık Skoru</b> ve onu oluşturan kırılım — hangi başlığın sizi geride tuttuğu tek bakışta görünür.</li>
+    <li><b>Motor motor sonuç.</b> Hangi motorda geçtiniz, hangisinde geçmediniz.</li>
+    <li><b>Kaynak listesi.</b> Cevapların gösterdiği siteler ve sizin orada olup olmadığınız.</li>
+    <li><b>İçerik boşlukları.</b> Yapay zekânın alıntıladığı sayfa tipleriyle sizdeki dağılımın karşılaştırması — hangi tür sayfayı üretmeniz gerektiğini söyler.</li>
+    <li><b>Erişim bulguları.</b> Botların göremediği sayfalar, eksik yapısal veri, bayatlamış içerik.</li>
+    <li><b>Bağımsız denetim.</b> Ayrı bir model, motorların sizin hakkınızda söylediklerini doğruluk açısından kontrol eder.</li>
+  </ul>
+
+  <h2>Ne kadar sürer, ne gerektirir</h2>
+  <p>Site taraması genellikle <b>birkaç dakika</b> sürer; çok sayfalı büyük sitelerde 45 dakikayı bulabilir. Ekranı kapatabilirsiniz — rapor hazır olduğunda e-posta ile gelir. <b>Sitenizde hiçbir değişiklik yapmanız gerekmez:</b> kurulum, kod parçası, doğrulama dosyası yok.</p>
+
+  <h2>Token nasıl işliyor</h2>
+  <p>Token, tarama hakkıdır. Her tarama türünün bedeli <b>taramaya başlamadan önce ekranda gösterilir</b>; sürpriz yoktur. <b>Kayıt olan herkesin ilk taraması ücretsizdir</b> — ürünü görmek için ödeme gerekmez.</p>
+
+  <h2>Bir kere değil, düzenli</h2>
+  <p>AI cevapları taramadan taramaya değişir. Tek ölçüm size o anın fotoğrafını verir; <b>anlamlı olan eğilimdir.</b> İzleme listesine eklediğiniz marka, site, kişi veya sosyal hesapta skorun zaman içindeki hareketini görürsünüz — bir içerik değişikliğinin işe yarayıp yaramadığı ancak böyle anlaşılır.</p>
+
+  <h2>Sık sorulan sorular</h2>
+  <div class="faq">
+    <details><summary>Yalnız web sitesi mi taranıyor?</summary><p>Hayır. Site dışında marka adı, kişi adı ve sosyal hesap da taranabilir; her biri kendi soru havuzuyla ölçülür.</p></details>
+    <details><summary>Rapor paylaşılabilir mi?</summary><p>Evet, rapor sizindir; ekibinizle veya müşterinizle paylaşabilirsiniz.</p></details>
+    <details><summary>Sonuç kötü çıkarsa ne yapacağım?</summary><p>Rapor bulguları “düzeltilecek iş” olarak yazar: hangi sayfa tipini üretmeniz, hangi erişim sorununu çözmeniz gerektiği tek tek belirtilir.</p></details>
+  </div>
+
+  <div class="also">
+    <h3>Bu rehberdeki diğer yazılar</h3>
+    <ul>
+      <li><a href="/rehber/ai-motorlari-karsilastirma">Dört AI motoru neden farklı cevap veriyor?</a></li>
+      <li><a href="/rehber/markam-chatgptde-gorunmuyor">Markanız ChatGPT'de neden görünmüyor?</a></li>
+      <li><a href="/rehber/ai-gorunurluk-araclari">AI görünürlük takip araçları karşılaştırması</a></li>
+    </ul>
+  </div>
+
+  <div class="cta">
+    <h2>İlk taramanız ücretsiz</h2>
+    <p>Alan adınızı, marka adınızı veya sosyal hesabınızı yazın; dört motorda nerede durduğunuzu birkaç dakikada görün.</p>
+    <a href="https://app.geoni.ai">Ücretsiz Tara →</a>
+  </div>
+</main>
+<footer>
+  <span>© 2026 geoni — Generative Engine Optimization</span>
+  <a href="/rehber">Rehber</a>
+  <a href="/privacy">Gizlilik</a>
+  <a href="/terms">Şartlar</a>
+</footer>
+</body>
+</html>
