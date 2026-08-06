@@ -84,46 +84,66 @@ def cevir(html: str, en: dict) -> tuple[str, list]:
     # Sondan basa git: offsetler kaymasin.
     isaretler = [m for m in re.finditer(r"<[a-zA-Z][^>]*?data-i18n(-ph|-opt|-aria|-list)?=\"([^\"]+)\"[^>]*>", html)]
     for m in reversed(isaretler):
-        tur, anahtar = m.group(1) or "", m.group(2)
-        if anahtar not in en:
-            eksik.append(anahtar)
-            continue
-        deger = en[anahtar]
-        if tur == "":                      # innerHTML
-            aralik = _ic_aralik(html, m.start())
-            if aralik is None:
-                continue
-            ib, iso = aralik
-            html = html[:ib] + deger + html[iso:]
-        elif tur == "-opt":                # textContent (option)
-            aralik = _ic_aralik(html, m.start())
-            if aralik is None:
-                continue
-            ib, iso = aralik
-            metin = (deger.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
-            html = html[:ib] + metin + html[iso:]
-        elif tur == "-ph":
-            html = html[:m.start()] + _nitelik_yaz(m.group(0), "placeholder", deger) + html[m.end():]
-        elif tur == "-aria":
-            html = html[:m.start()] + _nitelik_yaz(m.group(0), "aria-label", deger) + html[m.end():]
-        elif tur == "-list":               # <li> dizisi
-            aralik = _ic_aralik(html, m.start())
-            if aralik is None or not isinstance(deger, list):
-                continue
-            ib, iso = aralik
-            ic = html[ib:iso]
-            sayac = [0]
-            parcalar, p = [], 0
-            for mm in re.finditer(r"<li(?=[\s>])", ic):
-                a = _ic_aralik(ic, mm.start())
-                if a is None or sayac[0] >= len(deger):
+        # 🪤 Bir eleman BIRDEN COK data-i18n* niteligi tasiyabilir (or. hem -ph hem
+        # -aria). Eski surum regex'in yakaladigi ILK nitelige bakiyordu; ikincisi
+        # sessizce Turkce kaliyordu. 2026-08-06'da yakalandi: #audit-input hem
+        # data-i18n-ph hem data-i18n-aria tasiyor, Ingilizce sayfada aria-label
+        # "Yanitinizi yazin" olarak kaliyordu (ekran okuyucu icin gorunmez hata,
+        # gozle fark edilmiyor). Artik etiketteki TUM nitelikler uygulanir.
+        cesitler = [(t or "", k) for t, k in
+                    re.findall(r"data-i18n(-ph|-opt|-aria|-list)?=\"([^\"]+)\"", m.group(0))]
+        # Once ICERIK tipleri: bunlar etiketin SONRASINI degistirir, boylece
+        # [m.start(), m.end()) araligi gecerli kalir ve nitelikler sonra yazilabilir.
+        icerik = [(t, k) for t, k in cesitler if t in ("", "-opt", "-list")]
+        nitelik = [(t, k) for t, k in cesitler if t in ("-ph", "-aria")]
+
+        if nitelik:
+            etiket = m.group(0)
+            for tur, anahtar in nitelik:
+                if anahtar not in en:
+                    eksik.append(anahtar)
                     continue
-                parcalar.append(ic[p:a[0]])
-                parcalar.append(deger[sayac[0]])
-                sayac[0] += 1
-                p = a[1]
-            parcalar.append(ic[p:])
-            html = html[:ib] + "".join(parcalar) + html[iso:]
+                ad = "placeholder" if tur == "-ph" else "aria-label"
+                etiket = _nitelik_yaz(etiket, ad, en[anahtar])
+            bekleyen_etiket = etiket
+        else:
+            bekleyen_etiket = None
+
+        for tur, anahtar in icerik:
+            if anahtar not in en:
+                eksik.append(anahtar)
+                continue
+            deger = en[anahtar]
+            aralik = _ic_aralik(html, m.start())
+            if aralik is None:
+                continue
+            ib, iso = aralik
+            if tur == "":                  # innerHTML
+                html = html[:ib] + deger + html[iso:]
+            elif tur == "-opt":            # textContent (option)
+                metin = (deger.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+                html = html[:ib] + metin + html[iso:]
+            elif tur == "-list":           # <li> dizisi
+                if not isinstance(deger, list):
+                    continue
+                ic = html[ib:iso]
+                sayac = [0]
+                parcalar, p = [], 0
+                for mm in re.finditer(r"<li(?=[\s>])", ic):
+                    a = _ic_aralik(ic, mm.start())
+                    if a is None or sayac[0] >= len(deger):
+                        continue
+                    parcalar.append(ic[p:a[0]])
+                    parcalar.append(deger[sayac[0]])
+                    sayac[0] += 1
+                    p = a[1]
+                parcalar.append(ic[p:])
+                html = html[:ib] + "".join(parcalar) + html[iso:]
+
+        # Nitelikler EN SONDA yazilir: icerik degisiklikleri etiketin sonrasini
+        # oynattigi icin [m.start(), m.end()) araligi hala gecerlidir.
+        if bekleyen_etiket is not None:
+            html = html[:m.start()] + bekleyen_etiket + html[m.end():]
     return html, eksik
 
 

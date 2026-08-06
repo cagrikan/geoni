@@ -19,7 +19,7 @@
 <meta property="og:locale" content="en_US">
 <meta property="og:locale:alternate" content="tr_TR">
 <meta property="og:title" content="GEONI — Does AI know you?">
-<meta property="og:description" content="Measure how ChatGPT, Claude, Gemini and Perplexity see your brand, name or site in minutes.">
+<meta property="og:description" content="Measure how ChatGPT, Gemini, Claude and Perplexity see your brand, name or site in minutes — free.">
 <meta property="og:image" content="https://geoni.ai/og-share.png">
 <meta property="og:url" content="https://geoni.ai/en">
 <meta name="twitter:card" content="summary_large_image">
@@ -1229,6 +1229,7 @@ const I18N = {
     "audit_title": "GEONI AI Asistanı",
     "audit_subtitle": "Ücretsiz AI Görünürlük Raporu",
     "audit_input_ph": "Yanıtınızı yazın...",
+    "audit_input_aria": "Yanıtınızı yazın",
     "demo_you": "SİZ",
     "pkg_hot": "En Popüler",
     "sample_banner_note": "Bu bir örnek rapordur — gerçek veri değildir.",
@@ -1414,6 +1415,7 @@ const I18N = {
     "audit_title": "GEONI AI Assistant",
     "audit_subtitle": "Free AI Visibility Report",
     "audit_input_ph": "Type your answer...",
+    "audit_input_aria": "Type your answer",
     "demo_you": "YOU",
     "pkg_hot": "Most Popular",
     "sample_banner_note": "This is a sample report — not real data.",
@@ -2203,7 +2205,7 @@ document.getElementById('calc-sector').addEventListener('change', function() {
   <div class="audit-input-wrap" id="audit-input-wrap">
     <!-- aria-label: ekran okuyucu yalnizca yer tutucuyu okuyordu; yer tutucu
          erisilebilir ad YERINE GECMEZ. -->
-    <input class="audit-input" id="audit-input" aria-label="Type your answer" placeholder="Type your answer..." onkeydown="if(event.key==='Enter')sendAudit()" data-i18n-ph="audit_input_ph">
+    <input class="audit-input" id="audit-input" aria-label="Type your answer" placeholder="Type your answer..." onkeydown="if(event.key==='Enter')sendAudit()" data-i18n-ph="audit_input_ph" data-i18n-aria="audit_input_aria">
     <button class="audit-send" id="audit-send" onclick="sendAudit()">→</button>
   </div>
 </div>
