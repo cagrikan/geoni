@@ -66,6 +66,10 @@
       "destination": "/guides/ai-visibility-tools.html"
     },
     {
+      "source": "/guides/ai-visibility-providers",
+      "destination": "/guides/ai-visibility-providers.html"
+    },
+    {
       "source": "/indir",
       "destination": "/indir.html"
     },
