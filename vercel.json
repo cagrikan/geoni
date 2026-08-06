@@ -58,6 +58,10 @@
       "destination": "/rehber/ai-gorunurluk-araclari.html"
     },
     {
+      "source": "/rehber/ai-gorunurluk-hizmeti-verenler",
+      "destination": "/rehber/ai-gorunurluk-hizmeti-verenler.html"
+    },
+    {
       "source": "/guides/ai-visibility-tools",
       "destination": "/guides/ai-visibility-tools.html"
     },
