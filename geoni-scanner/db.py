@@ -78,10 +78,33 @@ async def get_total_scan_count() -> int:
         return SCAN_COUNT_DISPLAY_BASE
 
 
+def kanonik_domain(ham: str) -> str:
+    """audits.domain icin TEK kanonik bicim: kucuk harf, `www.` siyrilmis.
+
+    NEDEN (2026-08-06'da canli veriyle olculdu): `create_pending_audit` cagrilirken
+    kullanicinin YAZDIGI ham metin dogrudan kaydediliyordu. Sonuc, ayni sitenin
+    gecmisinin ikiye bolunmesi:
+        geoni.ai + www.geoni.ai            -> 67 tarama, iki ayri seri
+        cagricakir.com.tr + Cagricakir...  -> 52 tarama, iki ayri seri
+    Bu bolunme trend grafigini, `apply_audit_retention` gruplamasini,
+    `content_decay` kiyasini ve izleme listesi eslesmesini birden bozuyordu.
+
+    🪤 Kod tabaninda IKI normalize_domain var: buradaki `www`'yi SIYIRIR,
+    `crawler.normalize_domain` BIRAKIR. Kanonik bicim icin bu kullanilir.
+
+    Gecersiz/alan-adi-olmayan girdide (kisi adi, @handle) normalize None doner;
+    o zaman satir olusmayi SURDURUR — yalnizca kirpilip kucultulur, cunku
+    brand/person taramalarinin `domain` alani da bu yoldan gecebiliyor."""
+    n = normalize_domain(ham)
+    return n if n else (ham or "").strip().lower()
+
+
 async def create_pending_audit(job_id: str, audit_type: str, domain: str, user_id: str = None) -> bool:
     """SQS modu: is kuyruga yazilmadan ONCE 'queued' satiri olusur, boylece
     status endpoint'i API process'inin belleginden bagimsiz her zaman cevap
-    verebilir. Basarisizsa False doner — cagiran is'i kuyruga YAZMASIN."""
+    verebilir. Basarisizsa False doner — cagiran is'i kuyruga YAZMASIN.
+
+    `domain` KANONIK bicimde yazilir (bkz. kanonik_domain)."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return False
     try:
@@ -90,7 +113,7 @@ async def create_pending_audit(job_id: str, audit_type: str, domain: str, user_i
                 f"{SUPABASE_URL}/rest/v1/audits",
                 headers=_headers(),
                 json={"id": job_id, "user_id": user_id, "type": audit_type,
-                      "domain": domain, "status": "queued", "credits_spent": 0},
+                      "domain": kanonik_domain(domain), "status": "queued", "credits_spent": 0},
                 timeout=10,
             )
             return r.status_code in (200, 201)
