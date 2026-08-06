@@ -70,6 +70,10 @@
       "destination": "/rehber/geoni-taramasi-nasil-calisir.html"
     },
     {
+      "source": "/rehber/ai-botlari-robots-txt",
+      "destination": "/rehber/ai-botlari-robots-txt.html"
+    },
+    {
       "source": "/guides/ai-visibility-tools",
       "destination": "/guides/ai-visibility-tools.html"
     },

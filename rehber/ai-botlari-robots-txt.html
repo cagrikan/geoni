@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Botları Listesi ve robots.txt İzinleri (2026) — GEONI Rehber</title>
+<meta name="description" content="GPTBot, ClaudeBot, PerplexityBot, Google-Extended ve diğerleri: hangi bot kimin, ne için gelir, robots.txt'e uyar mı. Kopyalayıp yapıştırabileceğiniz izin bloğu ve erişimi doğrulama yöntemi.">
+<link rel="canonical" href="https://geoni.ai/rehber/ai-botlari-robots-txt">
+<link rel="alternate" hreflang="tr" href="https://geoni.ai/rehber/ai-botlari-robots-txt">
+<link rel="alternate" hreflang="x-default" href="https://geoni.ai/rehber/ai-botlari-robots-txt">
+<link rel="icon" href="/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/rehber.css">
+<script src="/theme-toggle.js"></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "AI Botları Listesi ve robots.txt İzinleri (2026)",
+      "description": "Başlıca AI tarayıcıları, ne için geldikleri, robots.txt'e uyup uymadıkları ve kopyalanabilir izin bloğu.",
+      "author": { "@type": "Organization", "name": "GEONI", "url": "https://geoni.ai" },
+      "publisher": { "@id": "https://geoni.ai/#organization" },
+      "datePublished":"2026-08-06","dateModified":"2026-08-06","mainEntityOfPage": "https://geoni.ai/rehber/ai-botlari-robots-txt",
+      "inLanguage": "tr"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Hangi AI botlarına izin vermeliyim?",
+          "acceptedAnswer": { "@type": "Answer", "text": "AI aramada görünmek istiyorsanız arama amaçlı gelen botlara izin verin: GPTBot ve OAI-SearchBot (OpenAI), ClaudeBot ve Claude-SearchBot (Anthropic), PerplexityBot (Perplexity), Google-Extended (Google'ın üretken yüzeyleri). Yalnızca eğitim verisi toplayan CCBot gibi botları kapatmak isteyip istemediğiniz ayrı bir karardır ve arama görünürlüğünüzü doğrudan etkilemez." }
+        },
+        {
+          "@type": "Question",
+          "name": "robots.txt'te AI botunu engellersem ne olur?",
+          "acceptedAnswer": { "@type": "Answer", "text": "O motorun cevaplarında kaynak olarak görünme ihtimaliniz büyük ölçüde ortadan kalkar. Model sayfanızı getiremezse içeriğinizin kalitesi bir şey değiştirmez. AI aramada görünmeme şikayetlerinin en yaygın teknik sebebi budur ve içerik düzenlemesiyle çözülmez." }
+        },
+        {
+          "@type": "Question",
+          "name": "Kullanıcı tetikli botlar robots.txt'e uyar mı?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Hayır. ChatGPT-User, Perplexity-User ve Google-Agent gibi, bir kişinin isteği üzerine tek bir sayfayı getiren botlar tasarım gereği robots.txt kurallarına bakmaz; çünkü tarayıcı değil, kullanıcı adına yapılan tekil bir istektir. Bunları robots.txt ile engelleyemezsiniz; gerekiyorsa sunucu tarafında erişim denetimi kullanılır." }
+        },
+        {
+          "@type": "Question",
+          "name": "robots.txt'imin doğru çalıştığını nasıl doğrularım?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Dosyanın siteniz.com/robots.txt adresinden düz metin olarak açıldığını görün, sonra sayfanızı bot user-agent'ıyla isteyip 200 döndüğünü kontrol edin. Sayfanız yalnızca JavaScript ile çiziliyorsa 200 dönmesi yetmez: içeriğin sunucudan gelen HTML'de bulunması gerekir, çünkü AI tarayıcıları JavaScript çalıştırmaz." }
+        },
+        {
+          "@type": "Question",
+          "name": "llms.txt de eklemeli miyim?",
+          "acceptedAnswer": { "@type": "Answer", "text": "İsteğe bağlıdır. Google, llms.txt dosyasının kendi arama ve üretken yüzeylerinde dikkate alınmadığını açıkça belirtiyor. Maliyeti düşük olduğu için Google dışı sistemler adına eklenebilir, ancak Google'da sıralama veya alıntılanma kaldıracı olarak sunulmamalıdır." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<nav class="nav">
+  <a href="/"><img src="/favicon.png" alt="" width="26" height="26" style="border-radius:6px">geoni</a>
+  <span class="crumb"><a href="/rehber">Rehber</a> / AI botları</span>
+</nav>
+<main>
+  <span class="eyebrow">// GEONI Rehber</span>
+  <h1>AI Botları Listesi ve robots.txt İzinleri (2026)</h1>
+  <p class="updated">Son güncelleme: 6 Ağustos 2026 · GEONI Ekibi</p>
+
+  <p class="lead">AI aramada görünmemenin <b>en yaygın teknik sebebi içerik değil erişimdir.</b> Model sayfanızı getiremiyorsa üstündeki metnin kalitesi bir şey değiştirmez. Aşağıda başlıca AI tarayıcıları, ne için geldikleri ve kopyalayıp yapıştırabileceğiniz izin bloğu var.</p>
+
+  <h2>Başlıca AI tarayıcıları</h2>
+  <div style="overflow-x:auto">
+  <table style="border-collapse:collapse;width:100%;min-width:600px;font-size:14.5px;margin:0 0 10px">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding:9px 12px;border-bottom:1px solid var(--border,#ddd)">User-agent</th>
+        <th style="text-align:left;padding:9px 12px;border-bottom:1px solid var(--border,#ddd)">Sahibi</th>
+        <th style="text-align:left;padding:9px 12px;border-bottom:1px solid var(--border,#ddd)">Ne için gelir</th>
+        <th style="text-align:left;padding:9px 12px;border-bottom:1px solid var(--border,#ddd)">robots.txt'e uyar mı</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td style="padding:9px 12px"><code>GPTBot</code></td><td style="padding:9px 12px">OpenAI</td><td style="padding:9px 12px">Tarama / model verisi</td><td style="padding:9px 12px">Evet</td></tr>
+      <tr><td style="padding:9px 12px"><code>OAI-SearchBot</code></td><td style="padding:9px 12px">OpenAI</td><td style="padding:9px 12px">Arama yüzeyi</td><td style="padding:9px 12px">Evet</td></tr>
+      <tr><td style="padding:9px 12px"><code>ChatGPT-User</code></td><td style="padding:9px 12px">OpenAI</td><td style="padding:9px 12px">Kullanıcı isteğiyle tek sayfa</td><td style="padding:9px 12px"><b>Hayır</b> (kullanıcı tetikli)</td></tr>
+      <tr><td style="padding:9px 12px"><code>ClaudeBot</code></td><td style="padding:9px 12px">Anthropic</td><td style="padding:9px 12px">Tarama</td><td style="padding:9px 12px">Evet</td></tr>
+      <tr><td style="padding:9px 12px"><code>Claude-SearchBot</code></td><td style="padding:9px 12px">Anthropic</td><td style="padding:9px 12px">Arama yüzeyi</td><td style="padding:9px 12px">Evet</td></tr>
+      <tr><td style="padding:9px 12px"><code>PerplexityBot</code></td><td style="padding:9px 12px">Perplexity</td><td style="padding:9px 12px">Arama indeksi</td><td style="padding:9px 12px">Evet</td></tr>
+      <tr><td style="padding:9px 12px"><code>Perplexity-User</code></td><td style="padding:9px 12px">Perplexity</td><td style="padding:9px 12px">Kullanıcı isteğiyle tek sayfa</td><td style="padding:9px 12px"><b>Hayır</b> (kullanıcı tetikli)</td></tr>
+      <tr><td style="padding:9px 12px"><code>Google-Extended</code></td><td style="padding:9px 12px">Google</td><td style="padding:9px 12px">Üretken yüzeyler için tercih anahtarı</td><td style="padding:9px 12px">Evet</td></tr>
+      <tr><td style="padding:9px 12px"><code>CCBot</code></td><td style="padding:9px 12px">Common Crawl</td><td style="padding:9px 12px">Açık veri kümesi</td><td style="padding:9px 12px">Evet</td></tr>
+      <tr><td style="padding:9px 12px"><code>anthropic-ai</code></td><td style="padding:9px 12px">Anthropic</td><td style="padding:9px 12px">Eski/genel tanımlayıcı</td><td style="padding:9px 12px">Evet</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="font-size:14px;color:var(--muted,#777)">Not: <code>Googlebot</code> ayrı bir tarayıcıdır ve klasik arama içindir; <code>Google-Extended</code> onu etkilemez.</p>
+
+  <h2>Kopyalanabilir izin bloğu</h2>
+  <p>Aşağıdakini <code>siteniz.com/robots.txt</code> dosyanıza ekleyin. Sonunda mutlaka sitemap satırı bulunsun — tarayıcılar sayfa listenizi oradan alır.</p>
+  <pre><code>User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-SearchBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: *
+Allow: /
+
+Sitemap: https://siteniz.com/sitemap.xml</code></pre>
+
+  <h2>Kullanıcı tetikli botlar ayrı bir sınıf</h2>
+  <p><code>ChatGPT-User</code>, <code>Perplexity-User</code> ve benzerleri, bir kişi o adresi istediği için gelir. Tarayıcı değil, <b>kullanıcı adına yapılan tekil bir istektir</b> ve tasarım gereği robots.txt kurallarına bakmazlar. Bunları robots.txt ile engelleyemezsiniz; gerçekten engellemek istiyorsanız sunucu tarafında erişim denetimi gerekir.</p>
+
+  <h2>İzin vermek tek başına yetmiyor</h2>
+  <p>200 dönmesi güzel ama yeterli değil. <b>AI tarayıcıları JavaScript çalıştırmaz.</b> Sayfanız yalnızca tarayıcıda JS ile çiziliyorsa bot boş bir kabuk görür. İçeriğin sunucudan gelen HTML'de bulunması gerekir.</p>
+  <p>Üç şeyi birlikte kontrol edin: <b>(1)</b> robots.txt izin veriyor mu, <b>(2)</b> bot user-agent'ıyla istek 200 dönüyor mu, <b>(3)</b> dönen HTML'de gerçek metin var mı.</p>
+
+  <h2>Doğrulama: iki komut</h2>
+  <p>Terminalden, bot gibi davranıp ne gördüğünü ölçebilirsiniz:</p>
+  <pre><code># 1) robots.txt açılıyor mu, düz metin mi?
+curl -s https://siteniz.com/robots.txt
+
+# 2) Bot user-agent'ıyla sayfa ne dönüyor?
+curl -s -o /dev/null -w "%{http_code}\n" \
+  -A "Mozilla/5.0 (compatible; GPTBot/1.0)" https://siteniz.com/</code></pre>
+  <p>200 dışında bir kod görüyorsanız (403, 503, yönlendirme) bot koruması ya da WAF devrededir; sağlayıcınızda AI tarayıcılarına istisna tanımlanması gerekir.</p>
+
+  <h2>llms.txt gerekli mi?</h2>
+  <p>İsteğe bağlı. Google, <code>llms.txt</code> dosyasının kendi arama ve üretken yüzeylerinde <b>dikkate alınmadığını</b> açıkça belirtiyor. Maliyeti düşük olduğu için Google dışı sistemler adına eklenebilir, ama Google'da sıralama veya alıntılanma kaldıracı olarak sunulmamalı. Ayrıntı: <a href="/rehber/llms-txt-nedir" style="color:var(--accent)">llms.txt nedir, nasıl eklenir</a>.</p>
+
+  <h2>Sık sorulan sorular</h2>
+  <div class="faq">
+    <details><summary>Hepsine izin vermek zorunda mıyım?</summary><p>Hayır. Arama amaçlı botlara izin vermek AI görünürlüğü için yeterlidir; yalnızca eğitim verisi toplayan botları kapatmak ayrı bir tercihtir ve arama görünürlüğünüzü doğrudan etkilemez.</p></details>
+    <details><summary>Engellersem içeriğim korunur mu?</summary><p>robots.txt bir erişim denetimi değil, bir nezaket protokolüdür. Ona uyan botları durdurur; uymayanları ve kullanıcı tetikli istekleri durdurmaz.</p></details>
+    <details><summary>Değişiklik ne zaman etkili olur?</summary><p>Botlar robots.txt'i önbelleğe alır; genellikle gün mertebesinde yansır. Sayfaların cevaplarda görünmesi ise ayrıca tarama ve indeksleme süresi ister.</p></details>
+  </div>
+
+  <div class="also">
+    <h3>Bu rehberdeki diğer yazılar</h3>
+    <ul>
+      <li><a href="/rehber/markam-chatgptde-gorunmuyor">Markanız ChatGPT'de neden görünmüyor?</a></li>
+      <li><a href="/rehber/ai-motorlari-karsilastirma">Dört AI motoru neden farklı cevap veriyor?</a></li>
+      <li><a href="/rehber/geoni-taramasi-nasil-calisir">GEONI taraması nasıl çalışır?</a></li>
+    </ul>
+  </div>
+
+  <div class="cta">
+    <h2>Botlar sitenizi okuyabiliyor mu, ölçelim</h2>
+    <p>GEONI taraması robots.txt kurallarınızı, bot erişiminizi ve sayfanın sunucudan gelen HTML'inde gerçek metin olup olmadığını kontrol eder; ardından dört AI motorunda nerede durduğunuzu gösterir. İlk taramanız ücretsiz.</p>
+    <a href="https://app.geoni.ai">Ücretsiz Tara →</a>
+  </div>
+</main>
+<footer>
+  <span>© 2026 geoni — Generative Engine Optimization</span>
+  <a href="/rehber">Rehber</a>
+  <a href="/privacy">Gizlilik</a>
+  <a href="/terms">Şartlar</a>
+</footer>
+</body>
+</html>
