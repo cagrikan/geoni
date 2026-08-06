@@ -412,7 +412,7 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = '',
             if not pre_user or await get_credit_balance(pre_user) < WEB_SCAN_COST:
                 jobs_store[job_id].update({"status": "failed", "error": "insufficient_credits"})
                 if sqs_enabled():
-                    await update_audit_status(job_id, "failed")
+                    await update_audit_status(job_id, "failed", error="insufficient_credits")
                 logger.warning(f"Private audit {job_id} reddedildi: yetersiz bakiye / auth")
                 return
 
@@ -533,7 +533,7 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = '',
             if not charged:
                 jobs_store[job_id].update({"status": "failed", "error": "insufficient_credits"})
                 if sqs_enabled():
-                    await update_audit_status(job_id, "failed")
+                    await update_audit_status(job_id, "failed", error="deduct_failed")
                 logger.warning(f"Private audit {job_id}: dusum basarisiz, teslim iptal")
                 return
             # SQS modunda 'queued' satiri onceden acildi (user_id=None ile,
@@ -560,7 +560,7 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = '',
         jobs_store[job_id]["status"] = "failed"
         jobs_store[job_id]["error"] = str(e)
         if sqs_enabled():
-            await update_audit_status(job_id, "failed")
+            await update_audit_status(job_id, "failed", error=f"{type(e).__name__}: {e}")
     finally:
         if slot_acquired:
             release_scan_slot()
@@ -639,7 +639,7 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
             if not pre_user2 or await get_credit_balance(pre_user2) < _bedel2:
                 brand_checks_store[job_id].update({"status": "failed", "error": "insufficient_credits"})
                 if sqs_enabled():
-                    await update_audit_status(job_id, "failed")
+                    await update_audit_status(job_id, "failed", error="insufficient_credits")
                 logger.warning(f"Private brand check {job_id} reddedildi: yetersiz bakiye / auth")
                 return
 
@@ -1056,7 +1056,7 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
                                 "ic_dogrulama": _ic_dogrulama_taramasi(http_request)})
         except Exception as e:
             logger.error(f"SQS enqueue failed for {job_id}: {e}")
-            await update_audit_status(job_id, "failed")
+            await update_audit_status(job_id, "failed", error=f"enqueue_failed: {type(e).__name__}")
             raise ApiHata(503, "tarama_baslatilamadi")
         logger.info(f"Audit job {job_id} queued to SQS for {request.domain} (ip={client_ip})")
         return AuditResponse(job_id=job_id, status="queued", estimated_time=300)

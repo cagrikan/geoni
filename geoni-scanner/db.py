@@ -99,14 +99,29 @@ async def create_pending_audit(job_id: str, audit_type: str, domain: str, user_i
         return False
 
 
-async def update_audit_status(job_id: str, status: str, result: dict = None, score=None) -> None:
+async def update_audit_status(job_id: str, status: str, result: dict = None, score=None,
+                              error: str | None = None) -> None:
     """Kosan isin durumunu audits satirina isler (SQS modunda). Sessizce
-    loglar — durum guncellemesi taramayi asla dusurmemeli."""
+    loglar — durum guncellemesi taramayi asla dusurmemeli.
+
+    `error`: BASARISIZ taramanin sebebi. 2026-08-06'da olculdu — bes basarisizlik
+    yolunun besinde de sebep yalnizca bellekteki `jobs_store`'a yaziliyordu,
+    veritabanina HIC gitmiyordu. App Runner bosta kalinca surec yeniden basliyor
+    ve `jobs_store` sifirlaniyor; geriye "status=failed, result_json=NULL" kaliyor
+    ve sebep bir daha ogrenilemiyor (cagricakir.com.tr'nin 4 Agustos'taki iki
+    basarisizliginda tam olarak bu oldu). Artik sebep satira yaziliyor.
+
+    NOT: `result_json`'a yalnizca kompakt bir hata nesnesi konur. Tuketiciler
+    (harvest, content_decay, oz-gelisim) `status=eq.complete` suzuyor, bu yuzden
+    bu satirlari zaten okumuyorlar."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return
     patch: dict = {"status": status}
     if result is not None:
         patch["result_json"] = result
+    elif error and status in ("failed", "error"):
+        patch["result_json"] = {"error": str(error)[:500],
+                                "failed_at": datetime.now(timezone.utc).isoformat()}
     if score is not None:
         patch["score"] = score
     if status in ("complete", "failed"):
