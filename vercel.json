@@ -62,6 +62,10 @@
       "destination": "/rehber/ai-gorunurluk-hizmeti-verenler.html"
     },
     {
+      "source": "/rehber/ai-motorlari-karsilastirma",
+      "destination": "/rehber/ai-motorlari-karsilastirma.html"
+    },
+    {
       "source": "/guides/ai-visibility-tools",
       "destination": "/guides/ai-visibility-tools.html"
     },
