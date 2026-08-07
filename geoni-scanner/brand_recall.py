@@ -1779,8 +1779,29 @@ async def check_brand_recall(
                 _cap = int(os.environ.get("GROK_WEB_DAILY_CAP", "5") or "5")
             except ValueError:
                 _cap = 5
-            if _cap <= 0 or await count_provider_calls_today("grok_web") < _cap:
+
+            # 🪤 TAVAN HER CAGRIDA KONTROL EDILIR, TARAMA BASINA DEGIL.
+            # Eskiden kontrol burada BIR KEZ yapiliyor ve `_ask_grok_web` oldugu
+            # gibi geciliyordu; oysa SOV her SORGU icin ayri cagiriyor (~5 sorgu
+            # = 5 cagri). Iki tarama es zamanli baslarsa (SCAN_CONCURRENCY=2)
+            # ikisi de sayaci 0 gorup geciyor ve gun TAM IKI KATI cagri yiyor.
+            # Olculdu (2026-08-07): 5 Agustos 10 cagri, 2 Agustos 9 — tavan 5.
+            # Diger tum gunler tam 5, yani tek tarama kostugunda tavan tutuyordu;
+            # kacak yalniz es zamanlilikta olusuyordu. Maliyet etkisi: gunluk
+            # ~$0,50 yerine ~$1,00 (grok_web ~$0,10/cagri).
+            #
+            # Cozum: sarmalayici her cagridan ONCE sayaci yeniden okur. Yaris
+            # penceresi bir taramanin tamamindan (~2-5 dk) tek cagriya (~sn)
+            # duser. Tam atomik degil (DB'de rezervasyon yok) ama asim en fazla
+            # es zamanli cagri sayisi kadar olur, tarama sayisi kadar degil.
+            if _cap <= 0:
                 grok_web_fn_ = _ask_grok_web
+            elif await count_provider_calls_today("grok_web") < _cap:
+                async def _grok_web_tavanli(*a, **kw):
+                    if await count_provider_calls_today("grok_web") >= _cap:
+                        return None      # gun doldu -> sessizce atla (golge-mod)
+                    return await _ask_grok_web(*a, **kw)
+                grok_web_fn_ = _grok_web_tavanli
         result_ = await check_share_of_voice(
             name, sov_topic_, _ask_perplexity_sourced, _ask_aux,
             ask_google=_ask_gemini_grounded if GOOGLE_API_KEY else None,
