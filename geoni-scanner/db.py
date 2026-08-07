@@ -5095,7 +5095,6 @@ async def get_provider_remaining_balances() -> list:
     saglayicilar dahil (yanlis alarma girmemek icin). [{provider,remaining,...}]."""
     try:
         from openai_admin import get_openai_cost_summary
-        from anthropic_admin import get_anthropic_cost_summary
         from gemini_admin import get_gemini_cost_summary
         from perplexity_admin import get_perplexity_cost_summary
         from grok_admin import get_grok_cost_summary
@@ -5104,11 +5103,22 @@ async def get_provider_remaining_balances() -> list:
         return []
     providers = {
         "openai": get_openai_cost_summary,
-        "anthropic": get_anthropic_cost_summary,
         "gemini": get_gemini_cost_summary,
         "perplexity": get_perplexity_cost_summary,
         "grok": get_grok_cost_summary,  # xAI prepaid; topup loglanmissa dusuk-bakiye uyarisina girer
     }
+    # 🪤 ANTHROPIC BILEREK DISARIDA (2026-08-07'de olculdu).
+    # `organizations/cost_report` **TUM ORGANIZASYONUN** maliyetini donduruyor ve
+    # anahtar/workspace bazinda AYRISMIYOR: `group_by[]=workspace_id` hepsinde
+    # `null`, `group_by[]=api_key_id` ise 400 veriyor (yalniz `description` =
+    # model kirilimi destekleniyor). Yani GEONI'nin tarama harcamasi, ayni
+    # organizasyondaki diger kullanimla (Claude Code oturumlari) toplaniyor.
+    # Olculdu: 5 Agustos'ta org maliyeti $223.80 iken GEONI o gun neredeyse hic
+    # tarama yapmadi. Sonuc: kalan = topup(90) - harcama(binlerce) -> her zaman
+    # esigin altinda -> KURUCUYA HER GUN YANLIS "bakiye $5 alti" MAILI.
+    # Dogru sayiyi uretemedigimiz bir seyi izliyormus gibi yapmiyoruz; Anthropic
+    # bakiyesi kurucunun konsolundan takip edilir. Ayrisma mumkun olursa
+    # (workspace ayrimi ya da api_key_id grubu) geri eklenir.
     fx = await _get_usd_try_rate()   # canli USD/TRY (gunde bir cekilir, cache'li)
     out = []
     for name, fn in providers.items():
