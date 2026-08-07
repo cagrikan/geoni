@@ -125,5 +125,23 @@
   <a href="/privacy">Privacy</a>
   <a href="/terms">Terms</a>
 </footer>
+<script>
+// Gelen UTM, sayfadaki SABIT rehber etiketini EZER — dogru oncelik bu:
+// gercek kampanya kaynagi > organik rehber. Rehber CTA'lari
+// `utm_source=rehber&utm_medium=<slug>` ile sabit etiketli (organik donusum
+// olculebilsin diye); ama biri bu sayfayi /r/<kampanya> linkiyle paylasirsa
+// ziyaretcinin GERCEK kaynagi kaybolmamali. Ana sayfadaki syncAppLinks ile
+// ayni is, rehberlere uyarlanmis hali.
+(function () {
+  var g = new URLSearchParams(location.search);
+  var k = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+  if (!k.some(function (x) { return g.get(x); })) return;   // gelen etiket yok -> sabit kalsin
+  document.querySelectorAll('a[href^="https://app.geoni.ai"]').forEach(function (a) {
+    var u = new URL(a.href);
+    k.forEach(function (x) { if (g.get(x)) u.searchParams.set(x, g.get(x)); });
+    a.href = u.toString();
+  });
+})();
+</script>
 </body>
 </html>
