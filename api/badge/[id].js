@@ -35,6 +35,20 @@ export default async function handler(req, res) {
     res.statusCode = 404;
     return res.end('badge available for scores 70+');
   }
+  // 🪤 OKUNAMAYAN SITEYE MUHUR VERILMEZ (2026-08-08'de olculdu).
+  // Rozet bizim kamuya acik guvenilirlik isaretimiz. Eskiden YALNIZ skora
+  // bakiliyordu: botlari engelleyen, sitesinden TEK SAYFA bile okuyamadigimiz
+  // bir alan 80 alip muhuru gomebiliyordu. Son 30 gunde 70+ alan 19 taramanin
+  // 5'i (%26,3) sifir sayfaydi. Lig ayni butunluk kuralini zaten uyguluyordu
+  // (MIN_CRAWLED_PAGES = 3, db.py); rozet uygulamiyordu — tek kural, iki farkli
+  // yer. `pages` alani share payload'ina bu yuzden eklendi.
+  // Geriye donuk: alan YOKSA (eski/onbellekli yanit) engellemeyiz — mevcut
+  // rozetler kirilmasin; yalniz KESIN olarak yetersiz oldugunda reddedilir.
+  const MIN_PAGES = 3;
+  if (typeof data.pages === 'number' && data.pages < MIN_PAGES) {
+    res.statusCode = 404;
+    return res.end('badge requires a readable site (we could not crawl it)');
+  }
   const color = '#2fbd84';
   const label = esc((data.label || '').slice(0, 30));
 

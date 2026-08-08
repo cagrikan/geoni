@@ -1346,6 +1346,18 @@ async def transaction_exists(external_id: str) -> bool:
     return False
 
 
+def _tam_sayi_ya_da_none(v):
+    """Sayiya cevir; cevrilemiyorsa None. `0` ile `yok` ayrimi ROZET icin
+    hayati: 0 = "gezemedik" (muhur verilmez), None = "bilmiyoruz" (engellenmez).
+    `int(v or 0)` bu ayrimi yok ederdi."""
+    if v is None:
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
 async def get_share_result(job_id: str) -> dict | None:
     """Viral paylasim karti (geoni.ai/s/<id>) icin minimal, kisisel-verisiz
     alan seti. id tahmin edilemez uuid oldugu icin public erisim kabul; email,
@@ -1374,6 +1386,27 @@ async def get_share_result(job_id: str) -> dict | None:
                 "score": row.get("score"),
                 "recognized": recognized,
                 "created_at": row.get("created_at"),
+                # 🪤 ROZET ICIN SART: kac sayfa GERCEKTEN gezilebildi.
+                # Rozet ("AI Friendly · Checked by GEONI") bizim kamuya acik
+                # guvenilirlik isaretimiz. Eskiden yalniz skora bakiliyordu:
+                # botlari engelleyen, HIC OKUYAMADIGIMIZ bir site 80 alip mühürü
+                # sitesine gömebiliyordu. Olculdu (2026-08-08): son 30 gunde 70+
+                # alan 19 taramanin 5'i (%26,3) SIFIR sayfa. Lig bunu zaten
+                # eliyordu (MIN_CRAWLED_PAGES=3), rozet elemiyordu — ayni
+                # butunluk kurali iki yerde farkli uygulaniyordu.
+                #
+                # 🪤 KAYNAK `total_pages`, `len(pages)` DEGIL — ikisi ayni sey
+                # degil: `pages` dizisi 20'de kirpiliyor (olculdu: heroku.com
+                # total_pages=26, dizi=20). Lig de `result_json->>total_pages`
+                # okuyor; ayni kural ayni alandan okunmali.
+                #
+                # 🪤 YOKSA None DONER, 0 DEGIL. Retention eski satirlarin
+                # result_json'unu tamamen NULL'luyor (olculdu 2026-08-08:
+                # armut.com 77 ve cagricakir.com.tr 75'te anahtar bile yok).
+                # 0 donseydi duzgun taranmis ESKI sitelerin rozeti kirilirdi;
+                # None "bilmiyoruz" demek ve rozet ucu bunu engellemiyor.
+                # Alan EKLENDI, hicbiri kaldirilmadi -> eski istemciler kirilmaz.
+                "pages": _tam_sayi_ya_da_none(rj.get("total_pages")),
             }
     except Exception as e:
         logger.warning(f"get_share_result error: {e}")
