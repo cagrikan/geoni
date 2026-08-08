@@ -59,9 +59,17 @@ jobs:
       # :latest App Runner/ECS'in cektigi tag (davranis ayni). Ek olarak :$SHA
       # immutable tag: her deploy'un tam kaynagi ECR'de kalir -> gerektiginde
       # belirli bir surume rollback + denetim izi (mutable :latest yaris riski).
+      # 🔴 KOSAN COMMIT IMAJA YAZILIR (2026-08-08). /health onu geri veriyor
+      # (main.py:_kosan_commit). Dagitim dogrulamasi bugune kadar App Runner'in
+      # `Status == RUNNING` degerine bakiyordu; o yalnizca "bir surum ayakta"
+      # demek, "ITTIGIM commit ayakta" DEMEK DEGIL — bir izleyici tam bu yuzden
+      # yanlis "hala bozuk" raporu yazdi. Damga ASIL DAGITIM YOLUNDA (burada)
+      # olmak zorunda: deploy.sh/CodeBuild yalniz elle kullanilan yedek yol.
+      # Dogrulama: curl -s https://api.geoni.ai/health | grep "$(git rev-parse HEAD)"
       - name: Build Docker image
         run: |
           cd geoni-scanner
+          echo "${{ github.sha }}" > SURUM.txt
           REPO=016031489497.dkr.ecr.eu-central-1.amazonaws.com/geoni-scanner
           docker build --platform linux/amd64 -t $REPO:latest -t $REPO:${{ github.sha }} .
 
