@@ -1,3 +1,14 @@
+import { fetchZamanAsimli } from './_lib/istek.js';
+
+/* Model cagrisi ne kadar bekler?
+   Bu uc saglayici SIRAYLA deneniyor (ilk taniyan kazanir), yani en kotu durumda
+   uc bekleme ust uste biner. Fonksiyon o kadar yasamaz -- takilirsa ziyaretci
+   gecit hatasi gorur. Model yaniti normalde 1-3 sn; 10 sn hem genis pay birakir
+   hem uc denemenin toplamini fonksiyon tavaninin altinda tutar.
+   Sinir dolunca askFn null doner ve kademe SIRADAKI modele gecer -- zaten var
+   olan "o modeli atla" dali; yeni bir hata yolu acilmiyor. */
+const MODEL_MS = 10000;
+
 const SYSTEM_INSTRUCTION = `Kullanıcı bir şirket, kurum veya kişi adı verir. Bunu tanıyıp tanımadığını JSON formatında belirt. Sadece JSON döndür, başka hiçbir şey yazma:
 {"known": true/false, "name": "tam isim", "description": "bir cümle açıklama (biliniyorsa, yoksa null)", "website": "website URL (biliniyorsa, yoksa null)", "sector": "sektör (biliniyorsa, yoksa null)"}`;
 
@@ -13,7 +24,7 @@ function parseJsonResult(text) {
 async function askClaude(prompt) {
   if (!process.env.ANTHROPIC_API_KEY) return null;
   try {
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
+    const r = await fetchZamanAsimli('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -26,7 +37,7 @@ async function askClaude(prompt) {
         system: SYSTEM_INSTRUCTION,
         messages: [{ role: 'user', content: prompt }],
       }),
-    });
+    }, MODEL_MS);
     if (!r.ok) return null;
     const data = await r.json();
     return parseJsonResult(data.content?.[0]?.text);
@@ -38,7 +49,7 @@ async function askClaude(prompt) {
 async function askChatGPT(prompt) {
   if (!process.env.OPENAI_API_KEY) return null;
   try {
-    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+    const r = await fetchZamanAsimli('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -53,7 +64,7 @@ async function askChatGPT(prompt) {
           { role: 'user', content: prompt },
         ],
       }),
-    });
+    }, MODEL_MS);
     if (!r.ok) return null;
     const data = await r.json();
     return parseJsonResult(data.choices?.[0]?.message?.content);
@@ -65,14 +76,14 @@ async function askChatGPT(prompt) {
 async function askGemini(prompt) {
   if (!process.env.GOOGLE_API_KEY) return null;
   try {
-    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
+    const r = await fetchZamanAsimli('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GOOGLE_API_KEY },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: `${SYSTEM_INSTRUCTION}\n\n${prompt}` }] }],
         generationConfig: { maxOutputTokens: 300, temperature: 0.3 },
       }),
-    });
+    }, MODEL_MS);
     if (!r.ok) return null;
     const data = await r.json();
     const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join(' ');

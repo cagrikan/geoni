@@ -29,6 +29,13 @@ const ZIYARETCI_UCLARI = [
   './api/s/[id].js',
   './api/ai-friendly.js',
   './api/r/[slug].js',
+  // Marka tanima aracinin ucu: uc modeli SIRAYLA deniyor, beklemeler ust uste
+  // biner -> zaman asimi olmadan fonksiyon tavani asilir.
+  './api/lookup.js',
+  // Form uclari: yanit e-posta gonderimine bagli, gonderim takilirsa form
+  // "gonderiliyor"da kalir.
+  './api/audit-email.js',
+  './api/creator-apply.js',
 ];
 
 for (const yol of ZIYARETCI_UCLARI) {

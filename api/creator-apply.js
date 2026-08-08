@@ -1,3 +1,5 @@
+import { fetchZamanAsimli } from './_lib/istek.js';
+
 import crypto from 'node:crypto';
 
 /**
@@ -63,7 +65,7 @@ function newVerifyToken() {
 async function sendVerifyMail(to, handle, raw) {
   if (!process.env.RESEND_API_KEY) return;
   const link = `https://geoni.ai/api/creator-verify?token=${encodeURIComponent(raw)}`;
-  await fetch('https://api.resend.com/emails', {
+  await fetchZamanAsimli('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -96,7 +98,7 @@ function sb(path, init = {}) {
 async function notify(row) {
   if (!process.env.RESEND_API_KEY) return;
   const l = (k, v) => `<p style="margin:4px 0"><b>${k}:</b> ${esc(v) || '—'}</p>`;
-  await fetch('https://api.resend.com/emails', {
+  await fetchZamanAsimli('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({

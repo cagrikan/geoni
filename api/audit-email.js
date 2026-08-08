@@ -1,3 +1,5 @@
+import { fetchZamanAsimli } from './_lib/istek.js';
+
 import crypto from 'node:crypto';
 
 const ALLOWED_ORIGINS = new Set([
@@ -142,7 +144,7 @@ export default async function handler(req, res) {
     };
     if (replyTo) body.reply_to = replyTo;
 
-    const r = await fetch('https://api.resend.com/emails', {
+    const r = await fetchZamanAsimli('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
