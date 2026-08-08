@@ -1382,7 +1382,9 @@ async def get_share_result(job_id: str) -> dict | None:
             return {
                 "job_id": row["id"],
                 "type": atype,
-                "label": row.get("domain") if atype == "web" else row.get("name"),
+                # 🪤 GOSTERIM bicimi: kanonik punycode degil (bkz. gorunen_domain).
+                "label": (gorunen_domain(row.get("domain")) if atype == "web"
+                          else row.get("name")),
                 "score": row.get("score"),
                 "recognized": recognized,
                 "created_at": row.get("created_at"),
@@ -1526,7 +1528,8 @@ async def get_ai_friendly_list(limit: int = 10) -> list:
                 except (TypeError, ValueError):
                     continue
                 if d not in best or row["score"] > best[d]["score"]:
-                    best[d] = {"domain": d, "score": row["score"], "seal": row["score"] >= 70,
+                    # 🪤 Ligde de GOSTERIM bicimi: vitrin insanlarin okudugu yer.
+                    best[d] = {"domain": gorunen_domain(d), "score": row["score"], "seal": row["score"] >= 70,
                                "job_id": row["id"], "date": row.get("created_at", "")[:10]}
             ranked = sorted(best.values(), key=lambda x: -x["score"])[:limit]
             return ranked
@@ -3158,6 +3161,24 @@ async def mark_ticket_submitted(ticket_id: int) -> bool:
 # geçerlidir (kişi/marka/sosyal ismi/@handle için anlamsız — bkz. normalize_domain).
 FOUNDATION_SERVICE_KEYS = ("llms_robots", "schema_setup")
 DOMAIN_ONLY_SERVICE_KEYS = FOUNDATION_SERVICE_KEYS  # aynı küme
+
+
+def gorunen_domain(d: str | None) -> str:
+    """Kanonik (punycode) alan adını KULLANICIYA GÖSTERİLECEK hâle çevirir.
+
+    🪤 2026-08-08'de yarım kalan işin ikinci yarısı: IDN desteği eklenince
+    `örnek.com` yazan kullanıcı raporunda, paylaşım kartında ve ligde
+    `xn--rnek-4qa.com` görüyordu — teknik olarak doğru, insan için anlamsız.
+    DEPOLAMA punycode kalır (DNS ve kanonik anahtar öyle ister); yalnız
+    GÖSTERİM çözülür. Çözülemeyen değer olduğu gibi döner, patlamaz.
+    """
+    d = (d or "").strip()
+    if not d.startswith("xn--") and ".xn--" not in d:
+        return d
+    try:
+        return d.encode("ascii").decode("idna")
+    except (UnicodeError, UnicodeDecodeError):
+        return d
 
 
 def normalize_domain(target: str) -> str | None:

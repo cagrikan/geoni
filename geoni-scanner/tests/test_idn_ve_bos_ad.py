@@ -80,3 +80,31 @@ def test_bosluktan_ibaret_ad_da_ELENIYOR():
 def test_gerekce_kaynakta_YAZILI():
     assert "min_length ZORUNLU" in KAYNAK
     assert "IDN" in (Path(__file__).resolve().parent.parent / "db.py").read_text(encoding="utf-8")
+
+
+# ── 3) GÖSTERİM biçimi (2026-08-08, yarım kalan işin ikinci yarısı) ────────
+# IDN desteği eklenince `örnek.com` yazan kullanıcı raporunda ve paylaşım
+# kartında `xn--rnek-4qa.com` görüyordu — teknik olarak doğru, insan için
+# anlamsız. Depolama punycode KALIR (DNS + kanonik anahtar), gösterim çözülür.
+def test_gorunen_domain_punycode_cozuyor():
+    assert db.gorunen_domain("xn--rnek-4qa.com") == "örnek.com"
+    assert db.gorunen_domain("xn--ili-emlak-z2bb.com.tr") == "şişli-emlak.com.tr"
+
+
+def test_gorunen_domain_ASCII_ve_bozuk_degeri_BOZMAZ():
+    assert db.gorunen_domain("geoni.ai") == "geoni.ai"
+    assert db.gorunen_domain("") == ""
+    assert db.gorunen_domain(None) == ""
+    # 🪤 "xn--" ile baslamayan degere hic dokunulmaz
+    assert db.gorunen_domain("bozuk--xn.com") == "bozuk--xn.com"
+
+
+def test_paylasim_etiketi_ve_lig_GOSTERIM_bicimini_kullaniyor():
+    kaynak = (Path(__file__).resolve().parent.parent / "db.py").read_text(encoding="utf-8")
+    assert 'gorunen_domain(row.get("domain"))' in kaynak, "paylasim etiketi ham domain gosteriyor"
+    assert '"domain": gorunen_domain(d)' in kaynak, "lig ham domain gosteriyor"
+
+
+def test_DEPOLAMA_hala_punycode():
+    """🪤 Kanonik anahtar DEĞİŞMEMELİ: normalize hâlâ punycode üretir."""
+    assert db.normalize_domain("örnek.com") == "xn--rnek-4qa.com"
