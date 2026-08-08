@@ -29,11 +29,29 @@ def test_anthropic_bakiye_izlemesine_GIRMEZ():
 
 
 def test_ayrisabilen_saglayicilar_IZLENIYOR():
-    """openai/gemini/perplexity/grok anahtarları GEONI'ye özel — onlar kalmalı."""
+    """openai/gemini/perplexity anahtarları GEONI'ye özel — onlar kalmalı."""
     i = BLOK.index("providers = {")
     sozluk = BLOK[i:BLOK.index("}", i)]
-    for p in ("openai", "gemini", "perplexity", "grok"):
+    for p in ("openai", "gemini", "perplexity"):
         assert f'"{p}"' in sozluk, f"{p} izlemeden düşmüş"
+
+
+def test_grok_bakiye_izlemesine_GIRMEZ():
+    """🪤 Kurucu kararı 2026-08-08: "grok kapansın". XAI_API_KEY hem ECS
+    `geoni-scan-worker` rev 8'den hem App Runner'dan kaldırıldı — Grok artık
+    tek çağrı yapmıyor. KULLANMADIĞIMIZ bir sağlayıcının bakiyesini izlemek,
+    tanımı gereği her gün tetikleyen bir yanlış alarm üretir; Anthropic'te
+    aynen yaşandı. Geri açılırsa (XAI_API_KEY + GROK_WEB_SHADOW=1) satır da
+    geri gelir."""
+    i = BLOK.index("providers = {")
+    sozluk = BLOK[i:BLOK.index("}", i)]
+    assert '"grok"' not in sozluk
+    assert "GROK BILEREK DISARIDA" in BLOK, "gerekçe kaynakta yazılı olmalı"
+
+
+def test_olu_import_KALMADI():
+    """Kullanılmayan `grok_admin` importu bırakılırsa 'hâlâ izleniyor' sanılır."""
+    assert "from grok_admin import" not in BLOK
 
 
 def test_gerekce_kaynakta_YAZILI():

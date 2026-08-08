@@ -5130,7 +5130,6 @@ async def get_provider_remaining_balances() -> list:
         from openai_admin import get_openai_cost_summary
         from gemini_admin import get_gemini_cost_summary
         from perplexity_admin import get_perplexity_cost_summary
-        from grok_admin import get_grok_cost_summary
     except Exception as e:
         logger.warning(f"remaining balance import error: {e}")
         return []
@@ -5138,8 +5137,16 @@ async def get_provider_remaining_balances() -> list:
         "openai": get_openai_cost_summary,
         "gemini": get_gemini_cost_summary,
         "perplexity": get_perplexity_cost_summary,
-        "grok": get_grok_cost_summary,  # xAI prepaid; topup loglanmissa dusuk-bakiye uyarisina girer
     }
+    # 🪤 GROK BILEREK DISARIDA (2026-08-08). Kurucu karari: "grok kapansin".
+    # xAI anahtari (XAI_API_KEY) hem ECS `geoni-scan-worker` rev 8'den hem de
+    # App Runner'dan KALDIRILDI; `_ask_grok` ve `_ask_grok_web` artik hicbir
+    # cagri yapmiyor. Kullanmadigimiz bir saglayicinin bakiyesini izlemek,
+    # tanimi geregi her gun tetikleyen bir YANLIS ALARM uretir — Anthropic'te
+    # aynen yasandi ve kurucu "mail geliyor 5 dolarin altinda diye" dedi.
+    # Gercek uyarilari gurultuye bogmamak icin cikarildi.
+    # Grok geri acilirsa (XAI_API_KEY + GROK_WEB_SHADOW=1) bu satir da geri gelir:
+    #     "grok": get_grok_cost_summary,
     # 🪤 ANTHROPIC BILEREK DISARIDA (2026-08-07'de olculdu).
     # `organizations/cost_report` **TUM ORGANIZASYONUN** maliyetini donduruyor ve
     # anahtar/workspace bazinda AYRISMIYOR: `group_by[]=workspace_id` hepsinde
