@@ -1,6 +1,8 @@
 // Viral paylasim sayfasi: geoni.ai/s/<jobId>
 // Sunucuda render edilir ki LinkedIn/X/WhatsApp on-izleme botlari OG
 // etiketlerini gorebilsin (SPA olsa gormezlerdi). Skor karti + tarama CTA'si.
+import { fetchZamanAsimli } from '../_lib/istek.js';
+
 const API = 'https://api.geoni.ai';
 
 function esc(s) {
@@ -18,9 +20,9 @@ export default async function handler(req, res) {
 
   let data = null;
   try {
-    const r = await fetch(`${API}/api/share/${encodeURIComponent(id)}`);
+    const r = await fetchZamanAsimli(`${API}/api/share/${encodeURIComponent(id)}`);
     if (r.ok) data = await r.json();
-  } catch { /* API erisilemezse ana sayfaya duser */ }
+  } catch { /* API erisilemezse ya da takilirsa ana sayfaya duser */ }
 
   if (!data || typeof data.score !== 'number') {
     res.writeHead(302, { Location: 'https://geoni.ai' });

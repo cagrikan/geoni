@@ -1,6 +1,8 @@
 // Gomulebilir skor rozeti: geoni.ai/badge/<jobId>  (SVG)
 // Kullanici sitesine koyar: <a href="https://geoni.ai/s/ID"><img src="https://geoni.ai/badge/ID"></a>
 // Ona statü gostergesi, bize her musteri sitesinden kalici backlink + marka izi.
+import { fetchZamanAsimli } from '../_lib/istek.js';
+
 const API = 'https://api.geoni.ai';
 
 function esc(s) {
@@ -19,7 +21,9 @@ export default async function handler(req, res) {
 
   let data = null;
   try {
-    const r = await fetch(`${API}/api/share/${encodeURIComponent(id)}`);
+    // Zaman asimli: ust akis takilirsa fonksiyon platform tarafindan kesilir ve
+    // musteri sitesindeki rozet KIRIK RESIM olur. Takilma yerine hizli 404.
+    const r = await fetchZamanAsimli(`${API}/api/share/${encodeURIComponent(id)}`);
     if (r.ok) data = await r.json();
   } catch { /* asagida 404 */ }
 

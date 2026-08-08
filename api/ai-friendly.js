@@ -3,6 +3,8 @@
 // 70+ satirlarda. Devlerin de barajin altinda kaldigi gorunsun diye liste
 // 70 sartina bagli degil — bu, muhru daha da degerli kilar. Kisi/marka
 // taramalari listelenmez (yalnizca siteler).
+import { fetchZamanAsimli } from './_lib/istek.js';
+
 const API = 'https://api.geoni.ai';
 
 function esc(s) {
@@ -25,9 +27,9 @@ function jsonld(obj) {
 export default async function handler(req, res) {
   let items = [];
   try {
-    const r = await fetch(`${API}/api/ai-friendly`);
+    const r = await fetchZamanAsimli(`${API}/api/ai-friendly`);
     if (r.ok) items = (await r.json()).items || [];
-  } catch { /* bos liste ile render */ }
+  } catch { /* erisilemez ya da takilirsa bos liste ile render */ }
 
   const q = String(req.query.lang || '').toLowerCase();
   const accept = String(req.headers['accept-language'] || '').toLowerCase();

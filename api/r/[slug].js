@@ -2,6 +2,8 @@
 // hedef URL'e, UTM parametreleri eklenmis sekilde yonlendirir (orn.
 // Instagram bio linki icin). Kampanyalar Supabase'deki "campaigns"
 // tablosunda tutulur, admin panelden yonetilir.
+import { fetchZamanAsimli } from '../_lib/istek.js';
+
 const FALLBACK_URL = 'https://geoni.ai';
 
 export default async function handler(req, res) {
@@ -15,9 +17,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const r = await fetch(
+    const r = await fetchZamanAsimli(
       `${supabaseUrl}/rest/v1/campaigns?slug=eq.${encodeURIComponent(slug)}&select=*&limit=1`,
-      { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
+      { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } },
+      4000
     );
     const rows = r.ok ? await r.json() : [];
     const campaign = rows[0];
@@ -31,13 +34,15 @@ export default async function handler(req, res) {
     // bekletilmeyen (awaitsiz) bir istek serverless ortamda tamamlanmadan
     // kesilebilir, bu yuzden yonlendirmeden once bekleniyor - hata olursa
     // da yonlendirmeyi engellemesin diye ayrica yakalaniyor.
+    // Sayim bir ISTATISTIKTIR, yonlendirme URUNDUR: takilirsa 3 sn'de kesilir
+    // ve kullanici beklemeden hedefe gider.
     try {
-      await fetch(`${supabaseUrl}/rest/v1/rpc/increment_campaign_click`, {
+      await fetchZamanAsimli(`${supabaseUrl}/rest/v1/rpc/increment_campaign_click`, {
         method: 'POST',
         headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ p_slug: slug }),
-      });
-    } catch { /* click sayimi basarisiz olsa da yonlendirme devam etsin */ }
+      }, 3000);
+    } catch { /* click sayimi basarisiz/zaman asimi olsa da yonlendirme devam etsin */ }
 
     const target = new URL(campaign.target_url || FALLBACK_URL);
     if (campaign.utm_source) target.searchParams.set('utm_source', campaign.utm_source);

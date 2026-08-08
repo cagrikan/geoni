@@ -1,0 +1,33 @@
+name: api/ fonksiyon nobeti
+
+# NEDEN: api/ altindaki Vercel fonksiyonlarinin hicbir testi yoktu ve iki sinif
+# kusur ancak CANLIDA goruluyordu:
+#   1. Goreli import'ta `.js` uzantisi unutulunca uc 500 doner.
+#   2. Ust akis cagrisinda zaman asimi olmayinca fonksiyon takilir ve ziyaretci
+#      gecit hatasi gorur — rozeti gomen musteri sitesinde KIRIK RESIM demek.
+# Ikisi de saniyeler suren bir kontrolle yakalanabiliyor.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'api/**'
+      - 'scripts/api-nobeti.mjs'
+      - 'scripts/api-nobeti.sh'
+      - '.github/workflows/api-nobeti.yml'
+  pull_request:
+    paths:
+      - 'api/**'
+      - 'scripts/api-nobeti.mjs'
+      - 'scripts/api-nobeti.sh'
+
+jobs:
+  nobet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Nobeti kos
+        run: bash scripts/api-nobeti.sh
