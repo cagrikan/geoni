@@ -495,20 +495,42 @@ async def generate_category_queries(name: str, topic: str, ask_llm, social: bool
             f'{{"soru": "...", "alan": "komsu"}}]}}'
         )
     elif social:
+        # 🔴 HEDEF TIPINE GORE SORU (2026-08-08, kurucu canlida yakaladi).
+        # Eskiden sosyal modda soru HER ZAMAN "kimi TAKIP etmeliyim" idi. Bu,
+        # hedef bir MARKA oldugunda yapisal olarak sifir uretiyor: AI o soruya
+        # dogru cevabi veriyor (icerik ureticileri, kavurucular, barista'lar) ve
+        # marka orada gecmiyor -- gecmemesi de DOGRU.
+        # Olculdu: @starbucks / nis "Kahve" -> dort motor da markayi ~85
+        # taniyor (claude 81.6, gemini 89.9, chatgpt 82.5, perplexity 88.2) ama
+        # SOV 0.0 ciktigi icin genel skor 35. Sosyal modda SOV agirligi 0.55,
+        # yani tek basina skorun yarisindan fazlasi. Dunyanin en taninan kahve
+        # markasi "35/100" gorunuyordu.
+        # Cozum: once hedefin MARKA mi ICERIK URETICISI mi oldugunu modele
+        # sordurup soruyu ona gore yazdirmak. Marka icin "en iyi X markalari",
+        # uretici icin eski "kimi takip etmeliyim".
+        # 🪤 Agirligi DUSURMEDIK: gercek bir influencer kategori sorusunda hic
+        # gecmiyorsa SOV=0 DOGRU sinyaldir; agirligi kirpmak o gercegi de
+        # susturur. Yanlis olan olcum degil, SORUYDU.
         prompt = (
-            f"'{topic}' konusuyla ilgilenen ama hicbir hesap adi BILMEYEN bir "
+            f"Hedef hesap: '{name}'. ONCE karar ver: bu bir MARKA/sirket hesabi mi, "
+            f"yoksa bir ICERIK URETICISI/kisi hesabi mi?\n"
+            f"'{topic}' konusuyla ilgilenen ama hicbir isim BILMEYEN bir "
             f"kullanicinin bir AI asistanina soracagi gercekci Turkce sorular yaz:\n"
             f"- {SOV_QUERY_COUNT} soru dogrudan '{topic}' konusundan,\n"
             f"- {SOV_ADJACENT_COUNT} soru bu konuya EN YAKIN komsu konudan (komsu konuyu kendin sec).\n"
-            f"KURAL: Her soru MUTLAKA TAKIP EDILECEK SOSYAL MEDYA HESABI/KISI onersin — "
-            f"'kimi takip etmeliyim', 'en iyi Instagram/TikTok/YouTube hesaplari kimler', "
-            f"'hangi hesaplari onerirsin' gibi. 'Nasil yapilir' gibi yontem sorulari YAZMA. "
-            f"Sorularin icinde HICBIR hesap adi gecmesin.\n"
+            f"KURAL — hedef tipine GORE sor:\n"
+            f"  * MARKA/sirket ise: sorular MARKA/URUN/MEKAN onersin — 'en iyi {topic} "
+            f"markalari hangileri', 'nereden almaliyim', 'hangi zinciri onerirsin' gibi. "
+            f"'Kimi takip etmeliyim' sorusu YAZMA; markalar o soruya gecmez.\n"
+            f"  * ICERIK URETICISI/kisi ise: sorular TAKIP EDILECEK HESAP onersin — "
+            f"'kimi takip etmeliyim', 'en iyi Instagram/TikTok/YouTube hesaplari kimler' gibi.\n"
+            f"'Nasil yapilir' gibi yontem sorulari HICBIR durumda YAZMA. "
+            f"Sorularin icinde HICBIR isim/marka/hesap adi gecmesin.\n"
             f"CESITLILIK: sorularin en az 1'i alternatif/karsilastirma niyetli olsun "
             f"('X yerine kimi takip etmeli', 'A ile B'den hangisi'); soruda lokasyon/sehir "
             f"geciyorsa en az 1 soru yerel olsun.\n"
-            f'Yalnizca su JSON formatinda dondur: '
-            f'{{"komsu_alan": "...", "queries": [{{"soru": "...", "alan": "birincil"}}, '
+            f'Yalnizca su JSON formatinda dondur (hedef_tipi: "marka" ya da "uretici"): '
+            f'{{"hedef_tipi": "...", "komsu_alan": "...", "queries": [{{"soru": "...", "alan": "birincil"}}, '
             f'{{"soru": "...", "alan": "komsu"}}]}}'
         )
     else:
