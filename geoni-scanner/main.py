@@ -1340,7 +1340,16 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
         )
 
     # Anti-abuse (Turnstile): sosyal tarama anonim + ucretsiz -> asil abuse vektoru.
-    if not _is_internal_scan(http_request):
+    # 🔴 MOBIL MUAFIYETI ZORUNLU (2026-08-08, kurucu ekran goruntusuyle bildirdi):
+    # Mobil uygulamada Turnstile WIDGET'I YOK, dolayisiyla istek hicbir zaman
+    # token tasimiyor. Token-siz istekler IP basina 2'lik "grace"i (turnstile.py
+    # _NOTOKEN_GRACE) tuketince sosyal tarama KALICI olarak 403 doner ve
+    # kullanici "Dogrulama basarisiz. Lutfen sayfayi yenileyip tekrar deneyin."
+    # uyarisini gorur — uygulamada yenilenecek bir sayfa bile yok.
+    # `/api/audit/quick` (satir ~978) ve `/api/brand-check` (~1275) bu muafiyeti
+    # ZATEN tasiyordu; yalniz sosyal atlanmisti. Yani mobilde Site/Kisi/Marka
+    # calisirken Sosyal sekmesi kirikti.
+    if not _is_internal_scan(http_request) and not await _mobile_exempt(http_request):
         await enforce_turnstile(request.turnstile_token, client_ip, request.lang or "tr", "social-check")
 
     handle = request.handle.strip().lstrip("@")
