@@ -62,3 +62,26 @@ def test_gerekce_kaynakta_YAZILI():
     """Silinirse biri 'sosyalde neden muafiyet var' deyip kaldırır."""
     assert "MOBIL MUAFIYETI ZORUNLU" in KAYNAK
     assert "_NOTOKEN_GRACE" in KAYNAK
+
+
+# ── IP hız sınırı muafiyeti: ÜÇ uçta da GERÇEK kullanıcı kimliği ──────────
+# 2026-08-08: sosyal uç `_mobile_ip_exempt(..., None)` çağırıyordu — user_id
+# yerine SABİT None. Web (`user_id_rl`) ve marka (`user_id_rl2`) gerçek
+# kullanıcıyı geçiriyordu. Sonuç: GİRİŞ YAPMIŞ mobil kullanıcı sosyal taramada
+# IP muafiyetini alamıyor, operatör NAT'i (CGNAT) yüzünden başkasının
+# taraması onu 429'a sokuyordu — muafiyetin var olma sebebi tam da buydu.
+def test_ip_muafiyetine_SABIT_None_gecilmiyor():
+    kotu = [ln.strip() for ln in SATIRLAR
+            if "_mobile_ip_exempt(" in ln and ln.strip().endswith("None))")]
+    assert not kotu, f"user_id yerine sabit None geçiliyor: {kotu}"
+
+
+def test_UC_UCTA_DA_ip_muafiyeti_cagriliyor():
+    n = sum(1 for ln in SATIRLAR if "skip_ip=await _mobile_ip_exempt(" in ln)
+    assert n == 3, f"beklenen 3 çağrı, bulunan {n}"
+
+
+def test_sosyal_kimligi_IKI_KEZ_sorgulamiyor():
+    """Kimlik hız sınırından önce bir kez çözülür; ikinci sorgu israf."""
+    assert KAYNAK.count("sc_uid_erken = await get_user_id_from_token") == 1
+    assert "sc_uid = sc_uid_erken" in KAYNAK

@@ -1328,10 +1328,21 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
     Marka-recall motorunu yeniden kullanır — giriş gerekmez (site audit gibi
     ücretsiz + rate-limitli + e-posta ile lead capture). Kredi düşülmez."""
     client_ip = get_client_ip(http_request)
+    # 🔴 KULLANICI KIMLIGI HIZ SINIRINDAN ONCE COZULUR (2026-08-08).
+    # Eskiden `_mobile_ip_exempt(..., None)` cagriliyordu: user_id yerine SABIT
+    # None. Oysa web (`user_id_rl`) ve marka (`user_id_rl2`) gercek kullaniciyi
+    # geciriyor. Sonuc: GIRIS YAPMIS mobil kullanici sosyal taramada IP
+    # muafiyetini ALAMIYORDU. Operator NAT'i (CGNAT) binlerce mobil kullaniciyi
+    # tek IP'de topladigi icin bir kisinin taramasi otekileri 429'a sokuyordu —
+    # tam da bu muafiyetin onlemek icin var oldugu durum.
+    # Kimlik zaten asagida (`sc_uid`) cozuluyordu; sirasi one alindi.
+    _sc_auth = http_request.headers.get("Authorization", "")
+    _sc_token = _sc_auth.replace("Bearer ", "") if _sc_auth.startswith("Bearer ") else ""
+    sc_uid_erken = await get_user_id_from_token(_sc_token) if _sc_token else None
     try:
         if not _is_internal_scan(http_request):
             enforce_audit_rate_limits(client_ip, request.email, request.handle,
-                                          skip_ip=await _mobile_ip_exempt(http_request, request.device_token, None))
+                                          skip_ip=await _mobile_ip_exempt(http_request, request.device_token, sc_uid_erken))
     except RateLimitExceeded as e:
         raise HTTPException(
             status_code=429,
@@ -1364,7 +1375,8 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
     # var, kapi `False or False` ile geciyordu (free_scan.py:100-117). Login
     # zorunlu olunca hesap katmani devreye giriyor ve kural gercekten tutuyor.
     if not _is_internal_scan(http_request):
-        sc_uid = await get_user_id_from_token(token) if token else None
+        # Yukarida bir kez cozuldu; ikinci kez sorgu atmaya gerek yok.
+        sc_uid = sc_uid_erken
         if not sc_uid:
             raise HTTPException(status_code=401,
                                 detail=_login_required_message(request.lang or "tr", "social"))
