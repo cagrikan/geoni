@@ -881,9 +881,20 @@ async def _mobile_ip_exempt(http_request, device_token: Optional[str],
     ATTEST_ENFORCE=1 olunca bu fonksiyon gereksizlesir; o zaman muafiyet zaten
     yalnizca imzayla verilir.
     """
+    # 🔴 GIRIS YAPMIS KULLANICI IP KOVASINA HIC GIRMEZ (kurucu, 2026-08-08:
+    # "kontor alan adama neden ip kisiti koyuyoruz"). Muafiyet eskiden MOBIL
+    # olmaya bagliydi: `_mobile_exempt` False donunce giris yapmis bir WEB
+    # kullanicisi — kontor satin almis olsa bile — komsulariyla ayni IP kovasini
+    # paylasiyordu ve baskasinin taramasi yuzunden 429 yiyordu.
+    # IP kovasi ANONIM istismar icindir. Kimligi olan kullanicinin zaten
+    # (a) kendi kimlik kovasi var (enforce_audit_rate_limits ikinci argumani),
+    # (b) ucretsiz-hak kapisi var, (c) taramasi TOKEN yakiyor.
+    # Yani "sinirsiz bedava" riski yok; IP kovasi burada yalniz zarar veriyordu.
+    if user_id:
+        return True
     if not await _mobile_exempt(http_request):
         return False
-    if device_token or user_id:
+    if device_token:
         return True
     try:
         attested, _ = await attest.check_request(http_request)

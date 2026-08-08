@@ -85,3 +85,23 @@ def test_sosyal_kimligi_IKI_KEZ_sorgulamiyor():
     """Kimlik hız sınırından önce bir kez çözülür; ikinci sorgu israf."""
     assert KAYNAK.count("sc_uid_erken = await get_user_id_from_token") == 1
     assert "sc_uid = sc_uid_erken" in KAYNAK
+
+
+# ── Giriş yapmış kullanıcı IP kovasına girmez (kurucu, 2026-08-08) ────────
+# "kontör alan adama neden IP kısıtı koyuyoruz" — haklıydı: muafiyet MOBİL
+# olmaya bağlıydı; giriş yapmış bir WEB kullanıcısı (kontör satın almış olsa
+# bile) komşularıyla aynı IP kovasını paylaşıyor ve başkasının taraması
+# yüzünden 429 yiyordu. IP kovası ANONİM istismar içindir.
+def test_giris_yapmis_kullanici_IP_kovasindan_muaf():
+    i = KAYNAK.index("async def _mobile_ip_exempt")
+    govde = KAYNAK[i:i + 2200]
+    mobil = govde.index("if not await _mobile_exempt(http_request):")
+    kimlik = govde.index("if user_id:")
+    assert kimlik < mobil, "kimlik kontrolü mobil kapısından SONRA — web kullanıcısı yine elenir"
+
+
+def test_kimliksiz_istek_hala_IP_kovasinda():
+    """🪤 Muafiyeti genişletirken korumayı tamamen kaldırmadığımızı kilitler."""
+    i = KAYNAK.index("async def _mobile_ip_exempt")
+    govde = KAYNAK[i:i + 2200]
+    assert "return False" in govde, "kimliksiz/mobil olmayan istek için eleme yok"
