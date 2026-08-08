@@ -1259,6 +1259,13 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
     if not _is_internal_scan(http_request) and not await _mobile_exempt(http_request):
         await enforce_turnstile(request.turnstile_token, client_ip, request.lang or "tr", "brand-check")
 
+    # 🪤 job_id BURADA uretilir, asagida DEGIL: ucretsiz-hak kapisi
+    # `_bekleyen_hak[job_id]` yaziyor ve eskiden atama ondan SONRA geliyordu ->
+    # UnboundLocalError. Ucretsiz hakla yapilan HER marka/kisi taramasi 500 donuyordu
+    # (2026-08-04'ten 2026-08-08'e kadar canlida; tarayici "Load failed" diyor).
+    # Kapiyi gecen kullanici hic sonuc alamiyordu.
+    job_id = str(uuid.uuid4())
+
     # Ucretsiz-tarama tavani (cihaz + hesap). private zaten 10 kredi, premium muaf.
     # `not is_premium2` kaldirildi — bkz. web taramasindaki ayni duzeltme.
     if not request.private and not _is_internal_scan(http_request):
@@ -1273,7 +1280,6 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
             })
         _bekleyen_hak[job_id] = (user_id_rl2, request.device_token, gate_info)  # basarida yakilir
 
-    job_id = str(uuid.uuid4())
     brand_checks_store[job_id] = {"job_id": job_id, "status": "queued", "name": request.name, "topic": request.topic, "created_at": datetime.now().isoformat(), "result": None, "error": None}
     brand_check_events[job_id] = asyncio.Queue()
     auth_header = http_request.headers.get("Authorization", "")
@@ -1344,6 +1350,11 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
         # kullanici sosyal tarama kosturmaya devam ederdi.
         if await is_user_suspended(sc_uid):
             raise HTTPException(status_code=403, detail=_suspended_message(request.lang or "tr"))
+        # 🪤 job_id BURADA uretilir, asagida DEGIL: ucretsiz-hak kapisi
+        # `_bekleyen_hak[job_id]` yaziyor ve eskiden atama ondan SONRA geliyordu ->
+        # UnboundLocalError. Ucretsiz hakla yapilan HER sosyal tarama 500 donuyordu
+        # (2026-08-04'ten 2026-08-08'e kadar canlida; tarayici "Load failed" diyor).
+        job_id = str(uuid.uuid4())
         # `if not sc_premium` KALDIRILDI (kor denetim 2026-08-04): kapiyi premium
         # icin de cagiriyoruz, karari gate veriyor (icinde bakiye kontrolu var).
         # Eskiden bakiyesi biten premium sinirsiz bedava sosyal tarama cekiyordu.
@@ -1369,7 +1380,6 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
         social=True,    # SOV rakiplerini @handle/hesap olarak cikar
         force=bool(getattr(request, "force", False)),  # A2-1: 24h cache'i atla
     )
-    job_id = str(uuid.uuid4())
     brand_checks_store[job_id] = {"job_id": job_id, "status": "queued", "name": brand_req.name, "topic": brand_req.topic, "created_at": datetime.now().isoformat(), "result": None, "error": None}
     brand_check_events[job_id] = asyncio.Queue()
     background_tasks.add_task(run_brand_check_job, job_id, brand_req, token)
