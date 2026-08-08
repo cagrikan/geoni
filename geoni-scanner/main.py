@@ -1404,6 +1404,16 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
     # bir kere" kurali uygulanamiyordu — anonim istekte ne hesap ne cihaz jetonu
     # var, kapi `False or False` ile geciyordu (free_scan.py:100-117). Login
     # zorunlu olunca hesap katmani devreye giriyor ve kural gercekten tutuyor.
+    # 🔴 job_id KOSULUN DISINDA uretilir (2026-08-08, IKINCI kez yakalandi).
+    # Ilk duzeltmede atamayi ucretsiz-hak kapisinin USTUNE aldim ama YINE
+    # `if not _is_internal_scan(...)` blogunun ICINDE biraktim. Sonuc: ucretsiz
+    # hakli kullanici yolu duzeldi, IC TARAMA yolu ayni UnboundLocalError'a
+    # dusmeye devam etti -> her ic sosyal tarama 500. Ic tarama izleme/lig/
+    # dogrulama yolu oldugu icin bu sessizce kaybolan bir yetenekti: hata
+    # kullaniciya degil BIZE vuruyordu, o yuzden kimse gormedi.
+    # Kural: job_id her dalda TANIMLI olmali; kosullu atama yok.
+    job_id = str(uuid.uuid4())
+
     if not _is_internal_scan(http_request):
         # Yukarida bir kez cozuldu; ikinci kez sorgu atmaya gerek yok.
         sc_uid = sc_uid_erken
@@ -1416,11 +1426,6 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
         # kullanici sosyal tarama kosturmaya devam ederdi.
         if await is_user_suspended(sc_uid):
             raise HTTPException(status_code=403, detail=_suspended_message(request.lang or "tr"))
-        # 🪤 job_id BURADA uretilir, asagida DEGIL: ucretsiz-hak kapisi
-        # `_bekleyen_hak[job_id]` yaziyor ve eskiden atama ondan SONRA geliyordu ->
-        # UnboundLocalError. Ucretsiz hakla yapilan HER sosyal tarama 500 donuyordu
-        # (2026-08-04'ten 2026-08-08'e kadar canlida; tarayici "Load failed" diyor).
-        job_id = str(uuid.uuid4())
         # `if not sc_premium` KALDIRILDI (kor denetim 2026-08-04): kapiyi premium
         # icin de cagiriyoruz, karari gate veriyor (icinde bakiye kontrolu var).
         # Eskiden bakiyesi biten premium sinirsiz bedava sosyal tarama cekiyordu.
