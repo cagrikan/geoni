@@ -242,7 +242,8 @@ async def get_audit_row(job_id: str) -> dict | None:
         return None
 
 
-async def _maliyeti_sifirla(client, job_id: str, user_id: str, amount: int, ne: str):
+async def _maliyeti_sifirla(client, job_id: str, user_id: str, amount: int, ne: str,
+                            sebep: str = "bilinmiyor"):
     """Dusum BASARISIZ olduysa satirdaki maliyeti gercege cek (0).
 
     Satir dusumden ONCE yaziliyor ve bu sira bilincli: once dusup sonra yazsak,
@@ -251,11 +252,22 @@ async def _maliyeti_sifirla(client, job_id: str, user_id: str, amount: int, ne: 
     hayali maliyet (bkz. 2026-07-12'deki 3 satir). O yuzden dusum sonucuna gore
     satiri DUZELTIYORUZ.
 
-    ERROR seviyesinde loglanir: Sentry'de gorunmesi gerekir, cunku bu noktaya
-    gelinmesi ya bakiye yaris kosulu ya da DB hatasi demektir."""
-    logger.error(
-        "kontor dusumu BASARISIZ (%s): job=%s user=%s amount=%s - satirdaki "
-        "maliyet 0'a cekiliyor", ne, job_id, user_id, amount,
+    🔴 SEVIYE SEBEBE GORE (2026-08-08). Eskiden her durum ERROR'du ve Sentry
+    "kontor dusumu BASARISIZ" diye bagiriyordu — oysa vakalarin cogu BEKLENEN:
+    ucretsiz hakla tarama yapan kullanicinin bakiyesi zaten 0, dusum elbette
+    tutmuyor, satir 0'a cekiliyor ve kullanici bedava taramasini aliyor. Tam
+    olmasi gereken sey. Bu gurultu bugun bir yanlis alarma yol acti: sabah
+    Sentry'deki bu satiri gercek kusur sanip kovaladim, sonunda kendi test
+    hesabim cikti.
+
+    Artik: bakiye yetmemesi -> INFO (beklenen ucretsiz tarama).
+    Diger her sebep (HTTP hatasi, istisna, yapilandirma) -> ERROR; onlar
+    gercekten yaris kosulu ya da DB hatasi demektir ve gorulmeli."""
+    beklenen = sebep in ("insufficient", "insufficient_credits", "yetersiz")
+    (logger.info if beklenen else logger.error)(
+        "kontor dusulmedi (%s, sebep=%s): job=%s user=%s amount=%s - satirdaki "
+        "maliyet 0'a cekiliyor%s", ne, sebep, job_id, user_id, amount,
+        " [beklenen: ucretsiz hak]" if beklenen else "",
     )
     try:
         r = await client.patch(
@@ -317,8 +329,11 @@ async def save_audit(job_id: str, request_data: dict, result: dict, user_id: str
                 if user_id and deduct:
                     # Donus DEGERI kontrol edilir: False donerse satir "5 kredi
                     # harcandi" demeye devam edemez.
-                    if not await deduct_credits(user_id, WEB_SCAN_COST, "web_audit", job_id):
-                        await _maliyeti_sifirla(client, job_id, user_id, WEB_SCAN_COST, "web_audit")
+                    dusuldu, sebep = await deduct_credits_detayli(
+                        user_id, WEB_SCAN_COST, "web_audit", job_id)
+                    if not dusuldu:
+                        await _maliyeti_sifirla(client, job_id, user_id, WEB_SCAN_COST,
+                                                "web_audit", sebep)
                 # (C) Ayni hedefin ESKI tam raporunu hemen sadelestir (skor kalir).
                 if user_id:
                     asyncio.create_task(run_audit_retention(user_id))
@@ -394,8 +409,11 @@ async def save_brand_check(job_id: str, request_data: dict, result: dict, user_i
             if r.status_code in (200, 201, 204):
                 logger.info(f"Brand check {job_id} saved to Supabase")
                 if user_id and deduct:
-                    if not await deduct_credits(user_id, credits, f"{entity_type}_check", job_id):
-                        await _maliyeti_sifirla(client, job_id, user_id, credits, f"{entity_type}_check")
+                    dusuldu, sebep = await deduct_credits_detayli(
+                        user_id, credits, f"{entity_type}_check", job_id)
+                    if not dusuldu:
+                        await _maliyeti_sifirla(client, job_id, user_id, credits,
+                                                f"{entity_type}_check", sebep)
                 # (C) Ayni kisi/marka'nin ESKI tam raporunu hemen sadelestir.
                 if user_id:
                     asyncio.create_task(run_audit_retention(user_id))
@@ -522,6 +540,14 @@ async def get_pinned_sov_queries(name: str, entity_type: str, lang: str, topic: 
 
 
 async def deduct_credits(user_id: str, amount: int, description: str, reference_id: str = None) -> bool:
+    """Geriye donuk imza: yalniz basari/basarisizlik. Sebep de gerekiyorsa
+    `deduct_credits_detayli` kullanilir (bkz. _maliyeti_sifirla)."""
+    ok, _ = await deduct_credits_detayli(user_id, amount, description, reference_id)
+    return ok
+
+
+async def deduct_credits_detayli(user_id: str, amount: int, description: str,
+                                 reference_id: str = None) -> tuple[bool, str]:
     """Kontor duser ve defter satirini yazar. TEK transaction, atomik.
 
     🔴 Neden tek RPC: eski surum uc ayri HTTP cagrisi yapiyordu (defterde var mi
@@ -541,7 +567,7 @@ async def deduct_credits(user_id: str, amount: int, description: str, reference_
     dusulmustu). False = dusulmedi; cagiran maliyeti 0 yazmali.
     """
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-        return False
+        return False, "yapilandirma_yok"
     try:
         async with httpx.AsyncClient() as client:
             r = await client.post(
@@ -560,12 +586,12 @@ async def deduct_credits(user_id: str, amount: int, description: str, reference_
                     "spend_credits_atomic HATA: user=%s amount=%s ref=%s %s %s",
                     user_id, amount, reference_id, r.status_code, r.text[:200],
                 )
-                return False
+                return False, "http_hatasi"
 
             sonuc = r.json() or {}
             if sonuc.get("applied"):
                 logger.info(f"Deducted {amount} credits from user {user_id}")
-                return True
+                return True, "dusuldu"
 
             neden = sonuc.get("reason")
             if neden == "duplicate":
@@ -575,15 +601,18 @@ async def deduct_credits(user_id: str, amount: int, description: str, reference_
                     "deduct_credits idempotent no-op: reference_id=%s zaten dusuldu",
                     reference_id,
                 )
-                return True
+                return True, "duplicate"
 
             logger.warning(
                 "Kontor dusulemedi (%s): user=%s amount=%s", neden, user_id, amount,
             )
-            return False
+            # `neden` genellikle "insufficient" — bakiye yetmiyor. Bu, ucretsiz
+            # hakla yapilan taramada BEKLENEN sonuctur; cagiran ayirt edebilsin.
+            return False, str(neden or "bilinmiyor")
     except Exception as e:
         logger.warning(f"Credit deduction error: {e}")
-    return False
+        return False, "istisna"
+    return False, "bilinmiyor"
 
 
 _token_cache: dict[str, tuple[str | None, float]] = {}

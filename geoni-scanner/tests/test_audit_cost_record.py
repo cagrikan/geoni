@@ -59,11 +59,15 @@ def _kur(monkeypatch, dusum_sonucu=True):
     monkeypatch.setattr(db, "SUPABASE_SERVICE_KEY", "svc")
     monkeypatch.setattr(db.httpx, "AsyncClient", lambda *a, **k: FakeClient(kutu, yamalar))
 
+    # 2026-08-08: kayit yolu artik `deduct_credits_detayli` cagiriyor — sebebi de
+    # doner (bakiye yetmemesi ucretsiz-hak yolunda BEKLENEN, log seviyesi ona gore).
+    # Sahte yalniz eski adi yamalasaydi gercek fonksiyon kosardi ve test sessizce
+    # baska bir seyi olcerdi.
     async def sahte_dusum(user_id, amount, reason, reference_id=None):
         dusumler.append((user_id, amount, reason))
-        return dusum_sonucu
+        return dusum_sonucu, ("dusuldu" if dusum_sonucu else "insufficient")
 
-    monkeypatch.setattr(db, "deduct_credits", sahte_dusum)
+    monkeypatch.setattr(db, "deduct_credits_detayli", sahte_dusum)
     # Yan etkiler (retention / referans odulu) bu testin konusu degil.
     monkeypatch.setattr(db, "run_audit_retention", lambda *a, **k: asyncio.sleep(0))
     monkeypatch.setattr(db, "grant_referral_reward", lambda *a, **k: asyncio.sleep(0))
@@ -180,3 +184,53 @@ def test_baslangic_verilmezse_created_at_yazilmaz(monkeypatch):
     asyncio.run(db.save_brand_check("job-eski", {"type": "person", "name": "X"},
                                     {"score": 50}, user_id="u1"))
     assert "created_at" not in kutu[0]
+
+
+# ── Sentry gurultusu: BEKLENEN dusum basarisizligi ERROR degildir ────────
+# 🔴 YASANDI (2026-08-08): Sentry'de "kontor dusumu BASARISIZ" satirini gercek
+# bir kusur sanip kovaladim; sonunda kendi test hesabim cikti. Vakalarin cogu
+# BEKLENEN: ucretsiz hakla tarama yapan kullanicinin bakiyesi zaten 0, dusum
+# elbette tutmuyor, satir 0'a cekiliyor ve kullanici bedava taramasini aliyor —
+# tam olmasi gereken sey. Her durumu ERROR basmak, Sentry'yi kurt masaliyla
+# doldurup GERCEK yaris kosullarini gorunmez yapiyordu.
+KAYNAK_DB = (Path(__file__).resolve().parent.parent / "db.py").read_text(encoding="utf-8") \
+    if "Path" in dir() else None
+
+
+def _db_kaynak():
+    from pathlib import Path as _P
+    return (_P(__file__).resolve().parent.parent / "db.py").read_text(encoding="utf-8")
+
+
+def test_bakiye_yetmemesi_ERROR_basmaz():
+    s = _db_kaynak()
+    i = s.index("async def _maliyeti_sifirla")
+    govde = s[i:i + 2600]
+    assert "logger.info if beklenen else logger.error" in govde, \
+        "seviye sebebe gore secilmiyor — her durum ERROR"
+    assert '"insufficient"' in govde
+
+
+def test_DIGER_sebepler_hala_ERROR():
+    """🪤 Gurultuyu kismarken gercek kusuru da susturmayalim: HTTP hatasi,
+    istisna, yapilandirma eksigi -> yaris kosulu ya da DB hatasi demektir."""
+    s = _db_kaynak()
+    i = s.index("async def _maliyeti_sifirla")
+    govde = s[i:i + 2600]
+    assert "else logger.error" in govde
+
+
+def test_sebep_LOGA_yaziliyor():
+    """Sebep gorunmezse bir sonraki sefer yine tahmin yurutulur."""
+    s = _db_kaynak()
+    i = s.index("async def _maliyeti_sifirla")
+    assert "sebep=%s" in s[i:i + 2600]
+
+
+def test_eski_imza_KORUNDU():
+    """`deduct_credits` bool donmeye devam etmeli — private yollar onu cagiriyor."""
+    s = _db_kaynak()
+    i = s.index("async def deduct_credits(")
+    govde = s[i:i + 500]
+    assert "-> bool:" in govde
+    assert "ok, _ = await deduct_credits_detayli(" in govde
