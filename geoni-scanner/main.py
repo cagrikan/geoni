@@ -149,7 +149,12 @@ class AuditResponse(BaseModel):
 
 class BrandCheckRequest(BaseModel):
     type: Optional[str] = "person"   # "person" | "brand"
-    name: str = Field(..., max_length=200)  # asiri-uzun girdi savunmasi (QA 2026-07-19)
+    # 🪤 min_length ZORUNLU (2026-08-08 fonksiyonel testinde bulundu): yalnız
+    # max_length vardı, yani BOŞ ad ("" ya da "  ") şemayı geçiyordu. Ücretsiz
+    # hak kapısını da geçerse dört AI motoruna boş isim sorulur ve ~$0,31 boşa
+    # yanardı; kullanıcı da anlamsız bir rapor alırdı. Kırpılmış uzunluk 2 —
+    # web arayüzündeki sosyal alanla (`h.length < 2`) aynı eşik.
+    name: str = Field(..., min_length=2, max_length=200)  # asiri-uzun girdi savunmasi (QA 2026-07-19)
     topic: Optional[str] = Field("", max_length=500)
     role: Optional[str] = ""
     company: Optional[str] = ""
@@ -165,6 +170,16 @@ class BrandCheckRequest(BaseModel):
     force: Optional[bool] = False  # A2-1: 24h cache'i atla, yeniden olc
     device_token: Optional[str] = None  # Apple DeviceCheck (ucretsiz-tarama cihaz tavani)
     turnstile_token: Optional[str] = None  # Cloudflare Turnstile (anti-abuse); soft-rollout
+
+    @field_validator("name")
+    @classmethod
+    def _ad_bos_olamaz(cls, v: str) -> str:
+        # min_length ham dizeyi sayar: "  " (iki boşluk) uzunluk sınavını GEÇER.
+        # Kırpılmış hâli sınanır ve kırpılmış değer döndürülür.
+        v = (v or "").strip()
+        if len(v) < 2:
+            raise ValueError("name en az 2 karakter olmalı")
+        return v
 
 class BrandCheckResponse(BaseModel):
     job_id: str

@@ -3173,6 +3173,18 @@ def normalize_domain(target: str) -> str | None:
     if t.startswith("www."):
         t = t[4:]
     t = t.strip(".")
+    # 🇹🇷 IDN (Türkçe karakterli) alan adları: "örnek.com" gibi hedefler ASCII
+    # desenine takılıp None dönüyordu -> uç 422 "Geçersiz web sitesi adresi"
+    # veriyordu ve ö/ü/ç/ş/ğ/ı içeren HİÇBİR site taranamıyordu (2026-08-08'de
+    # fonksiyonel testte ölçüldü). Pazar Türkiye; bu doğrudan müşteri kaybı.
+    # DNS zaten punycode ister, dolayısıyla dönüştürüp devam etmek hem doğru
+    # hem de kanonik anahtarı tekilleştirir ("örnek.com" ve "xn--rnek-...com"
+    # aynı satıra düşer). Dönüştürülemeyen girdi eskisi gibi None döner.
+    if any(ord(c) > 127 for c in t):
+        try:
+            t = t.encode("idna").decode("ascii").lower()
+        except (UnicodeError, UnicodeDecodeError):
+            return None
     if "." in t and re.match(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", t):
         return t
     return None
