@@ -32,3 +32,5 @@ User-agent: *
 Allow: /
 
 Sitemap: https://geoni.ai/sitemap.xml
+# Turkce rehberler ayri sitemap (2026-08-08): kesif onceligi icin, bkz. sitemap-rehber.xml
+Sitemap: https://geoni.ai/sitemap-rehber.xml

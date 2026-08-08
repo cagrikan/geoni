@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- TURKCE REHBERLER — AYRI SITEMAP (2026-08-08)
+     NEDEN: 10 Turkce rehberin 7'si Google'da "URL bilinmiyor", 3'u
+     "Discovered - currently not indexed"; INGILIZCE ikizleri indeksli.
+     Ayni gun eklenmis iki sayfadan biri indeksli digeri hic kesfedilmemis.
+     Ana sitemap 27 URL tasiyor ve Google'in onu tarama onceligi dusuk kaliyor.
+     AYRI ve KUCUK bir sitemap, Search Console API'siyle YENIDEN GONDERILINCE
+     (sitemaps.submit — desteklenen, tarayici gerektirmeyen yontem) Google'a
+     "su 10 URL'i yeniden degerlendir" sinyali verir.
+     priority 0.9 + changefreq weekly: ana sitemap'teki 0.8/monthly'den daha
+     istekli, cunku bu sayfalar organik edinimin tek kaldiraci. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://geoni.ai/rehber</loc><lastmod>2026-08-06</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://geoni.ai/rehber/aeo-nedir</loc><lastmod>2026-08-08</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://geoni.ai/rehber/llms-txt-nedir</loc><lastmod>2026-08-08</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://geoni.ai/rehber/chatgpt-gorunurlugu</loc><lastmod>2026-08-08</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://geoni.ai/rehber/markam-chatgptde-gorunmuyor</loc><lastmod>2026-08-08</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://geoni.ai/rehber/geo-nedir</loc><lastmod>2026-08-08</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://geoni.ai/rehber/ai-gorunurluk-araclari</loc><lastmod>2026-08-08</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://geoni.ai/rehber/ai-gorunurluk-hizmeti-verenler</loc><lastmod>2026-08-08</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://geoni.ai/rehber/ai-motorlari-karsilastirma</loc><lastmod>2026-08-08</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://geoni.ai/rehber/geoni-taramasi-nasil-calisir</loc><lastmod>2026-08-08</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://geoni.ai/rehber/ai-botlari-robots-txt</loc><lastmod>2026-08-08</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+</urlset>
