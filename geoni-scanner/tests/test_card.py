@@ -93,3 +93,63 @@ def test_uzun_ve_bos_etiket_patlatmaz(kart):
 
 def test_ingilizce_kart_da_uretiliyor(kart):
     assert kart.render_score_card("example.com", 80, lang="en")[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SAĞ KENAR PAYI (2026-08-08'de ÜRETİMDEKİ gerçek PNG üzerinde ölçüldü)
+#
+# `sx = W - 90 - sw` idi: 90 px'lik pay YALNIZ skora ayrılıyor, "/100" onun
+# SAĞINA çiziliyordu. Canlı karttan piksel ölçümü:
+#     sol kenar boşluğu 71 px  ·  sağ kenar boşluğu 7 px   → on kat asimetri
+# Kırpılma yoktu ama kart X/LinkedIn/WhatsApp'ta paylaşılan yüz; kenara yapışık
+# metin "bozuk" görüntüsü verir.
+#
+# 🪤 Pay artık metin genişliği ÖLÇÜLEREK ayrılıyor, sabit sayıyla değil — yazı
+# tipi değişse de (üretim DejaVu, yerel fallback) boşluk korunur. Bu yüzden test
+# de sabit piksel beklemez, SİMETRİ arar.
+def test_sag_pay_metin_olculerek_ayriliyor():
+    """Kaynak kapanı: sabit `W - 90 - sw` formülü geri gelmemeli.
+
+    🪤 Yorum satırı eski formülü ALINTILIYOR (gerekçe orada yazılı), bu yüzden
+    ham `re.search(KAYNAK)` yanlış alarm verir — yalnız KOD satırlarına bakılır."""
+    kod = [ln for ln in KAYNAK.splitlines() if not ln.lstrip().startswith("#")]
+    assert not any(re.search(r"sx\s*=\s*W\s*-\s*90\s*-\s*sw", ln) for ln in kod)
+    assert "suf_w = d.textlength(suffix, font=suf_font)" in KAYNAK
+    assert "sx = W - SAG_PAY - suf_w - 6 - sw" in KAYNAK
+
+
+def test_etiket_KARAKTERLE_degil_GENISLIKLE_kirpiliyor():
+    """🪤 26 karakter ≠ 26 karakterlik genişlik ('WWWWW' vs 'iiiii'). Skor bloğu
+    sola kayınca sabit karakter sınırı etiketi skorun üstüne bindirirdi."""
+    assert not re.search(r"len\(lbl\)\s*>\s*26", KAYNAK)
+    assert "kullanilabilir = max(120, sx - 70 - 24)" in KAYNAK
+
+
+def _sag_bosluk(png_bytes):
+    from PIL import Image
+    import io
+    im = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+    W, _ = im.size
+    px = im.load()
+    bg = px[600, 200]
+    fark = lambda c: sum(abs(a - b) for a, b in zip(c, bg)) > 30  # noqa: E731
+    sag = 0
+    for y in range(200, 420):
+        for x in range(W - 1, W - 300, -1):
+            if fark(px[x, y]):
+                sag = max(sag, x)
+                break
+    return W - 1 - sag
+
+
+def test_skor_blogu_KENARA_YAPISMIYOR(kart):
+    """Her skor uzunluğunda sağ boşluk sol boşlukla (~70 px) kıyaslanabilir olmalı."""
+    for s in (7, 73, 100):
+        bosluk = _sag_bosluk(kart.render_score_card("geoni.ai", s))
+        assert bosluk >= 50, f"skor {s}: sağ boşluk {bosluk}px — kenara yapışık"
+
+
+def test_uzun_etiket_skorun_USTUNE_BINMIYOR(kart):
+    """Uzun alan adı + 3 haneli skor: en sıkışık durum."""
+    png = kart.render_score_card("cok-cok-uzun-bir-alan-adi-ornegi-burada.com.tr", 100)
+    assert _sag_bosluk(png) >= 50

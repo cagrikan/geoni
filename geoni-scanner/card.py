@@ -107,21 +107,42 @@ def render_score_card(label: str, score: float, atype: str = "web", lang: str = 
     tag = ("AI VISIBILITY" if en else "AI GÖRÜNÜRLÜK")
     d.text((72, 118), tag, font=_font(20, True), fill=(124, 134, 245))
 
-    # ad/domain (sol, kirpilmis)
+    # buyuk skor (sag) — ETIKETTEN ONCE hesaplanir, cunku etiketin kirpilacagi
+    # genislik skor blogunun sol kenarina bagli.
+    sf = _font(210, True)
+    suf_font = _font(40, True)
+    stext = str(s)
+    suffix = "/100"
+    sw = d.textlength(stext, font=sf)
+    suf_w = d.textlength(suffix, font=suf_font)
+    # 🪤 SAG PAY IKISINI BIRDEN KAPSAR (2026-08-08'de olculdu). Eskiden
+    # `sx = W - 90 - sw` idi: 90 px'lik pay YALNIZ skora ayriliyor, "/100" onun
+    # SAGINA ciziliyordu. Uretimdeki gercek PNG'de olculdu -> sol kenar bosluğu
+    # 71 px, sag kenar bosluğu 7 px: on kat asimetri. Kirpilma yoktu ama kart
+    # X/LinkedIn/WhatsApp'ta paylasilan yuz; kenara yapisik metin "bozuk"
+    # goruntusu verir. Pay artik metin genisligi OLCULEREK ayrilir, sabit
+    # sayiyla degil -> yazi tipi degisse de bosluk korunur.
+    SAG_PAY = 72                      # sol kenardaki 70-72 px ile simetrik
+    sx = W - SAG_PAY - suf_w - 6 - sw
+
+    # ad/domain (sol) — SKOR BLOGUNA GORE kirpilir.
+    # 🪤 Eskiden sabit 26 KARAKTER kirpiliyordu. Karakter sayisi genislik demek
+    # degil ("WWWWW" ile "iiiii" ayni sayida, cok farkli genislikte) ve skor
+    # blogu sola kaydigi anda 26 karakter uzerine binerdi. Artik gercek
+    # genislik olculur ve blogun soluna 24 px guvenlik bosluğu birakilir.
+    lf = _font(56, True)
     lbl = (label or "").strip()
-    if len(lbl) > 26:
-        lbl = lbl[:25] + "…"
-    d.text((70, 250), lbl, font=_font(56, True), fill=(237, 239, 245))
+    kullanilabilir = max(120, sx - 70 - 24)
+    if d.textlength(lbl, font=lf) > kullanilabilir:
+        while lbl and d.textlength(lbl + "…", font=lf) > kullanilabilir:
+            lbl = lbl[:-1]
+        lbl += "…"
+    d.text((70, 250), lbl, font=lf, fill=(237, 239, 245))
     caption = ("AI Visibility Score" if en else "AI Görünürlük Skoru")
     d.text((72, 330), caption, font=_font(28, False), fill=(155, 163, 181))
 
-    # buyuk skor (sag)
-    sf = _font(210, True)
-    stext = str(s)
-    sw = d.textlength(stext, font=sf)
-    sx = W - 90 - sw
     d.text((sx, 200), stext, font=sf, fill=color)
-    d.text((sx + sw + 6, 350), "/100", font=_font(40, True), fill=(110, 115, 145))
+    d.text((sx + sw + 6, 350), suffix, font=suf_font, fill=(110, 115, 145))
 
     # ilerleme cubugu
     bx, by, bw, bh = 70, 452, W - 140, 26
