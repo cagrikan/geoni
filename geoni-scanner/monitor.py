@@ -20,6 +20,7 @@ main.py startup'ta monitor_loop() gorevini baslatir. Bu modul main'i
 IMPORT ETMEZ (dairesel bagimlilik yok).
 """
 
+import os
 import asyncio
 import logging
 import uuid
@@ -63,6 +64,19 @@ SCORE_CHANGE_THRESHOLD = 5     # bildirim esigi (puan) — web/kisi/marka
 # iki hucreninkinden KUCUK olmali.
 SOCIAL_SCORE_CHANGE_THRESHOLD = 10
 FREE_MONITOR_DAYS = 30         # ilk ay ucretsiz; sonrasi aktif bakiye sarti
+
+# 🔴 OTOMATIK TARAMA KAPALI — KURUCU KARARI (2026-08-08: "artik otomatik tarama
+# istemiyorum"). Izleme listesindeki hedefler artik KENDILIGINDEN yeniden
+# taranmiyor. Sebep para: 11 hedef x 15 gunde bir x ~$0,31 ≈ $7/ay, karsiliginda
+# sifir gelir. Kullanicinin ELLE baslattigi taramalar ETKILENMEZ.
+#
+# 🪤 VARSAYILAN KAPALI olmali: env yoksa acilirsa, yeni bir ortamda (yeni task
+# def, yerel kosu, gecici servis) bu karar SESSIZCE geri gelir ve para yeniden
+# akmaya baslar. Geri acmak icin BILINCLI olarak MONITOR_AUTO_SCAN=1 verilir.
+#
+# Dongunun DIGER isleri (dusuk-bakiye uyarisi, retention temizligi) calismaya
+# DEVAM EDER — onlar tarama degil, bakim.
+OTOMATIK_TARAMA_ACIK = os.environ.get("MONITOR_AUTO_SCAN", "0").strip() == "1"
 
 
 async def _scan_web_item(item: dict) -> int | None:
@@ -230,11 +244,16 @@ async def monitor_loop():
     logger.info("monitor: izleme dongusu basladi")
     while True:
         try:
-            items = await list_due_watchlist_items(limit=MONITOR_BATCH_SIZE, interval_days=MONITOR_INTERVAL_DAYS)
-            if items:
-                logger.info(f"monitor: {len(items)} hedef sirada")
-            for item in items:
-                await _process_item(item)
+            if not OTOMATIK_TARAMA_ACIK:
+                # Kurucu karari: kendiliginden tarama yok. Kuyrugu SORGULAMIYORUZ
+                # bile — bos donguyu her saat DB'ye vurdurmanin anlami yok.
+                pass
+            else:
+                items = await list_due_watchlist_items(limit=MONITOR_BATCH_SIZE, interval_days=MONITOR_INTERVAL_DAYS)
+                if items:
+                    logger.info(f"monitor: {len(items)} hedef sirada")
+                for item in items:
+                    await _process_item(item)
         except Exception as e:
             logger.warning(f"monitor: dongu hatasi: {e}")
         # Prepaid saglayici dusuk-bakiye uyarisi: her turda (saatlik) kontrol,
