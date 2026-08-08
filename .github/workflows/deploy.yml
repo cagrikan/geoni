@@ -27,6 +27,20 @@ jobs:
         with:
           python-version: '3.12'
 
+      # 🔴 LINT KAPISI (2026-08-08 eklendi). NEDEN: `job_id` tanimlanmadan
+      # kullaniliyordu -> UnboundLocalError -> 500 -> kullanicida "Load failed".
+      # 4 GUN canlida kaldi, ucretsiz hakla yapilan HER marka/sosyal taramayi
+      # kirdi, kurucu kendi kullanirken buldu. Testler bu yolu hic cagirmiyordu
+      # (ic tarama anahtari ucretsiz-hak kapisini atliyor) — ama pyflakes iki
+      # satiri da ANINDA yakaliyordu. 2 saniyelik kontrol 4 gunu kurtarirdi.
+      # Kapi YALNIZ calisma zamaninda patlayan sinifta kapanir; kozmetik
+      # bulgular (kullanilmayan import vb.) dagitimi engellemez.
+      - name: Lint gate (tanimsiz isim)
+        run: |
+          cd geoni-scanner
+          python -m pip install --quiet pyflakes
+          bash scripts/lint-kapisi.sh
+
       - name: Run tests (deploy gate)
         run: |
           cd geoni-scanner
