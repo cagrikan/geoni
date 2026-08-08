@@ -72,7 +72,7 @@ async def _hakki_yak(job_id: str) -> None:
 import attest  # Apple App Attest: mobil muafiyetini imzaya baglar (bkz. _mobile_exempt)
 from db import (
     promo_kodu_kullan, promo_toplu_uret, promo_parti_ozeti,
-    create_pending_audit, update_audit_status, get_audit_row, get_auth_email,
+    create_pending_audit, create_pending_brand_check, update_audit_status, get_audit_row, get_auth_email,
     purge_private_result,
     save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits, get_credit_balance,
     is_strict_admin, get_admin_summary, get_admin_scans_daily, get_admin_credits_stats, get_admin_provider_usage,
@@ -1326,6 +1326,12 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
         _bekleyen_hak[job_id] = (user_id_rl2, request.device_token, gate_info)  # basarida yakilir
 
     brand_checks_store[job_id] = {"job_id": job_id, "status": "queued", "name": request.name, "topic": request.topic, "created_at": datetime.now().isoformat(), "result": None, "error": None}
+    # 🔴 Yeniden-baslama dayanikliligi: is BELLEKTE kosuyor; surec yeniden
+    # baslarsa (dagitim / MinCapacity=0'dan uyanma / olcekleme) durum kaybolur
+    # ve status ucu 404 -> kullanicida "Tarama bulunamadi." Web'de bu yok cunku
+    # submit'te 'queued' satiri aciliyordu; asimetri kapatildi.
+    await create_pending_brand_check(job_id, request.type or "person", request.name,
+                                     request.topic, user_id_rl2)
     brand_check_events[job_id] = asyncio.Queue()
     auth_header = http_request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
@@ -1452,10 +1458,32 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
         force=bool(getattr(request, "force", False)),  # A2-1: 24h cache'i atla
     )
     brand_checks_store[job_id] = {"job_id": job_id, "status": "queued", "name": brand_req.name, "topic": brand_req.topic, "created_at": datetime.now().isoformat(), "result": None, "error": None}
+    # Marka ucundaki ayni dayaniklilik satiri — sosyal de bellekte kosuyor.
+    await create_pending_brand_check(job_id, "social", brand_req.name,
+                                     brand_req.topic, sc_uid_erken)
     brand_check_events[job_id] = asyncio.Queue()
     background_tasks.add_task(run_brand_check_job, job_id, brand_req, token)
     logger.info(f"Social check job {job_id} created for '@{handle}' (ip={client_ip})")
     return BrandCheckResponse(job_id=job_id, status="queued")
+
+def _satir_yasi_sn(created_at) -> float | None:
+    """DB satirinin yasi (saniye). Cozulemezse None -> cagiran ESKI SAYMAZ.
+
+    🪤 Supabase ISO damgasini "+00:00" ya da "Z" ile donduruyor; Python 3.10'da
+    `fromisoformat` "Z"yi anlamiyor. Ayrica damga tzsiz gelebiliyor — o durumda
+    UTC varsayilir, yoksa cikarma TypeError verir ve bu fonksiyon her seferinde
+    None doner (yani kontrol sessizce ise yaramaz olurdu)."""
+    if not created_at:
+        return None
+    try:
+        t = str(created_at).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(t)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - dt).total_seconds()
+    except (ValueError, TypeError):
+        return None
+
 
 @app.get("/api/brand-check/{job_id}")
 async def get_brand_check_status(job_id: str):
@@ -1478,6 +1506,19 @@ async def get_brand_check_status(job_id: str):
         if row["status"] == "complete":
             return {"job_id": job_id, "status": "complete", "result": row.get("result_json")}
         if row["status"] == "failed":
+            raise ApiHata(500, "tarama_basarisiz")
+        # 🔴 BITMEYECEK ISI SONSUZA DEK "kosuyor" GOSTERME. Satir bellekte
+        # bulunamadi demek, isi kosturan surec artik YOK demek (dagitim /
+        # MinCapacity=0'dan uyanma / olcekleme). Kimse o satiri bir daha
+        # guncellemeyecek. Bunu "queued" diye dondurmek, kullaniciyi sonu
+        # olmayan bir bekleme ekraninda tutar — 404'ten daha kotu, cunku
+        # istemci yeniden denemez bile. Es zamanli ikinci bir instance'in isi
+        # gercekten kosturuyor olma ihtimaline karsi pay birakiyoruz:
+        # taramanin en uzun olculen suresi ~2 dk (site 125 sn), esik 20 dk.
+        yas = _satir_yasi_sn(row.get("created_at"))
+        if yas is not None and yas > 1200:
+            logger.warning("terk edilmis is: job=%s yas=%.0fsn status=%s",
+                           job_id, yas, row["status"])
             raise ApiHata(500, "tarama_basarisiz")
         return {"job_id": job_id, "status": row["status"], "created_at": row.get("created_at")}
     job = brand_checks_store[job_id]

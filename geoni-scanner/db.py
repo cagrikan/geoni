@@ -122,6 +122,41 @@ async def create_pending_audit(job_id: str, audit_type: str, domain: str, user_i
         return False
 
 
+async def create_pending_brand_check(job_id: str, entity_type: str, name: str,
+                                     topic: str = None, user_id: str = None) -> bool:
+    """Marka/kisi/sosyal isi icin 'queued' satiri — is BASLARKEN.
+
+    🔴 NEDEN (2026-08-08, kurucunun testcisi canlida yasadi): bu uclar isi
+    `background_tasks` ile SUREC ICINDE kosuyor ve durumu yalniz bellekteki
+    `brand_checks_store`'da tutuyordu. Surec yeniden baslarsa (dagitim, App
+    Runner MinCapacity=0'dan uyanma, olcekleme) is bellekten silinir; DB'de de
+    satir YOKTUR, cunku `save_brand_check` satiri isin SONUNDA yaziyor. Sonuc:
+    `/api/brand-check/{id}` 404 -> kullanicinin ekraninda "Tarama bulunamadi."
+    Web taramasi bunu yasamiyordu, cunku `create_pending_audit` submit'te satiri
+    aciyordu; asimetri buradaydi.
+
+    Satir 'queued' acilir, `save_brand_check` uzerine UPSERT eder (ayni desen,
+    `resolution=merge-duplicates`). Basarisizsa is DURDURULMAZ: tarama calismaya
+    devam eder, yalnizca yeniden-baslama dayanikliligi kaybolur. Bu bilincli —
+    DB'nin gecici hatasi kullanicinin taramasini oldurmemeli."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                f"{SUPABASE_URL}/rest/v1/audits",
+                headers={**_headers(), "Prefer": "return=minimal,resolution=merge-duplicates"},
+                json={"id": job_id, "user_id": user_id, "type": entity_type,
+                      "name": name, "topic": topic, "status": "queued",
+                      "credits_spent": 0},
+                timeout=10,
+            )
+            return r.status_code in (200, 201, 204)
+    except Exception as e:
+        logger.warning(f"create_pending_brand_check({job_id}) failed: {e}")
+        return False
+
+
 async def update_audit_status(job_id: str, status: str, result: dict = None, score=None,
                               error: str | None = None) -> None:
     """Kosan isin durumunu audits satirina isler (SQS modunda). Sessizce
@@ -318,11 +353,14 @@ async def save_brand_check(job_id: str, request_data: dict, result: dict, user_i
         async with httpx.AsyncClient() as client:
             r = await client.post(
                 f"{SUPABASE_URL}/rest/v1/audits",
-                headers=_headers(),
+                # Submit'te 'queued' satiri aciliyor (create_pending_brand_check)
+                # -> ayni id ile duz POST 409 doner ve sonuc HIC kaydedilmezdi.
+                # Web tarafiyla ayni desen: upsert.
+                headers={**_headers(), "Prefer": "return=minimal,resolution=merge-duplicates"},
                 json=payload,
                 timeout=10,
             )
-            if r.status_code in (200, 201):
+            if r.status_code in (200, 201, 204):
                 logger.info(f"Brand check {job_id} saved to Supabase")
                 if user_id and deduct:
                     if not await deduct_credits(user_id, credits, f"{entity_type}_check", job_id):
