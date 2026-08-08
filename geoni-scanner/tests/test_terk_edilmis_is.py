@@ -83,3 +83,41 @@ def test_pending_satiri_TARAMAYI_OLDURMEZ():
     i = DB.index("async def create_pending_brand_check")
     govde = DB[i:i + 2200]
     assert "return False" in govde and "raise" not in govde.split("try:")[1][:600]
+
+
+# ── Cache isabeti: acilan satir GERI ALINIR ──────────────────────────────
+# 🔴 OLCULDU (2026-08-08): `create_pending_brand_check` eklendikten sonra ayni
+# hedef 24 saat icinde yeniden tarandiginda satir sonsuza dek 'queued' kaliyordu.
+# Sebep: 24 saatlik tarama cache'i isabet edince `run_brand_check_job` sonucu
+# bellekten donup RETURN ediyor -- `save_brand_check` HIC cagrilmiyor (bu dogru:
+# yeni olcum yok, kullanici ikinci kez ucretlendirilmemeli).
+#
+# Sonuc iki katli kotuydu:
+#   1. Kullanicinin gecmisinde sonsuza dek "kuyrukta" duran sahte kayit.
+#   2. 20 dk sonra yukaridaki eskime kurali onu TERK EDILMIS sayip BASARISIZ
+#      donduruyordu -- elde gecerli bir cached sonuc VARKEN. Yani dayaniklilik
+#      icin eklenen satir, cache isabetinde tam tersi etkiyi yapiyordu.
+#
+# Bes tekrarda bes kez uretildi (@nike/spor, ayni sov skoru 26.2 -> cache isabeti
+# oldugunun kaniti).
+def test_cache_isabetinde_pending_satiri_SILINIYOR():
+    i = MAIN.index('"cached": True')
+    blok = MAIN[i:i + 1200]
+    assert "await pending_satiri_sil(job_id)" in blok, \
+        "cache dalinda acilan 'queued' satiri geri alinmiyor"
+    assert blok.index("pending_satiri_sil") < blok.index("return"), \
+        "silme `return`dan SONRA yaziliyor — hic calismaz"
+
+
+def test_YALNIZ_queued_satir_siliniyor():
+    """🪤 Tamamlanmis satiri silmek gercek raporu ve kontor kaydini yok ederdi."""
+    i = DB.index("async def pending_satiri_sil")
+    govde = DB[i:i + 1800]
+    assert '"status": "eq.queued"' in govde, "status kosulu yok — her satiri siler"
+    assert "client.delete(" in govde
+
+
+def test_silme_HATASI_taramayi_dusurmez():
+    i = DB.index("async def pending_satiri_sil")
+    govde = DB[i:i + 1800]
+    assert "return False" in govde

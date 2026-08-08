@@ -72,7 +72,7 @@ async def _hakki_yak(job_id: str) -> None:
 import attest  # Apple App Attest: mobil muafiyetini imzaya baglar (bkz. _mobile_exempt)
 from db import (
     promo_kodu_kullan, promo_toplu_uret, promo_parti_ozeti,
-    create_pending_audit, create_pending_brand_check, update_audit_status, get_audit_row, get_auth_email,
+    create_pending_audit, create_pending_brand_check, pending_satiri_sil, update_audit_status, get_audit_row, get_auth_email,
     purge_private_result,
     save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits, get_credit_balance,
     is_strict_admin, get_admin_summary, get_admin_scans_daily, get_admin_credits_stats, get_admin_provider_usage,
@@ -635,6 +635,12 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
                     "completed_at": datetime.now().isoformat(),
                 })
                 await _hakki_yak(job_id)
+                # Cache isabetinde YENI OLCUM YOK -> save_brand_check hic
+                # cagrilmiyor. Submit'te acilan 'queued' satiri o yuzden geri
+                # alinmali; yoksa kullanicinin gecmisinde sonsuza dek "kuyrukta"
+                # duran sahte kayit kalir ve 20 dk sonra durum ucu onu terk
+                # edilmis sayip BASARISIZ doner — elde gecerli sonuc varken.
+                await pending_satiri_sil(job_id)
                 emit("__done__")
                 return
         # Kredi kacagi (guvenlik #1): private kisi/marka taramasi 10 kontor,

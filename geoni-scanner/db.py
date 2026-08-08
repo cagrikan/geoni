@@ -157,6 +157,37 @@ async def create_pending_brand_check(job_id: str, entity_type: str, name: str,
         return False
 
 
+async def pending_satiri_sil(job_id: str) -> bool:
+    """Acilan 'queued' satirini geri al — is HIC kosmayacaksa.
+
+    🔴 NEDEN (2026-08-08, olculdu): 24 saatlik tarama cache'i isabet edince
+    `run_brand_check_job` sonucu bellekten donup RETURN ediyor; `save_brand_check`
+    HIC cagrilmiyor (dogru — yeni bir olcum yok, kullanici ikinci kez
+    ucretlendirilmemeli). Ama submit'te acilan 'queued' satiri oylece kaliyordu:
+    kullanicinin gecmisinde sonsuza dek "kuyrukta" duran sahte kayit, ve 20
+    dakika sonra durum ucu onu TERK EDILMIS sayip BASARISIZ donuyordu — elde
+    gecerli bir cached sonuc varken. Yani dayaniklilik icin eklenen satir,
+    cache isabetinde tam tersi etkiyi yapiyordu.
+
+    🪤 YALNIZ 'queued' satiri silinir. Tamamlanmis bir satiri silmek gercek bir
+    raporu ve kontor kaydini yok ederdi; `status=eq.queued` kosulu bu yuzden
+    pazarlik konusu degil."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.delete(
+                f"{SUPABASE_URL}/rest/v1/audits",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                params={"id": f"eq.{job_id}", "status": "eq.queued"},
+                timeout=10,
+            )
+            return r.status_code in (200, 204)
+    except Exception as e:
+        logger.warning(f"pending_satiri_sil({job_id}) failed: {e}")
+        return False
+
+
 async def update_audit_status(job_id: str, status: str, result: dict = None, score=None,
                               error: str | None = None) -> None:
     """Kosan isin durumunu audits satirina isler (SQS modunda). Sessizce
