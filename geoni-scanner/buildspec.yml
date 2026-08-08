@@ -17,6 +17,10 @@ phases:
     commands:
       # :latest (App Runner/ECS ceker) + :$SHA immutable (rollback/denetim izi).
       - SHA=${CODEBUILD_RESOLVED_SOURCE_VERSION:-manual}
+      # Kosan commit imaja YAZILIR; /health onu geri veriyor. Dagitimin
+      # gercekten YENI kodu tasidigi ancak boyle dogrulanabiliyor —
+      # App Runner "RUNNING" demesi hangi commit oldugunu SOYLEMIYOR.
+      - echo "$SHA" > SURUM.txt
       - docker build -t $ECR/$REPO:latest -t $ECR/$REPO:$SHA .
   post_build:
     commands:

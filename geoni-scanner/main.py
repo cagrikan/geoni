@@ -746,10 +746,29 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
         emit("__done__")
 
 
+# 🔴 CANLIDA HANGI COMMIT KOSUYOR (2026-08-08). Dagitim dogrulamasi bugune
+# kadar App Runner'in `Status == RUNNING` degerine bakiyordu; o deger yalnizca
+# "bir surum ayakta" demek, "ITTIGIM commit ayakta" DEMEK DEGIL. Bir izleyici
+# tam bu yuzden yanlis "hala bozuk" raporu yazdi. Artik kanit disaridan
+# okunabiliyor: buildspec derleme aninda SHA'yi imaja yaziyor.
+def _kosan_commit() -> str:
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "SURUM.txt")) as f:
+            return f.read().strip()[:40] or "bilinmiyor"
+    except OSError:
+        # Yerel calistirma / eski imaj: dosya yok. Bu bir hata degil, bilgi yoklugu —
+        # "bilinmiyor" donuyoruz ki cagiran yanlis commit'e ESIT saymasin.
+        return "bilinmiyor"
+
+
+_KOSAN_COMMIT = _kosan_commit()
+
+
 @app.get("/")
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "version": "0.9.0", "timestamp": datetime.now().isoformat()}
+    return {"status": "healthy", "version": "0.9.0", "commit": _KOSAN_COMMIT,
+            "timestamp": datetime.now().isoformat()}
 
 def _daily_display_count() -> int:
     """
