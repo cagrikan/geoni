@@ -1131,8 +1131,11 @@ async def _resolve_social_identity(handle: str, web_results: list, ask_llm) -> d
         f"Asagidaki web arama sonuclari buyuk olasilikla '@{h}' sosyal medya hesabina "
         f"ait. Bu hesabin GERCEK/GORUNEN adini ve ana platformunu cikar. Sonuclar baska "
         f"birine aitse ya da emin degilsen name=null ver.\n\n{ctx}\n\n"
+        f"Ayrica bu hesabin TIPINI belirt: bir MARKA/sirket/mekan hesabi mi, yoksa "
+        f"bir KISI/icerik ureticisi hesabi mi? Kanit yoksa tip=null ver.\n"
         f'Yalnizca su JSON: {{"name": "Gorunen Ad veya null", '
-        f'"platform": "instagram|youtube|tiktok|x|linkedin|null"}}'
+        f'"platform": "instagram|youtube|tiktok|x|linkedin|null", '
+        f'"tip": "marka|uretici|null"}}'
     )
     try:
         data = _extract_json_obj((await ask_llm(prompt)) or "")
@@ -1144,7 +1147,15 @@ async def _resolve_social_identity(handle: str, web_results: list, ask_llm) -> d
         plat = str(data.get("platform") or "").strip().lower()
         if plat not in ("instagram", "youtube", "tiktok", "x", "twitter", "linkedin"):
             plat = ""
-        return {"name": nm[:80], "platform": plat}
+        # 🔴 TIP: SOV sorusunun MARKA mi URETICI mi sorulacagini belirler
+        # (2026-08-08, @starbucks 35/100 vakasi). Handle'in kendisinden tahmin
+        # etmek zayif kanit; burada karar ZATEN CEKILMIS web sonuclarina
+        # dayaniyor ve EK MALIYET YOK — ayni LLM cagrisina bir alan eklendi.
+        # Emin olunamazsa null -> SOV kendi icinde tahmin etmeye devam eder.
+        tip = str(data.get("tip") or "").strip().lower()
+        if tip not in ("marka", "uretici"):
+            tip = ""
+        return {"name": nm[:80], "platform": plat, "tip": tip}
     except Exception:
         return None
 
@@ -1804,6 +1815,10 @@ async def check_brand_recall(
                 grok_web_fn_ = _grok_web_tavanli
         result_ = await check_share_of_voice(
             name, sov_topic_, _ask_perplexity_sourced, _ask_aux,
+            # 🔴 Hedef tipi (marka/uretici) KANITTAN gelir: kimlik cozumu zaten
+            # web sonuclarina bakip belirledi (bkz. _resolve_social_identity).
+            # Bos ise SOV kendi tahminine duser. @starbucks 35/100 vakasi.
+            hedef_tipi=((resolved_identity or {}).get("tip") or ""),
             ask_google=_ask_gemini_grounded if GOOGLE_API_KEY else None,
             # T2: ChatGPT + Claude web-arama motorlari. Pahali olduklarindan YALNIZ
             # SOV'un sorgularinda calisir (recall'da degil). Anahtar yoksa None gecer.

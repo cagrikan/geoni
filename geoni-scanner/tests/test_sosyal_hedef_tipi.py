@@ -74,3 +74,35 @@ def test_AGIRLIK_DUSURULMEDI():
 def test_gerekce_kaynakta_YAZILI():
     assert "starbucks" in BLOK.lower()
     assert "yapisal olarak sifir" in BLOK
+
+
+# ── Tip KANITTAN gelir, handle dizesinden TAHMİN edilmez ─────────────────
+# Kurucunun sorusu: "nasıl ayıracaksın?" — haklı. Handle'ın kendisine bakarak
+# karar vermek zayıf kanıt (`@kronotrop` hem kavurucu markası hem içerik hesabı).
+# `_resolve_social_identity` ZATEN çekilmiş web sonuçlarına bakıp hesabın
+# görünen adını ve platformunu çıkarıyor; aynı çağrıya `tip` alanı eklendi —
+# **ek maliyet yok**, kanıt çok daha güçlü. Kanıt yoksa boş döner ve SOV kendi
+# tahminine düşer (eski davranış).
+def test_kimlik_cozumu_TIP_de_donuyor():
+    br = (Path(__file__).resolve().parent.parent / "brand_recall.py").read_text(encoding="utf-8")
+    i = br.index("async def _resolve_social_identity")
+    govde = br[i:i + 2600]
+    assert '"tip": "marka|uretici|null"' in govde, "kimlik çözümü tip sormuyor"
+    assert 'tip not in ("marka", "uretici")' in govde, "beklenmedik tip değeri elenmiyor"
+    assert '"tip": tip' in govde
+
+
+def test_tip_SOVa_GECIRILIYOR():
+    br = (Path(__file__).resolve().parent.parent / "brand_recall.py").read_text(encoding="utf-8")
+    assert 'hedef_tipi=((resolved_identity or {}).get("tip") or "")' in br
+
+
+def test_SOV_kanit_varsa_TAHMIN_ETMEZ():
+    """Kanıt geldiyse model yeniden karar vermeye çalışmamalı."""
+    assert 'hedef_tipi in ("marka", "uretici")' in KAYNAK
+    assert "KANITLA belirlendi" in KAYNAK
+
+
+def test_kanit_YOKSA_eski_davranis():
+    """🪤 Geriye dönük: tip boşsa model yine kendisi karar verir, akış kırılmaz."""
+    assert "ONCE karar ver" in KAYNAK

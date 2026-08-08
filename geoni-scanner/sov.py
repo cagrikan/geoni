@@ -443,7 +443,8 @@ async def infer_topic(name: str, web_results: list, ask_llm, lang: str = "tr") -
 
 
 async def generate_category_queries(name: str, topic: str, ask_llm, social: bool = False,
-                                    lang: str = "tr", location: str = "") -> list[dict]:
+                                    lang: str = "tr", location: str = "",
+                                    hedef_tipi: str = "") -> list[dict]:
     """
     Markayi bilmeyen bir kullanicinin soracagi kategori/niyet sorgulari uretir:
     3 soru birincil alandan + 2 soru EN YAKIN KOMSU alandan (komsu alani
@@ -511,9 +512,19 @@ async def generate_category_queries(name: str, topic: str, ask_llm, social: bool
         # 🪤 Agirligi DUSURMEDIK: gercek bir influencer kategori sorusunda hic
         # gecmiyorsa SOV=0 DOGRU sinyaldir; agirligi kirpmak o gercegi de
         # susturur. Yanlis olan olcum degil, SORUYDU.
-        prompt = (
+        # 🔴 TIP KANITA DAYANIR, TAHMINE DEGIL (2026-08-08). `hedef_tipi`
+        # `_resolve_social_identity`ten gelir ve ZATEN CEKILMIS web sonuclarina
+        # bakilarak belirlenmistir — handle dizesinden tahmin etmekten cok daha
+        # guclu. Bos gelirse (kanit yok) model yine kendisi karar verir.
+        tip_yonergesi = (
+            f"Hedef hesap: '{name}'. Bu hesabin tipi KANITLA belirlendi: "
+            f"**{hedef_tipi.upper()}**. Sorulari bu tipe gore yaz.\n"
+            if hedef_tipi in ("marka", "uretici") else
             f"Hedef hesap: '{name}'. ONCE karar ver: bu bir MARKA/sirket hesabi mi, "
             f"yoksa bir ICERIK URETICISI/kisi hesabi mi?\n"
+        )
+        prompt = (
+            tip_yonergesi +
             f"'{topic}' konusuyla ilgilenen ama hicbir isim BILMEYEN bir "
             f"kullanicinin bir AI asistanina soracagi gercekci Turkce sorular yaz:\n"
             f"- {SOV_QUERY_COUNT} soru dogrudan '{topic}' konusundan,\n"
@@ -718,7 +729,8 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
                                ask_grok_web=None,
                                custom_queries: list | None = None,
                                own_domain: str = "", social: bool = False, lang: str = "tr",
-                               location: str = "", pinned_queries: list | None = None) -> dict:
+                               location: str = "", pinned_queries: list | None = None,
+                               hedef_tipi: str = "") -> dict:
     """
     Tam SOV olcumu (cok motorlu + atif istihbarati):
       - Sorgular: kullanici tanimli (varsa) yoksa 3 uretilmis kategori sorgusu
@@ -770,7 +782,7 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
                     "topic": q.get("topic") or topic}
                    for q in pinned_queries if q.get("query")]
         if not queries:  # bozuk pin -> uret
-            queries = await generate_category_queries(name, topic, ask_llm, social=social,
+            queries = await generate_category_queries(name, topic, ask_llm, social=social, hedef_tipi=hedef_tipi,
                                                       lang=lang, location=location)
     elif not has_usable_topic(name, topic):
         # Alan bilinmiyor ve ozel sorgu da yok: 'bu alan' gibi anlamsiz
@@ -779,7 +791,7 @@ async def check_share_of_voice(name: str, topic: str, ask_perplexity, ask_llm,
         logger.info(f"SOV skipped for '{name}': alan bilgisi yok")
         return {**empty, "skipped_reason": "no_topic"}
     else:
-        queries = await generate_category_queries(name, topic, ask_llm, social=social,
+        queries = await generate_category_queries(name, topic, ask_llm, social=social, hedef_tipi=hedef_tipi,
                                                   lang=lang, location=location)
     if not queries:
         return empty
