@@ -537,6 +537,22 @@ async def generate_category_queries(name: str, topic: str, ask_llm, social: bool
             f"'kimi takip etmeliyim', 'en iyi Instagram/TikTok/YouTube hesaplari kimler' gibi.\n"
             f"'Nasil yapilir' gibi yontem sorulari HICBIR durumda YAZMA. "
             f"Sorularin icinde HICBIR isim/marka/hesap adi gecmesin.\n"
+            # 🔴 IKI YAPISAL SIFIR KAYNAGI (2026-08-08, @starbucks 58'de olculdu).
+            # Uretilen bes sorunun UCU hedefin HIC gecemeyecegi sorulardi:
+            #   "kahve turleri arasinda fark nedir, hangisini secmeliyim" -> cevabi
+            #      bir isim listesi DEGIL, bir tur aciklamasi. Marka gecmez.
+            #   "ev icin hangi kahve MAKINESI markalari" / "kahve AKSESUARLARI
+            #      markalari" -> baska bir urun sinifi; kahve zinciri orada aranmaz.
+            # Ikisi de yanlis sifir uretiyor: olcum hedefi degil, sorunun kendisini
+            # cezalandiriyor. Kalan iki gercek soruda hedef 5/6 geciyordu.
+            f"CEVAP TESTI — her soru icin kendine sor: bu sorunun cevabi bir "
+            f"ISIM LISTESI mi olur? Cevap bir tur/yontem/aciklama ise ("
+            f"'X ile Y arasindaki fark nedir', 'hangi turu secmeliyim') o soruyu "
+            f"YAZMA, yerine isim isteyen bir soru yaz.\n"
+            f"URUN SINIFI SABIT: komsu soru da hedefin URUN/HIZMET SINIFINDA kalsin. "
+            f"Hedef bir kahve zinciriyse komsu soru kahve makinesi ya da fincan "
+            f"markasi SORMAZ — o baska bir pazardir ve hedef orada hic gecmez. "
+            f"Komsu, ayni pazarin yakin bir segmenti olmalidir.\n"
             f"CESITLILIK: sorularin en az 1'i alternatif/karsilastirma niyetli olsun "
             f"('X yerine kimi takip etmeli', 'A ile B'den hangisi'); soruda lokasyon/sehir "
             f"geciyorsa en az 1 soru yerel olsun.\n"
@@ -555,6 +571,13 @@ async def generate_category_queries(name: str, topic: str, ask_llm, social: bool
             f"onerirsin', 'en iyileri hangileri' gibi. 'Nasil yapilir', 'nelere dikkat etmeliyim', "
             f"'zorluklar neler' gibi YONTEM sorulari YAZMA (bunlara marka adi verilmez). "
             f"Sorularin icinde HICBIR marka adi gecmesin.\n"
+            # Sosyal dalda olculen iki yapisal sifir kaynagi burada da gecerli;
+            # asimetri birakmiyoruz (bugun uc kusur "web'de var, sosyalde yok"
+            # ayrisimindan cikti, tersini uretmeyelim).
+            f"CEVAP TESTI — her soru icin: cevabi bir ISIM LISTESI mi olur? "
+            f"Cevap bir tur/yontem/aciklama ise o soruyu YAZMA.\n"
+            f"URUN SINIFI SABIT: komsu soru hedefin urun/hizmet SINIFINI "
+            f"degistirmesin; ayni pazarin yakin bir segmenti olsun.\n"
             f"CESITLILIK: sorularin en az 1'i 'alternatif/karsilastirma' niyetli olsun "
             f"(ör. 'X alternatifleri neler', 'A ile B'den hangisi daha iyi'); soruda "
             f"lokasyon/sehir geciyorsa en az 1 soru yerel olsun ('[sehir]'de en iyi X'). "

@@ -106,3 +106,41 @@ def test_SOV_kanit_varsa_TAHMIN_ETMEZ():
 def test_kanit_YOKSA_eski_davranis():
     """🪤 Geriye dönük: tip boşsa model yine kendisi karar verir, akış kırılmaz."""
     assert "ONCE karar ver" in KAYNAK
+
+
+# ── Yapisal sifirin IKINCI kaynagi: cevaplanamayan soru ──────────────────
+# @starbucks tip duzeltmesinden sonra 35 -> 58 cikti ama HALA dusuktu. Kirilim
+# okundu (5 soru x 3 motor):
+#
+#   "En iyi kahve markalari hangileri"          -> 2/3 GECTI
+#   "Turkiye'de hangi kahve zincirleri"         -> 3/3 GECTI
+#   "Kahve turleri arasindaki fark, hangisini secmeliyim" -> 0/2
+#   "Ev icin hangi kahve MAKINESI markalari"    -> 0/2
+#   "Kahve AKSESUARLARI markalari"              -> 0/2
+#
+# Yani hedefin gercekten yarisabildigi iki soruda **5/6** geciyor; skoru asagi
+# ceken uc soru hedefin YAPISAL OLARAK gecemeyecegi sorulardi:
+#   - biri isim degil TUR/ACIKLAMA istiyor (cevabinda hicbir marka gecmez),
+#   - ikisi BASKA BIR URUN SINIFI (kahve makinesi, fincan) — kahve zinciri
+#     orada aranmaz.
+# Bu yanlis sifirlar hedefi degil SORUYU cezalandiriyordu. Agirliga yine
+# dokunulmadi; duzeltilen olcum araci.
+def test_CEVAP_TESTI_iki_dalda_da_var():
+    """Cevabi isim listesi olmayan soru uretilmemeli."""
+    assert KAYNAK.count("CEVAP TESTI") == 2, "sosyal ve web dallarindan biri eksik"
+    assert "ISIM LISTESI" in KAYNAK
+
+
+def test_URUN_SINIFI_sabit_kurali_iki_dalda():
+    """Komsu soru hedefin pazarini degistirmesin (kahve zinciri -> kahve makinesi)."""
+    assert KAYNAK.count("URUN SINIFI SABIT") == 2
+
+
+def test_sosyal_dalda_somut_ORNEK_var():
+    """Soyut kural modele yetmiyor; olculen vakanin kendisi ornek olarak duruyor."""
+    i = KAYNAK.index("URUN SINIFI SABIT")
+    assert "kahve makinesi" in KAYNAK[i:i + 700]
+
+
+def test_gerekce_kaynakta_YAZILI():
+    assert "yanlis sifir" in KAYNAK
