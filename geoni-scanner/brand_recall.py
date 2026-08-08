@@ -2200,7 +2200,18 @@ async def check_brand_recall(
             # her seferinde sifirdan cikarip oynaklik+maliyet uretiyordu (12/61 bilmecesi).
             "topic": sov_topic or topic,
             "raw_list": raw_list,
-            "model_results": model_results,
+            # 🪤 OLCULMEYEN GOLGE MOTOR PAYLOAD'A KONULMAZ (2026-08-08).
+            # Grok kapatilinca model_results'ta `recognized=false, score=0`
+            # olarak kaliyordu; istemciler golge motoru "deneysel · skora
+            # katilmiyor" etiketiyle CIZIYOR -> kullanici "Grok beni tanimiyor"
+            # okuyordu. Oysa Grok'a hic SORMADIK. Olculmus motorlar (canli ya da
+            # golge) aynen kalir; yalniz hic olculmemis GOLGE motor dusulur —
+            # canli motorun eksikligi `engines_unavailable` ile bildirilmeye
+            # devam eder.
+            "model_results": {
+                k: v for k, v in model_results.items()
+                if k not in SHADOW_ENGINES or model_raw.get(k, {}).get("measured", True)
+            },
             "google_result_count": len(web_results),
             "web_results": web_results,
             "performing_topics": topics["performing_topics"],
@@ -2217,9 +2228,17 @@ async def check_brand_recall(
             # kota gibi ic bilgi sizdirilmaz; UI notrr bir "erisim sorunu" mesaji
             # gosterir. Sebep yalnizca admin mailine ve loga gider
             # (_provider_health_alert).
+            # 🪤 GOLGE MOTOR BU LISTEYE GIRMEZ (2026-08-08). Kurucu Grok'u
+            # kapatti (XAI_API_KEY silindi) -> grok her taramada measured=False.
+            # Filtre olmasaydi MUSTERI her raporda "Grok'a erisilemedi" uyarisi
+            # gorurdu: kullanmadigimiz, skora HIC girmeyen (WEIGHTS 0) bir motor
+            # icin arıza bildirmek. Bu alan CANLI bir skorlama motorunun eksik
+            # kalmasini haber vermek icin var (kurucu karari 2026-07-26, openai
+            # kredisi bitince musteri eksik skoru tam sanmisti) — golge motorun
+            # yoklugu musteriyi ilgilendirmez.
             "engines_unavailable": [
                 MODEL_LABELS.get(k, k) for k in model_keys
-                if not model_raw[k].get("measured", True)
+                if not model_raw[k].get("measured", True) and k not in SHADOW_ENGINES
             ],
             # A4-6 (QA 2026-07-19): tarama telemetrisi — result_json'a gomulur ki
             # "sessiz bozulma" SQL'le izlenebilsin (migration yok). competitors_empty /
