@@ -26,8 +26,8 @@ def test_health_commit_doner():
 
 
 def test_buildspec_SHAyi_imaja_yaziyor():
-    """Uc de dogru olmali: dosya adi, degisken, docker build'DEN ONCE."""
-    assert 'echo "$SHA" > SURUM.txt' in BUILDSPEC
+    """Damga docker build'DEN ONCE yazilmali, yoksa imaja girmez."""
+    assert "SURUM.txt" in BUILDSPEC
     assert BUILDSPEC.index("SURUM.txt") < BUILDSPEC.index("docker build"), \
         "SURUM.txt docker build'den SONRA yaziliyor — imaja girmez"
 
@@ -43,3 +43,38 @@ def test_dosya_yoksa_BOS_DIZE_donmez():
 def test_SURUM_txt_gitignorede():
     """Yerel kosuda uretilirse kazara commit'lenip yanlis SHA yayinlamasin."""
     assert "SURUM.txt" in (KOK / ".gitignore").read_text(encoding="utf-8")
+
+
+# ── EC2 yedek yolu buildspec'i HIC calistirmaz ───────────────────────────
+# deploy.sh CodeBuild kotasi kapaliysa tek seferlik EC2 makinesinde kendi
+# `docker build`ini kosuyor. Damgayi yalniz buildspec'e koysaydik o yoldan
+# cikan imaj "bilinmiyor" derdi ve dogrulama sessizce ise yaramazdi.
+DEPLOY = (KOK / "deploy.sh").read_text(encoding="utf-8")
+
+
+def test_deploy_sh_SHAyi_zipten_ONCE_yaziyor():
+    assert "> SURUM.txt" in DEPLOY
+    assert DEPLOY.index("> SURUM.txt") < DEPLOY.index("zip -qr"), \
+        "SURUM.txt zip'ten SONRA yaziliyor — kaynak paketine girmez"
+
+
+def test_kirli_depo_ISARETLENIYOR():
+    """Commit'lenmemis degisiklikle dagitilirsa SHA yalan soyler."""
+    assert "-kirli" in DEPLOY
+
+
+def test_damga_TEK_SATIR():
+    """🪤 Ikinci satir eklenirse /health'in dondugu deger satir sonu tasir."""
+    i = DEPLOY.index("SHA_YEREL=")
+    blok = DEPLOY[i:i + 300]
+    assert blok.count("> SURUM.txt") == 1, "SURUM.txt'e birden fazla yazma var"
+
+
+def test_buildspec_deploy_shin_damgasini_EZMIYOR():
+    assert "[ -s SURUM.txt ] ||" in BUILDSPEC
+
+
+def test_immutable_etiket_gercek_SHA():
+    """S3 kaynakli build'de $SHA hep 'manual'di; etiket her seferinde eziliyordu."""
+    assert "ETIKET=$(cat SURUM.txt)" in BUILDSPEC
+    assert "-t $ECR/$REPO:$ETIKET" in BUILDSPEC

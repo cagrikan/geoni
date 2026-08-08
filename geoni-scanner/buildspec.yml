@@ -20,9 +20,15 @@ phases:
       # Kosan commit imaja YAZILIR; /health onu geri veriyor. Dagitimin
       # gercekten YENI kodu tasidigi ancak boyle dogrulanabiliyor —
       # App Runner "RUNNING" demesi hangi commit oldugunu SOYLEMIYOR.
-      - echo "$SHA" > SURUM.txt
-      - docker build -t $ECR/$REPO:latest -t $ECR/$REPO:$SHA .
+      # deploy.sh zip'lemeden once gercek git SHA'sini yaziyor; kaynak S3 zip
+      # oldugu icin CODEBUILD_RESOLVED_SOURCE_VERSION burada BOS gelir
+      # ("manual"). O yuzden yalniz dosya YOKSA yaz — uzerine yazma.
+      - "[ -s SURUM.txt ] || echo \"$SHA\" > SURUM.txt"
+      # Etiket SURUM.txt'ten okunur: S3 kaynakli build'de $SHA hep "manual"
+      # geliyordu, yani "immutable" etiket her derlemede bir oncekini eziyordu.
+      - ETIKET=$(cat SURUM.txt)
+      - docker build -t $ECR/$REPO:latest -t $ECR/$REPO:$ETIKET .
   post_build:
     commands:
       - docker push $ECR/$REPO:latest
-      - docker push $ECR/$REPO:$SHA
+      - docker push $ECR/$REPO:$(cat SURUM.txt)

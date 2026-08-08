@@ -15,6 +15,13 @@ BUCKET=geoni-build-src-016031489497
 ECR=016031489497.dkr.ecr.eu-central-1.amazonaws.com
 
 echo "1/3 kaynak yukleniyor..."
+# Kosan commit imaja girsin (/health onu geri veriyor). Zip'ten ONCE
+# yazilir cunku EC2 yedek yolu buildspec'i HIC calistirmaz — orada tek
+# sans budur. Depo kirliyse isaretle; yoksa canliya cikan kod ile SHA
+# ayrisir ve dogrulama yalanci yesil verir.
+SHA_YEREL=$(git rev-parse HEAD 2>/dev/null || echo bilinmiyor)
+git diff --quiet 2>/dev/null || SHA_YEREL="$SHA_YEREL-kirli"
+echo "$SHA_YEREL" > SURUM.txt
 TMP=$(mktemp -d); zip -qr "$TMP/scanner-src.zip" . -x "__pycache__/*" "*.pyc" ".env*"
 aws s3 cp "$TMP/scanner-src.zip" "s3://$BUCKET/scanner-src.zip" --only-show-errors
 
