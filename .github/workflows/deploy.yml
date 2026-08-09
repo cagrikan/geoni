@@ -44,7 +44,14 @@ jobs:
       - name: Run tests (deploy gate)
         run: |
           cd geoni-scanner
-          python -m pip install --quiet pytest httpx cbor2 cryptography  # cbor2+cryptography: App Attest testleri (tests/test_attest.py)
+          # cbor2+cryptography: App Attest testleri (tests/test_attest.py)
+          # pillow: paylasim karti testleri (tests/test_kismi_olcum_cekincesi.py).
+          # 🪤 2026-08-09'da YASANDI: pillow yereldeki venv'de VARDI, CI'da YOKTU.
+          #    `import card` patlayinca pytest TOPLAMA asamasinda durdu -> TEK BIR
+          #    test bile kosmadi ve dagitim kapisi kapandi. Yerelde yesil gormek
+          #    yetmiyor; yeni bir bagimlilik kullanan test eklenince BU SATIR da
+          #    guncellenmeli. (bkz. feedback-ci-ortaminda-dogrula)
+          python -m pip install --quiet pytest httpx cbor2 cryptography pillow
           python -m pytest tests/ -q
 
       - name: Configure AWS credentials
