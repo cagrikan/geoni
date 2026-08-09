@@ -58,6 +58,14 @@ _EMAIL_TEXT = {
         "sov_summary": "{m}/{q} kategori sorgusunda öneriliyorsunuz",
         "sov_sources_label": "AI yanıtlarında kaynak gösterilen siteler:",
         "smoothed_label": "Yumuşatılmış skor (son 3 tarama)",
+        # 🔴 Kismi olcum cekincesi (kurucu karari 2026-08-09). E-posta EN KALICI
+        # yuzey: ekran kapanir, e-posta gelen kutusunda kalir ve iletilir.
+        # Rozet/lig/ekran/kart ayni esikte cekince koyuyor; e-postada metin HIC
+        # YAZILMAMISTI (olculdu: mailer.py'de sifir eslesme).
+        "kismi_baslik": "Bu ölçüm kısmi",
+        "kismi_govde": ("Sitenizden yeterli sayıda sayfa okuyamadık — bot koruması, "
+                        "yalnız tarayıcıda çalışan içerik ya da erişim engeli olabilir. "
+                        "Puan okuyabildiğimiz sinyallerle hesaplandı."),
         "breakdown_labels": {
             # Insan dilinde (2026-08-02): web ResultsPage BREAKDOWN_LABELS_TR
             # ve mobil lib/i18n ile AYNI olmali — ayni skor uc yuzeyde farkli
@@ -101,6 +109,10 @@ _EMAIL_TEXT = {
         "sov_summary": "{m}/{q} category queries recommend you",
         "sov_sources_label": "Sites cited as sources in AI answers:",
         "smoothed_label": "Smoothed score (last 3 scans)",
+        "kismi_baslik": "This is a partial measurement",
+        "kismi_govde": ("We couldn't read enough pages from your site — bot protection, "
+                        "client-side-only rendering or an access block can cause this. "
+                        "The score was computed from the signals we could reach."),
         "breakdown_labels": {
             "index_coverage": "Pages AI Can Actually See",
             "authority": "Trust Signal",
@@ -230,6 +242,17 @@ def _build_report_html(domain: str, result: dict, lang: str = "tr", brand: bool 
                          f'{text["smoothed_label"]}: '
                          f'<span style="color:#94A3B8;font-weight:bold;">{stability["smoothed_score"]}</span></div>')
 
+    # Kismi olcum cekincesi — tarama aninda yazilan bayraktan okunur.
+    teshis = result.get("diagnostics") or {}
+    kismi_html = ""
+    if teshis.get("low_confidence"):
+        kismi_html = (
+            '<div style="margin-top:16px;padding:12px 14px;border-radius:10px;'
+            'background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.28);">'
+            f'<div style="color:#F5A623;font-size:13px;font-weight:bold;">{text["kismi_baslik"]}</div>'
+            f'<div style="color:#94A3B8;font-size:12px;line-height:1.5;margin-top:4px;">'
+            f'{text["kismi_govde"]}</div></div>')
+
     return f"""
     <div style="background:#07070F;padding:32px 16px;font-family:Arial,sans-serif;">
       <div style="max-width:560px;margin:0 auto;background:#0E0E1C;border-radius:16px;overflow:hidden;border:1px solid rgba(129,140,248,0.2);">
@@ -251,6 +274,7 @@ def _build_report_html(domain: str, result: dict, lang: str = "tr", brand: bool 
             <div style="font-size:48px;font-weight:bold;color:{color};">{score}</div>
             <div style="color:#8893AB;font-size:12px;letter-spacing:1px;text-transform:uppercase;">{text["score_label"]}</div>
             {smoothed_html}
+          {kismi_html}
           </div>
 
           <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">

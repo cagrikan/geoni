@@ -9,7 +9,7 @@ without a website (e.g. political candidates, executives).
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, Response, RedirectResponse, JSONResponse
-from card import render_score_card
+from card import MIN_TAM_OLCUM_SAYFA, render_score_card
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List
 from contextlib import asynccontextmanager
@@ -2403,12 +2403,20 @@ async def share_card_image(job_id: str, lang: str = "tr"):
         data = await get_share_result(job_id)
         if not data or data.get("score") is None:
             return RedirectResponse("https://geoni.ai/og-share.png", status_code=302)
+        # 🔴 Kismi olcum: 3 sayfadan az okunabilen site taramasinda kartin
+        # uzerine cekince ibaresi konur (kurucu karari 2026-08-09). Rozet ve lig
+        # ayni esikte ZATEN eliyordu; kart eslemiyordu ve en gorunur yuzeydi.
+        # Marka/kisi taramasinda sayfa kavrami yok -> ibare cikmaz.
+        _sayfa = data.get("pages")
+        _kismi = (data.get("type") or "web") == "web" and isinstance(_sayfa, int) \
+            and _sayfa < MIN_TAM_OLCUM_SAYFA
         png = await asyncio.to_thread(
             render_score_card,
             data.get("label") or "",
             float(data["score"]),
             data.get("type") or "web",
             "en" if (lang or "").startswith("en") else "tr",
+            _kismi,
         )
         return Response(
             content=png,

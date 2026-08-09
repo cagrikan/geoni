@@ -89,7 +89,16 @@ def _score_color(score: int) -> tuple[int, int, int]:
     return (240, 97, 109)       # kirmizi
 
 
-def render_score_card(label: str, score: float, atype: str = "web", lang: str = "tr") -> bytes:
+# 🔴 KISMI OLCUM IBARESI — kurucu karari 2026-08-09.
+# Rozet ve lig "3 sayfadan az okunduysa muhur/liste yok" diyordu; KART diyordu.
+# Kart en gorunur yuzey: markamizla LinkedIn/X/WhatsApp akisina giriyor.
+# Kurucu karari: "kart uretilsin ama notlu" — kartı tamamen kesmek paylasimi
+# oldururdu. Not kucuk ve solgun; kartin isini bozmadan durustlugu koruyor.
+MIN_TAM_OLCUM_SAYFA = 3
+
+
+def render_score_card(label: str, score: float, atype: str = "web", lang: str = "tr",
+                      kismi: bool = False) -> bytes:
     """Skor kartini PNG bayt olarak dondurur (1200x630)."""
     W, H = 1200, 630
     s = int(round(max(0.0, min(100.0, float(score)))))
@@ -140,6 +149,13 @@ def render_score_card(label: str, score: float, atype: str = "web", lang: str = 
     d.text((70, 250), lbl, font=lf, fill=(237, 239, 245))
     caption = ("AI Visibility Score" if en else "AI Görünürlük Skoru")
     d.text((72, 330), caption, font=_font(28, False), fill=(155, 163, 181))
+
+    # Kismi olcum ibaresi: skoru gizlemez, yaninda durur. Renk solgun (uyari
+    # degil, cekince); kart hala paylasilabilir gorunur.
+    if kismi:
+        kismi_metin = ("partial measurement — we couldn't read the whole site"
+                       if en else "kısmi ölçüm — sitenin tamamı okunamadı")
+        d.text((72, 378), kismi_metin, font=_font(24, False), fill=(150, 124, 92))
 
     d.text((sx, 200), stext, font=sf, fill=color)
     d.text((sx + sw + 6, 350), suffix, font=suf_font, fill=(110, 115, 145))
