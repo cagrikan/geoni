@@ -931,6 +931,12 @@ async def _count(query: str) -> int:
         return 0
 
 
+# Panel sayimlarinda kullanilan ORTAK suzgec: yalniz gercek uyeler.
+# Tek yerde durur ki bir sayim guncellenip digeri unutulmasin (ayni kuralin
+# iki yerde yasamasi bu projede daha once dort kez kusur uretti).
+GERCEK_UYE = "test_hesap=is.false"
+
+
 async def _returning_users(activity_since: str, signup_before: str) -> int:
     """Users active (scanned) since `activity_since` whose profile predates
     `signup_before` (as opposed to a brand-new signup scanning for the first
@@ -953,7 +959,8 @@ async def _returning_users(activity_since: str, signup_before: str) -> int:
             if not active_ids:
                 return 0
             r2 = await client.get(
-                f"{SUPABASE_URL}/rest/v1/profiles?select=id,created_at&id=in.({','.join(active_ids)})",
+                f"{SUPABASE_URL}/rest/v1/profiles?select=id,created_at&{GERCEK_UYE}"
+                f"&id=in.({','.join(active_ids)})",
                 headers=_headers(), timeout=10,
             )
             if r2.status_code != 200:
@@ -974,11 +981,17 @@ async def get_admin_summary() -> dict:
 
     (total_users, total_audits, new_users_today, returning_users_today,
      new_users_week, returning_users_week) = await asyncio.gather(
-        _count("profiles?select=id"),
+        # 🔴 TEST HESAPLARI SAYILMAZ (kurucu karari 2026-08-09).
+        # Olculdu: 46 uye gorunuyordu, gercegi 26; "bu hafta 22 yeni uye"
+        # gorunuyordu, gercegi 2 -- 20'si ajan oturumlarinin actigi test hesabi.
+        # Panel tek dislamayan yerdi (kayit nobeti zaten disliyordu). Kaynak
+        # `profiles.test_hesap`; e-posta uzantisina BAGLI DEGIL, kolon bagimsiz
+        # duzeltilebilir (ileride gercek bir ekip uyesi @geoni.ai olabilir).
+        _count(f"profiles?select=id&{GERCEK_UYE}"),
         _count("audits?select=id"),
-        _count(f"profiles?select=id&created_at=gte.{today_start}"),
+        _count(f"profiles?select=id&{GERCEK_UYE}&created_at=gte.{today_start}"),
         _returning_users(today_start, today_start),
-        _count(f"profiles?select=id&created_at=gte.{week_start}"),
+        _count(f"profiles?select=id&{GERCEK_UYE}&created_at=gte.{week_start}"),
         _returning_users(week_start, today_start),
     )
     return {

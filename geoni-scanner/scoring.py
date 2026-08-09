@@ -124,6 +124,15 @@ def _indexability_score(pages: list[dict]) -> float | None:
     return min(100.0, (indexable / len(pages)) * 70 + (canonical / len(pages)) * 30)
 
 
+# 🔴 GUVEN ESIGI — kurucu karari 2026-08-09.
+# Rozet (api/badge/[id].js MIN_PAGES) ve lig (db.py MIN_CRAWLED_PAGES) zaten
+# "3 sayfadan az okunduysa muhur/liste yok" diyordu; kullanici ekrani demiyordu.
+# Olculdu (30 gun): 113 web taramasinin 66'si (%58) 3 sayfadan az okuyabilmis,
+# 54'u (%48) kullaniciya CEKINCESIZ gosterilmis. Ayni kural artik burada da
+# uygulaniyor -> istemciler (web + mobil) zaten hazir olan cekince notunu cizer.
+# PUAN DEGISMEZ; yalnizca "bu olcum dusuk guvenli" bayragi acilir.
+MIN_GUVEN_SAYFA = 3
+
 def compute_index_coverage(crawl_result: dict, indexing_status: dict) -> dict:
     """v3: Google site: orneklemesi + indekslenebilirlik harmani.
 
@@ -798,6 +807,7 @@ async def compute_ai_visibility_score(crawl_result: dict, indexing_status: dict,
             # Rapor bunu kullaniciya durustce yazar: "sitenize erisemedik; skor
             # erisilebilen sinyallerle hesaplandi" — sessizce 0 vermek yerine.
             "unmeasured_dimensions": olculemeyen,
-            "low_confidence": bool(olculemeyen) and not pages,
+            "low_confidence": (bool(olculemeyen) and not pages)
+                               or len(pages) < MIN_GUVEN_SAYFA,
         },
     }
