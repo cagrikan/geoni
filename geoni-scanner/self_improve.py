@@ -159,19 +159,38 @@ async def _snapshot_self_recognition() -> bool:
     Salt-kopya: hicbir tarama/skor davranisi degismez."""
     try:
         async with httpx.AsyncClient() as client:
+            # 🔴 auto_monitor=true SARTI KALDIRILDI (2026-08-09).
+            # Kurucu karari 2026-08-08: "artik otomatik tarama istemiyorum" +
+            # "oz tarama sadece musterinin taramasindan ogrensin". Otomatik tarama
+            # kapaninca `self_scan()` bir daha kosmuyor; bu fonksiyon YALNIZ ondan
+            # cagriliyordu ve YALNIZ auto_monitor=true kayda bakiyordu. Sonuc:
+            # anlik goruntu 2026-08-03'te dondu ve own_recognition o gunden beri
+            # her gece AYNI dort satiri canli veriymis gibi uretti (olculdu:
+            # 08-04..08-09 rowlarinin hepsinde as_of=2026-08-03T07:40).
+            # Artik geoni.ai'nin EN YENI tamamlanmis web taramasi kaynak — elle
+            # yapilmis olmasi fark etmez, kurucunun istedigi de tam buydu.
+            # 🪤 Retention eski kayitlarin result_json'unu NULL'ledigi icin
+            #    model_results'i DOLU olan ilk satir aranir; bos satir donerse
+            #    eski (dogru) anlik goruntunun uzerine YAZILMAZ.
             r = await client.get(
                 f"{SUPABASE_URL}/rest/v1/audits?type=eq.web&domain=eq.{SELF_SCAN_DOMAIN}"
-                f"&status=eq.complete&result_json->>auto_monitor=eq.true"
-                f"&select=result_json,created_at&order=created_at.desc&limit=1",
+                f"&status=eq.complete"
+                f"&select=result_json,created_at&order=created_at.desc&limit=5",
                 headers=_headers(), timeout=15)
             rows = r.json() if r.status_code == 200 else []
             if not rows:
-                logger.warning("self_scan snapshot: taze self-scan kaydi bulunamadi")
+                logger.warning("self_scan snapshot: geoni.ai taramasi bulunamadi")
                 return False
-            rj = rows[0].get("result_json") or {}
-            mr = rj.get("model_results") or (rj.get("brand_recall") or {}).get("model_results") or {}
+            rj, mr = {}, {}
+            for satir in rows:
+                aday_rj = satir.get("result_json") or {}
+                aday = (aday_rj.get("model_results")
+                        or (aday_rj.get("brand_recall") or {}).get("model_results") or {})
+                if aday:
+                    rj, mr, rows = aday_rj, aday, [satir]
+                    break
             if not mr:
-                logger.warning("self_scan snapshot: model_results bos, yazilmadi")
+                logger.warning("self_scan snapshot: model_results dolu kayit yok, yazilmadi")
                 return False
             return await _save_experiment(client, SELF_RECOG_KEY, {
                 "at": rows[0].get("created_at"),
@@ -343,6 +362,13 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
             #     kaydi bosaliyor ve sinyal SESSIZCE oluyordu (2026-08-01'de oldu:
             #     own_recognition 9 gun uretildikten sonra bir anda kayboldu).
             #     _snapshot_self_recognition() bu yuzden tarama aninda kopya birakir.
+            # Anlik goruntuyu OKUMADAN once TAZELE. Eskiden bu is `self_scan()`
+            # icinde yapiliyordu; otomatik tarama kapandigi icin (kurucu karari
+            # 2026-08-08) o fonksiyon artik kosmuyor ve goruntu 6 gun boyunca
+            # dondu. Dongu her gece kosuyor: tazeleme buraya alinmali.
+            # Yazacak taze veri yoksa fonksiyon False doner ve MEVCUT goruntu
+            # oldugu gibi kalir — sinyal kaybolmaz.
+            await _snapshot_self_recognition()
             snap = await _load_experiment(client, SELF_RECOG_KEY)
             if isinstance(snap, dict) and isinstance(snap.get("model_results"), dict):
                 geoni_mr = snap["model_results"] or {}

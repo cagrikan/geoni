@@ -188,3 +188,66 @@ def test_snapshot_bos_model_results_yazmaz(monkeypatch):
 
     assert asyncio.run(si._snapshot_self_recognition()) is False
     assert not [g for u, g in fake.posts if "app_config" in u]
+
+
+# ── 2026-08-09: otomatik tarama kapaninca sinyal DONDU ───────────────────────
+# Kurucu karari 2026-08-08: "artik otomatik tarama istemiyorum" + "oz tarama
+# sadece musterinin taramasindan ogrensin". `self_scan()` bir daha kosmadi;
+# anlik goruntu 2026-08-03'te dondu ve own_recognition alti gun boyunca AYNI
+# dort satiri canli veriymis gibi uretti (uretimde olculdu: 08-04..08-09
+# satirlarinin hepsinde as_of=2026-08-03T07:40).
+
+def test_anlik_goruntu_ELLE_yapilan_taramadan_da_alinir(monkeypatch):
+    """auto_monitor sarti YOK: geoni.ai'nin en yeni taramasi elle yapilmis
+    olsa bile kaynak odur — kurucunun istedigi tam olarak budur."""
+    audit = [{"created_at": "2026-08-08T04:04:00+00:00",
+              "result_json": {"score": 73, "model_results": _MR}}]  # auto_monitor YOK
+    # 🪤 Sahte istemci ilk esleseni doner: `auto_monitor` iceren sorgu BOS
+    # donsun ki eski kod (sartli sorgu) burada BASARISIZ olsun. Aksi hâlde
+    # test yesil gorunur ama sartin kalktigini HIC kanitlamaz.
+    fake = _kur(monkeypatch, [("auto_monitor", []), ("audits", audit)])
+
+    assert asyncio.run(si._snapshot_self_recognition()) is True
+    yazilan = [g for u, g in fake.posts if "app_config" in u]
+    assert yazilan, "anlik goruntu yazilmaliydi"
+
+
+def test_bos_result_json_ATLANIR_sonraki_dolu_kayit_kullanilir(monkeypatch):
+    """🪤 Retention eski kayitlarin result_json'unu NULL'luyor. En yeni satir
+    bosalmissa fonksiyon pes etmemeli; dolu olan ilk satiri almali."""
+    audit = [{"created_at": "2026-08-08T04:04:00+00:00", "result_json": None},
+             {"created_at": "2026-08-03T07:40:00+00:00",
+              "result_json": {"score": 71, "model_results": _MR}}]
+    fake = _kur(monkeypatch, [("audits", audit)])
+
+    assert asyncio.run(si._snapshot_self_recognition()) is True
+    yazilan = [g for u, g in fake.posts if "app_config" in u]
+    assert yazilan and yazilan[0]["value"]
+
+
+def test_hicbiri_dolu_degilse_MEVCUT_goruntunun_uzerine_yazilmaz(monkeypatch):
+    """Taze veri yoksa False donmeli — eski (dogru) goruntu korunsun, sinyal
+    kaybolmasin. 'Bos yaz' davranisi sinyali oldururdu."""
+    audit = [{"created_at": "2026-08-08T04:04:00+00:00", "result_json": None}]
+    fake = _kur(monkeypatch, [("auto_monitor", []), ("audits", audit)])
+
+    assert asyncio.run(si._snapshot_self_recognition()) is False
+    assert not [g for u, g in fake.posts if "app_config" in u]
+
+
+def test_dongu_anlik_goruntuyu_OKUMADAN_ONCE_tazeler(monkeypatch):
+    """Tazeleme `self_scan()` icindeydi ve o fonksiyon artik kosmuyor.
+    Gecelik dongu her kostugunda goruntuyu yenilemeli."""
+    cagrildi = {"n": 0}
+
+    async def _sahte():
+        cagrildi["n"] += 1
+        return True
+
+    monkeypatch.setattr(si, "_snapshot_self_recognition", _sahte)
+    snap = [{"value": json.dumps({"at": "2026-08-08T04:04:00+00:00",
+                                  "score": 73, "model_results": _MR})}]
+    _kur(monkeypatch, [("app_config", snap)])
+
+    asyncio.run(si.run_improvement_cycle(days=7))
+    assert cagrildi["n"] == 1, "dongu anlik goruntuyu tazelemedi"
