@@ -159,16 +159,22 @@ async def _snapshot_self_recognition() -> bool:
     Salt-kopya: hicbir tarama/skor davranisi degismez."""
     try:
         async with httpx.AsyncClient() as client:
-            # 🔴 auto_monitor=true SARTI KALDIRILDI (2026-08-09).
-            # Kurucu karari 2026-08-08: "artik otomatik tarama istemiyorum" +
-            # "oz tarama sadece musterinin taramasindan ogrensin". Otomatik tarama
-            # kapaninca `self_scan()` bir daha kosmuyor; bu fonksiyon YALNIZ ondan
-            # cagriliyordu ve YALNIZ auto_monitor=true kayda bakiyordu. Sonuc:
-            # anlik goruntu 2026-08-03'te dondu ve own_recognition o gunden beri
-            # her gece AYNI dort satiri canli veriymis gibi uretti (olculdu:
-            # 08-04..08-09 rowlarinin hepsinde as_of=2026-08-03T07:40).
-            # Artik geoni.ai'nin EN YENI tamamlanmis web taramasi kaynak — elle
-            # yapilmis olmasi fark etmez, kurucunun istedigi de tam buydu.
+            # auto_monitor=true SARTI KALDIRILDI (2026-08-09).
+            #
+            # ⚠️ DUZELTME (2026-08-10): bu degisiklik once "sinyal DONDU, kusur"
+            # diye gerekcelendirilmisti. YANLISTI ve olcumle curutuldu:
+            # `self_scan()` YALNIZ PAZARTESI kosuyor (improvement_loop, is_monday)
+            # ve monitor kuyrugundan BAGIMSIZ — otomatik taramanin kapatilmasi onu
+            # etkilemiyor. 2026-08-03 ve 2026-08-10 ikisi de Pazartesi; aradaki
+            # "6 gun ayni deger" haftalik ritmin KENDISIYDI, ariza degil.
+            # (10 Agustos 00:05'te kosan geoni.ai taramasi auto_monitor="true"
+            #  tasiyor; yani ESKI kod da bulurdu.)
+            #
+            # Degisikligin GERCEK gerekcesi: TAZELIK. Kaynak artik auto_monitor
+            # sartina bagli degil, geoni.ai'nin EN YENI tamamlanmis web taramasi
+            # — ELLE yapilan tarama da goruntuyu tazeliyor, veri haftada bir
+            # yerine tarama basina guncelleniyor. Kurucunun "oz tarama sadece
+            # musterinin taramasindan ogrensin" cumlesiyle de uyumlu.
             # 🪤 Retention eski kayitlarin result_json'unu NULL'ledigi icin
             #    model_results'i DOLU olan ilk satir aranir; bos satir donerse
             #    eski (dogru) anlik goruntunun uzerine YAZILMAZ.
@@ -362,10 +368,13 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
             #     kaydi bosaliyor ve sinyal SESSIZCE oluyordu (2026-08-01'de oldu:
             #     own_recognition 9 gun uretildikten sonra bir anda kayboldu).
             #     _snapshot_self_recognition() bu yuzden tarama aninda kopya birakir.
-            # Anlik goruntuyu OKUMADAN once TAZELE. Eskiden bu is `self_scan()`
-            # icinde yapiliyordu; otomatik tarama kapandigi icin (kurucu karari
-            # 2026-08-08) o fonksiyon artik kosmuyor ve goruntu 6 gun boyunca
-            # dondu. Dongu her gece kosuyor: tazeleme buraya alinmali.
+            # Anlik goruntuyu OKUMADAN once TAZELE. Eskiden bu is YALNIZ
+            # `self_scan()` icinde yapiliyordu, o da YALNIZ PAZARTESI kosuyor —
+            # yani goruntu haftada bir tazeleniyordu. Dongu her gece kostugu
+            # icin tazeleme buraya alindi: aradaki gunlerde ELLE yapilan bir
+            # geoni.ai taramasi varsa sinyal onu da gorur.
+            # ⚠️ Bu bir kusur duzeltmesi DEGIL, tazelik iyilestirmesidir
+            #    (2026-08-10'da yanlis teshis duzeltildi).
             # Yazacak taze veri yoksa fonksiyon False doner ve MEVCUT goruntu
             # oldugu gibi kalir — sinyal kaybolmaz.
             await _snapshot_self_recognition()
