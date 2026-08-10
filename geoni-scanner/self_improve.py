@@ -332,6 +332,37 @@ def decay_from_rows(rows: list) -> list:
     return out
 
 
+def gercek_kullanici_taramalari(rows: list, test_kimlikleri: set) -> list:
+    """Test hesaplarinin taramalarini oz-gelisim korpusundan ayiklar.
+
+    NEDEN (olculdu 2026-08-10): motor son 7 gunun taramalarini HIC suzmeden
+    cekiyordu; 25 taramanin 10'u (%40) ajan test hesaplarina aitti. content_gap
+    sinyalinin kipi "otonom" — yani haftalik icerik taslagini bu sorulardan
+    uretiyor. Ornek kirlilik: "Turkiye'de en iyi TEST hizmeti verenler kimler?"
+    Bu bir musteri sorusu degil, benim test taramam. Kirli korpus urun kararini
+    (icerik plani, nis agrisi, rakip listesi) yanlis yone cekiyordu.
+
+    Anonim satirlar (user_id yok) KALIR: onlar gercek ucretsiz taramalar.
+    """
+    if not test_kimlikleri:
+        return rows
+    return [a for a in rows if a.get("user_id") not in test_kimlikleri]
+
+
+async def _test_hesap_kimlikleri(client) -> tuple:
+    """(kimlik kumesi, okundu_mu). Okunamazsa suzgec sessizce KAPANMASIN diye
+    ikinci deger False doner ve digest'e 'suzgec: hata' yazilir."""
+    try:
+        r = await client.get(
+            f"{SUPABASE_URL}/rest/v1/profiles?select=id&test_hesap=is.true",
+            headers=_headers(), timeout=15)
+        if r.status_code != 200:
+            return set(), False
+        return {str(x["id"]) for x in r.json() if x.get("id")}, True
+    except Exception:
+        return set(), False
+
+
 async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = False) -> dict:
     """Son `days` gunun brand/person/social taramalarini hasat eder, A/B/C/Q
     sinyallerini hesaplar, improvement_signals'e (bugun icin) yazar ve digest doner."""
@@ -349,7 +380,7 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
             offset, PAGE = 0, 1000
             while True:
                 r = await client.get(
-                    f"{SUPABASE_URL}/rest/v1/audits?select=type,result_json,created_at"
+                    f"{SUPABASE_URL}/rest/v1/audits?select=type,result_json,created_at,user_id"
                     f"&status=eq.complete&created_at=gte.{since}"
                     f"&type=in.(brand,person,social)&order=created_at.desc"
                     f"&limit={PAGE}&offset={offset}",
@@ -360,6 +391,11 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
                 if len(batch) < PAGE or offset >= 50000:  # tavan: patolojik durumda sonsuz donmesin
                     break
                 offset += PAGE
+            # Test hesaplarini korpustan cikar (bkz. gercek_kullanici_taramalari).
+            _test_ids, _suzgec_ok = await _test_hesap_kimlikleri(client)
+            _ham = len(rows)
+            rows = gercek_kullanici_taramalari(rows, _test_ids)
+            test_elenen = _ham - len(rows)
             # geoni.ai self-scan (own_recognition) — UC KADEMELI kaynak.
             # (1) app_config anlik goruntusu: BIRINCIL kaynak. NEDEN: audits.result_json
             #     kalici DEGIL — apply_audit_retention RPC'si ayni (kullanici+tur+hedef)
@@ -812,6 +848,9 @@ async def run_improvement_cycle(days: int = 7, top_n: int = 25, notify: bool = F
     digest = {
         "ok": True,
         "scanned_audits": scanned,
+        # Suzgec calisti mi, kac tarama elendi — sessiz zayiflamayi gorunur kilar.
+        "test_hesap_suzgeci": ("ok" if _suzgec_ok else "HATA — suzgec kapali"),
+        "test_hesap_elenen": test_elenen,
         "own_visibility": {e: own_mention.get(e, 0) for e in engines},
         "top_questions": [q for q, _ in query_freq.most_common(10)],
         "painful_niches": sorted(
