@@ -105,7 +105,10 @@ OTOMATIK_TARAMA_ACIK = os.environ.get("MONITOR_AUTO_SCAN", "0").strip() == "1"
 
 async def _scan_web_item(item: dict) -> int | None:
     """Web hedefi icin tam denetim; audits'e kaydeder, yeni skoru dondurur."""
-    domain = (item.get("target") or {}).get("domain") or item.get("label")
+    # `target` duz METIN de gelebiliyor (bkz. _hedef_sozlugu). Web yolunda
+    # bugun cokmedi cunku o satirlarin target'i sozlukttu, ama ayni bomba
+    # buradaydi: metin gelen bir web hedefi eklenirse aynen coker.
+    domain = _hedef_sozlugu(item).get("domain") or item.get("label")
     if not domain:
         return None
 
@@ -149,9 +152,32 @@ async def _scan_web_item(item: dict) -> int | None:
     return score_result["overall_score"]
 
 
+def _hedef_sozlugu(item: dict) -> dict:
+    """watchlist.target'i HER ZAMAN sozluk olarak dondurur.
+
+    🪤 CANLI VERIDE IKI BICIM VAR (2026-08-12'de olculdu):
+      - cogu satir: {"name": "...", "topic": "..."} / {"domain": "..."}
+      - bazi satirlar: duz METIN, ornegin "Filiz Alkan"
+    Kod yalnizca sozluk varsayiyordu; metin gelen satirlarda
+    `target.get(...)` -> "'str' object has no attribute 'get'" ile COKUYORDU.
+    Izleme 2026-08-08'den beri kapali oldugu icin bu yol hic kosmamis, hata
+    da gorunmemisti; ozellik acilir acilmaz ODEYEN MUSTERININ iki hedefi
+    ust uste basarisiz oldu (skor None, kontor dusmedi).
+
+    Metin gelirse ad olarak kabul edilir — etiketle ayni anlama gelir.
+    Beklenmedik tip (liste/sayi) gelirse bos sozluk; cagiran `label`e duser.
+    """
+    t = item.get("target")
+    if isinstance(t, dict):
+        return t
+    if isinstance(t, str) and t.strip():
+        return {"name": t.strip()}
+    return {}
+
+
 async def _scan_brand_item(item: dict) -> int | None:
     """Kisi/marka hedefi icin bilinirlik kontrolu; audits'e kaydeder."""
-    target = item.get("target") or {}
+    target = _hedef_sozlugu(item)
     name = target.get("name") or item.get("label")
     if not name:
         return None

@@ -163,6 +163,41 @@ def test_bakiye_tam_yeterse_taranir(monkeypatch):
     assert c["tara"].cagrildi, "bakiye tam bedele esitken tarama atlanmis"
 
 
+# ── 4) target iki bicimde gelebiliyor ───────────────────────────────────────
+
+@pytest.mark.parametrize("girdi,beklenen", [
+    ({"name": "X", "topic": "Y"}, {"name": "X", "topic": "Y"}),   # sozluk aynen
+    ("Filiz Alkan", {"name": "Filiz Alkan"}),                     # METIN -> ad
+    ("  bosluklu  ", {"name": "bosluklu"}),
+    (None, {}),
+    ("", {}),
+    ("   ", {}),
+    ([1, 2], {}),                                                 # beklenmedik tip
+    (42, {}),
+])
+def test_hedef_sozlugu_her_bicimi_kaldirir(girdi, beklenen):
+    """🔴 CANLI OLAY (2026-08-12): `target` bazi satirlarda duz METIN.
+
+    Izleme acilir acilmaz ODEYEN MUSTERININ iki hedefi ust uste coktu:
+    'Filiz Alkan' ve 'Alkan Makina' -> "'str' object has no attribute 'get'".
+    Skor None yazildi, kontor dusmedi, kullanici hicbir sey gormedi —
+    tam anlamiyla SESSIZ basarisizlik. Izleme 2026-08-08'den beri kapali
+    oldugu icin bu yol hic kosmamis, hata da hic gorunmemisti.
+
+    Ders: veritabanindan gelen jsonb alanin TIPINE guvenme; ayni kolonda
+    iki bicim yasayabiliyor.
+    """
+    assert monitor._hedef_sozlugu({"target": girdi}) == beklenen
+
+
+def test_metin_hedef_COKMEZ(monkeypatch):
+    """Metin target'li bir kayit _process_item'i patlatmamali."""
+    c = _bakiye_ile_kos(monkeypatch, bakiye=BRAND_SCAN_COST, tip="person")
+    assert c["tara"].cagrildi
+    # asil kanit: asagidaki cagri istisna atmadan donuyor
+    assert monitor._hedef_sozlugu({"target": "Alkan Makina"})["name"] == "Alkan Makina"
+
+
 def test_sosyal_hedef_yarim_bedelle_taranir(monkeypatch):
     """Sosyal bedeli 10; 10 jetonu olan sosyal hedef taranabilmeli."""
     c = _bakiye_ile_kos(monkeypatch, bakiye=SOCIAL_SCAN_COST, tip="social")
