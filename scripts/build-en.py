@@ -193,6 +193,42 @@ def yapisal_veri_ingilizce(html: str) -> str:
             "Tool that measures, in minutes, how visible a brand, a person or a website is inside "
             "AI answer engines (ChatGPT, Claude, Gemini, Perplexity) and reports what is missing.",
         "Ücretsiz AI görünürlük taraması": "Free AI visibility scan",
+
+        # ── FAQ JSON-LD (2026-08-12) ────────────────────────────────────────
+        # 🪤 Bu uc soru/cevap Ingilizce belgede TURKCE kaliyordu. GEO urununun
+        # AI'a okuttugu katmanin yanlis dilde olmasi, tam da sattigimiz seyin
+        # tersi. Once `en.html` ELLE duzeltilmisti ama en.html URETILEN bir
+        # dosya — jenerator bir sonraki kosuda ceviriyi geri aldi ve CI kirmizi
+        # yandi ("en.html guncel degil"). Duzeltme buraya, kaynaga yazilir.
+        # Metinler sayfanin GORUNEN Ingilizce SSS'iyle birebir ayni olmali.
+        "SEO'da iyiyim — GEO'da da iyi miyimdir?":
+            "I'm good at SEO — am I good at GEO too?",
+        "Çoğu zaman hayır. AI motorları sıralamaya değil; bot erişiminize, "
+        "yapılandırılmış verinize, varlık kayıtlarınıza (bilgi grafikleri) ve "
+        "bağımsız atıflarınıza bakar. Google'da 1. sıradaki bir site, ChatGPT "
+        "cevabında hiç görünmeyebilir.":
+            "Usually no. AI engines don't look at rankings; they look at your bot "
+            "access, structured data, entity records (knowledge graphs) and "
+            "independent citations. A site ranked #1 on Google can be entirely "
+            "absent from a ChatGPT answer.",
+        "GEO ne kadar sürede sonuç verir?": "How fast does GEO show results?",
+        "Teknik katman (bot erişimi, şema) günler içinde ölçülebilir etki "
+        "yaratır; atıf ve bilinirlik katmanı haftalar içinde oturur. İkisini de "
+        "aynı panelden, skor değişimiyle takip edersiniz.":
+            "The technical layer (bot access, schema) shows measurable impact "
+            "within days; the citation and recognition layer settles within weeks. "
+            "You track both from one panel, via your score.",
+        "Nereden başlamalıyım?": "Where should I start?",
+        "Birkaç dakikalık ücretsiz taramayla. AI Görünürlük Skorunuz ve eksik "
+        "listeniz çıkar; dilediğiniz eksiği tek tıkla uzmanlarımıza devredersiniz.":
+            "With the free scan (a few minutes). You get your AI Visibility Score "
+            "and gap list; hand any gap to our experts in one click.",
+
+        # Kurucu `Person` dugumu de Turkce kaliyordu.
+        "Yatırımcı & Stratejik Danışman": "Investor & Strategic Advisor",
+        '"Yapay Zeka",': '"Artificial Intelligence",',
+        '"Kurumsal Bilişim",': '"Enterprise IT",',
+        '"Dijital Dönüşüm"': '"Digital Transformation"',
     }
     for tr, en in degisim.items():
         html = html.replace(tr, en)

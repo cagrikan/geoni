@@ -34,7 +34,11 @@ const ZIYARETCI_UCLARI = [
   './api/lookup.js',
   // Form uclari: yanit e-posta gonderimine bagli, gonderim takilirsa form
   // "gonderiliyor"da kalir.
-  './api/audit-email.js',
+  // NOT: './api/audit-email.js' 2026-08-12'de SILINDI. Tek cagirani ana
+  // sayfadaki "AI asistani" paneliydi; o panel hic acilmiyordu (acilis dugmesi
+  // DOM'da yoktu) ve acilsa bile iki cevaptan uydurma "GEO ACILIYET SKORU"
+  // uretiyordu. Panel kaldirilinca uc yetim kaldi — kimliksiz, KVKK
+  // aydinlatmasiz bir mail ucu olarak saf saldiri yuzeyiydi.
   './api/creator-apply.js',
 ];
 
