@@ -308,13 +308,14 @@ def decay_from_rows(rows: list) -> list:
         if not isinstance(rj, dict):
             continue
         # 🪤 GEZILEMEYEN TARAMA "BAYATLAMA" DEGILDIR (2026-08-06'da olculdu).
-        # compute_freshness_score sayfa yoksa NOTR 50.0 doner — bu bir olcum degil,
-        # yer tutucu. Taramalarin ~%35'i bot korumasi yuzunden 0 sayfa donuyor
-        # (bkz. tests/test_olculemedi_sifir_degil.py). Filtre olmadan 100 -> 50
-        # dususu "icerigi bayatliyor" diye raporlaniyordu: 6 Agustos dongusunde
-        # 3 sinyalin 2'si (doktortakvimi.com, nuxt.com) tam bu sahte durumdu,
-        # ikisinin de son taramasi 0 sayfaydi. Ayni sinif hata v5'te skorlamada
-        # duzeltilmisti; burada gozden kacmisti.
+        # compute_freshness_score o donemde sayfa yoksa NOTR 50.0 donuyordu —
+        # olcum degil, yer tutucu. Taramalarin ~%35'i bot korumasi yuzunden
+        # 0 sayfa donuyor (bkz. tests/test_olculemedi_sifir_degil.py). Filtre
+        # olmadan 100 -> 50 dususu "icerigi bayatliyor" diye raporlaniyordu:
+        # 6 Agustos dongusunde 3 sinyalin 2'si (doktortakvimi.com, nuxt.com)
+        # tam bu sahte durumdu. 2026-08-12'den beri skorlama 0 sayfa + 0 tarihte
+        # freshness'i HIC yazmiyor (None/measured=False); bu filtre ESKI
+        # kayitlar (kirilimda 50 yazan) icin duruyor — kaldirma.
         if not (rj.get("pages") or []):
             continue
         fr = (rj.get("score_breakdown") or {}).get("freshness")

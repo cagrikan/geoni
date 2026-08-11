@@ -34,3 +34,21 @@ SCAN_COSTS = {
     "brand": BRAND_SCAN_COST,
     "social": SOCIAL_SCAN_COST,
 }
+
+
+def bedel_sec(entity_type: str | None, social: bool = False) -> int:
+    """Kişi/marka/sosyal taramanın bedelini TEK noktadan seçer.
+
+    Neden (fonksiyonel denetim 2026-08-12, Ö2): private akışta ön-kontrol
+    bedeli `social` bayrağına göre seçiyordu ama fiili düşüm SABİT
+    BRAND_SCAN_COST yazıyordu — `{social:true, private:true}` gönderen istemci
+    ya 10-19 bakiyeyle kapıyı geçip düşümde takılıyor (tarama koşmuş, GEONI
+    maliyeti oluşmuş) ya da yarı fiyatlı hizmete 20 ödüyordu. İki nokta da
+    artık buradan okur; sayı değişirse ikisi birlikte değişir.
+
+    🪤 `type` alanı istemciden serbest metin gelir; `social` bayrağı da ayrı
+    taşınır. İkisinden HERHANGİ biri sosyalse sosyal tarife uygulanır;
+    bilinmeyen tip güvenli tarafa (tam bedel, BRAND) düşer — asla 0 değil."""
+    if social or (entity_type or "") == "social":
+        return SOCIAL_SCAN_COST
+    return SCAN_COSTS.get(entity_type or "person", BRAND_SCAN_COST)

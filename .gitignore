@@ -8,3 +8,10 @@ __pycache__/
 .claude/
 node_modules/
 /geoni-frontend/
+.vercel
+.env*
+
+# Claude Code yerel araç artıkları — projeye ait değil, makineye ait
+.agents/
+.mcp.json
+skills-lock.json

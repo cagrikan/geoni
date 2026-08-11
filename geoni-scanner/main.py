@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, Response, RedirectResponse, JSONResponse
 from card import MIN_TAM_OLCUM_SAYFA, render_score_card
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from typing import Optional, List
 from contextlib import asynccontextmanager
 import asyncio
@@ -48,14 +48,21 @@ from devicecheck import MAX_FREE_SCANS as FREE_SCAN_LIMIT
 # AYRI yaziliydi; biri degisip digeri kalirsa `audits.credits_spent` gercek
 # dusumle tutmuyor (2026-07-28'deki 1120 hayali kredi tam bu bicimdeydi) ve
 # ucretsiz-tarama kapisi yanlis karar veriyor.
-from scan_costs import WEB_SCAN_COST, BRAND_SCAN_COST, SOCIAL_SCAN_COST, SCAN_COSTS
+from scan_costs import WEB_SCAN_COST, BRAND_SCAN_COST, SOCIAL_SCAN_COST, SCAN_COSTS, bedel_sec
 import job_store
 from free_scan import free_scan_gate, record_free_scan
 
 # Ucretsiz-tarama hakki tarama BASARIYLA bitince yakilir (kor denetim
-# 2026-08-04). job_id -> (user_id, device_token, gate_info). Tarama coker ya da
-# hic tamamlanmazsa kayit burada durur ve hak YAKILMAZ; surec yeniden baslarsa
-# sozluk bos doner, kullanici hakkini kaybetmez.
+# 2026-08-04). job_id -> (user_id, device_token, gate_info). Tarama cokerse
+# girdi pop edilir ama hak YAKILMAZ (record_free_scan cagrilmaz); surec yeniden
+# baslarsa sozluk bos doner, kullanici hakkini kaybetmez.
+#
+# 🪤 SUREC-YEREL sozluk (2026-08-12, K1): SQS modunda is WORKER surecinde kosar,
+# API'nin buraya yazdigi girdiyi worker GOREMEZ. O yuzden hak bilgisi kuyruk
+# mesajinda tasinir (bkz. start_audit'teki enqueue) ve worker.process_message
+# kosumdan once kendi surecindeki BU sozluge koyar. Buraya "API'de yaz, worker'da
+# oku" varsayimiyla kod ekleme — tam o varsayim ucretsiz hakkin hic
+# yakilmamasina yol acmisti.
 _bekleyen_hak: dict = {}
 
 
@@ -75,6 +82,7 @@ from db import (
     create_pending_audit, create_pending_brand_check, pending_satiri_sil, update_audit_status, get_audit_row, get_auth_email,
     purge_private_result,
     save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits, get_credit_balance,
+    tarama_bedelini_iade_et,
     is_strict_admin, get_admin_summary, get_admin_scans_daily, get_admin_credits_stats, get_admin_provider_usage,
     admin_list_users, admin_list_audits, admin_get_audit, admin_adjust_credits, admin_set_is_admin,
     get_manual_balances, set_manual_balance, get_manual_topups_total, list_manual_topups, add_manual_topup,
@@ -180,6 +188,18 @@ class BrandCheckRequest(BaseModel):
         if len(v) < 2:
             raise ValueError("name en az 2 karakter olmalı")
         return v
+
+    @model_validator(mode="after")
+    def _sosyal_ozel_birlikte_olamaz(self):
+        # Ö2 (2026-08-12): resmi sosyal uç `private=False` sabitler
+        # (start_social_check); `{social:true, private:true}` YALNIZ ham API'yi
+        # elle çağıran istemciden gelebilir ve bedel/kapı tutarsızlıklarının
+        # (yarı fiyatlı hizmete tam düşüm, 10-19 bakiyeyle boşa koşan tarama)
+        # tek giriş kapısıydı. Meşru akışı olmayan kombinasyon şemada kapatılır
+        # — 422, tarama pipeline'ına ve LLM maliyetine hiç girmez.
+        if self.social and self.private:
+            raise ValueError("social ve private birlikte kullanılamaz")
+        return self
 
 class BrandCheckResponse(BaseModel):
     job_id: str
@@ -548,7 +568,10 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = '',
             if not charged:
                 jobs_store[job_id].update({"status": "failed", "error": "insufficient_credits"})
                 if sqs_enabled():
-                    await update_audit_status(job_id, "failed", error="deduct_failed")
+                    # Bellek ve DB AYNI kodu tasisin: dusum bu noktada ancak
+                    # bakiye es zamanli tukendigi icin duser; istemcinin
+                    # "kredi yukle" CTA'si `insufficient_credits`e bagli.
+                    await update_audit_status(job_id, "failed", error="insufficient_credits")
                 logger.warning(f"Private audit {job_id}: dusum basarisiz, teslim iptal")
                 return
             # SQS modunda 'queued' satiri onceden acildi (user_id=None ile,
@@ -558,8 +581,21 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = '',
                 # tek sey bu (satirda private'i gosteren baska alan yok —
                 # user_id ozel ve anonim taramada ayni sekilde bostur).
                 result_payload["private"] = True
-                await update_audit_status(job_id, "complete", result=result_payload,
-                                          score=result_payload.get("score"))
+                yazildi = await update_audit_status(job_id, "complete", result=result_payload,
+                                                    score=result_payload.get("score"))
+                if not yazildi:
+                    # Ö1 (2026-08-12): kredi DUSULDU ama sonuc satira YAZILAMADI
+                    # (PATCH hata yutuyordu, worker bellegi de pop ediyor) ->
+                    # kullanici 20 kredi odemis, rapor hicbir yerde yok olurdu.
+                    # Bedel iade edilir (idempotent, scan_refund_<job_id>);
+                    # e-posta yedegi asagida yine denenir — rapor sansi kalsin.
+                    await tarama_bedelini_iade_et(user_id, WEB_SCAN_COST, job_id,
+                                                  "sonuc_yazilamadi")
+                    # Satiri failed'a cekmeyi de dene: ayni PATCH kanali, buyuk
+                    # olasilikla o da duser — o zaman web ucundaki 20 dk terk
+                    # kontrolu kullaniciyi sonsuz beklemeden kurtarir.
+                    await update_audit_status(job_id, "failed",
+                                              error="sonuc_teslim_edilemedi")
             logger.info(f"Private audit job {job_id} completed, not saved")
         else:
             await save_audit(job_id, {"domain": request.domain, "email": request.email}, jobs_store[job_id]["result"], user_id)
@@ -574,6 +610,10 @@ async def run_audit_job(job_id: str, request: AuditRequest, token: str = '',
         logger.error(f"Audit job {job_id} failed: {str(e)}")
         jobs_store[job_id]["status"] = "failed"
         jobs_store[job_id]["error"] = str(e)
+        # K1 yan hasari: basarisiz iste hak girdisi sozlukte SONSUZA DEK
+        # kaliyordu (bellek sizintisi). pop ≠ yak — record_free_scan
+        # cagrilmadigi icin kullanicinin ucretsiz hakki DURUYOR.
+        _bekleyen_hak.pop(job_id, None)
         if sqs_enabled():
             await update_audit_status(job_id, "failed", error=f"{type(e).__name__}: {e}")
     finally:
@@ -643,6 +683,14 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
                 await pending_satiri_sil(job_id)
                 emit("__done__")
                 return
+        # Bu isin bedeli — ON-KONTROL ve FIILI DUSUM ayni degeri OKUMALI.
+        # Ö2 (2026-08-12): on-kontrol `social`a gore 10/20 seciyordu ama dusum
+        # sabit BRAND_SCAN_COST (20) yaziyordu; `{social:true, private:true}`
+        # istekte bakiye 10-19 olan kullanici kapiyi gecip dusumde takiliyordu
+        # (tarama kosmus, GEONI maliyeti olusmus, sonuc teslim edilmemis).
+        # Artik tek kaynak: scan_costs.bedel_sec (tip + social birlikte).
+        _bedel2 = bedel_sec(request.type, bool(getattr(request, "social", False)))
+
         # Kredi kacagi (guvenlik #1): private kisi/marka taramasi 10 kontor,
         # gercek 4-motor maliyeti uretir. Pahali isten ONCE bakiye on-kontrolu;
         # basarida atomik dusum asagida. Anonim private reddedilir.
@@ -656,7 +704,6 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
             #      brand_checks_store'da olan bir is icin jobs_store[job_id]
             #      KeyError firlatiyor ve ASIL HATAYI MASKELIYOR: except blogu
             #      "insufficient_credits" yerine job_id KeyError'i gosteriyordu.
-            _bedel2 = SOCIAL_SCAN_COST if bool(getattr(request, "social", False)) else BRAND_SCAN_COST
             if not pre_user2 or await get_credit_balance(pre_user2) < _bedel2:
                 brand_checks_store[job_id].update({"status": "failed", "error": "insufficient_credits"})
                 if sqs_enabled():
@@ -719,7 +766,8 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
             else:
                 # F3: dusum donusunu KONTROL et; on-kontrol ile bu nokta arasinda
                 # eszamanli baska tarama bakiyeyi tuketmis olabilir -> teslim etme.
-                charged = await deduct_credits(user_id, BRAND_SCAN_COST, f"{request.type or 'person'}_check_private", job_id) if user_id else False
+                # Ö2: bedel on-kontrolle AYNI kaynaktan (_bedel2) — sabit yazma.
+                charged = await deduct_credits(user_id, _bedel2, f"{request.type or 'person'}_check_private", job_id) if user_id else False
                 if not charged:
                     brand_checks_store[job_id].update({"status": "failed", "error": "insufficient_credits"})
                     logger.warning(f"Private brand {job_id}: dusum basarisiz, teslim iptal")
@@ -746,6 +794,8 @@ async def run_brand_check_job(job_id: str, request: BrandCheckRequest, token: st
         logger.error(f"Brand check job {job_id} failed: {str(e)}")
         brand_checks_store[job_id]["status"] = "failed"
         brand_checks_store[job_id]["error"] = str(e)
+        # Basarisiz iste hak girdisi sizmasin (pop ≠ yak; hak duruyor).
+        _bekleyen_hak.pop(job_id, None)
     finally:
         if slot_acquired2:
             release_scan_slot()
@@ -1104,6 +1154,7 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
         # user_id'siz kalir -> kullanici gecmisinde asla gorunmez.
         row_user_id = None if request.private else (await get_user_id_from_token(token) if token else None)
         if not await create_pending_audit(job_id, "web", request.domain, row_user_id):
+            _bekleyen_hak.pop(job_id, None)   # is hic baslamadi; girdi sizmasin
             raise ApiHata(503, "tarama_baslatilamadi")
         try:
             # ic_dogrulama AuditRequest'e KONMAZ: oraya koysak istemci kendi
@@ -1111,9 +1162,24 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks, 
             # Yalnizca dogrulanmis X-Internal-Scan basligiyla set edilir ve
             # kuyruk mesajinda tasinir. `X-Internal-SOV: 1` ile geri acilir
             # (SOV kodunu test ederken lazim).
+            #
+            # 🔴 K1 (2026-08-12): `_bekleyen_hak` SUREC-YEREL bir sozluk; SQS
+            # modunda run_audit_job WORKER surecinde (ECS) kosuyor ve oradaki
+            # sozluk BOS -> `_hakki_yak` sessiz no-op oluyordu. Sonuc: web
+            # taramasinda ucretsiz hak HIC yakilmiyordu — bakiyesi 0 kullanici
+            # sinirsiz bedava tarama cekebiliyordu (tarama basina ~$0,32).
+            # Hak bilgisi artik KUYRUK MESAJINDA tasinir; worker kosumdan once
+            # kendi sozlugune koyar, basari yolu gercekten yakar. Buradaki pop
+            # ayni zamanda API surecindeki sizintiyi kapatir: SQS'e giden isin
+            # girdisi bu sozlukte SONSUZA DEK kalirdi (kimse pop etmiyordu).
+            hak = _bekleyen_hak.pop(job_id, None)
             await enqueue_scan({"kind": "web_audit", "job_id": job_id,
                                 "request": request.model_dump(), "token": token,
-                                "ic_dogrulama": _ic_dogrulama_taramasi(http_request)})
+                                "ic_dogrulama": _ic_dogrulama_taramasi(http_request),
+                                # None: private/ic tarama ya da odenen/premium yol
+                                # degil — hak kapisindan gecmemis, yakilacak sey yok.
+                                "hak": ({"user_id": hak[0], "device_token": hak[1],
+                                         "gate_info": hak[2]} if hak else None)})
         except Exception as e:
             logger.error(f"SQS enqueue failed for {job_id}: {e}")
             await update_audit_status(job_id, "failed", error=f"enqueue_failed: {type(e).__name__}")
@@ -1171,6 +1237,34 @@ def _valid_job_id(job_id: str) -> str:
     return job_id
 
 
+# Durum uclarinin istemciye ACABILECEGI makine-okur hata kodlari. result_json/
+# jobs_store'daki `error` alani ham istisna metni tasiyabilir ("TypeError: ...",
+# update_audit_status oyle yazar) — o metin istemciye SIZMAZ; yalniz bu
+# listedekiler aynen gecer, gerisi jenerik koda maskelenir. Istemci "kredi
+# yukle" CTA'sini ancak `insufficient_credits`i gorursse gosterebilir.
+_GUVENLI_HATA_KODLARI = frozenset({
+    "insufficient_credits", "deduct_failed", "sonuc_teslim_edilemedi",
+    "tarama_zaman_asimi",
+})
+
+
+def _guvenli_hata_kodu(err) -> str:
+    e = str(err or "").strip()
+    return e if e in _GUVENLI_HATA_KODLARI else "tarama_basarisiz"
+
+
+def _failed_govdesi(job_id: str, err) -> dict:
+    """`failed` ARTIK 500 DEGIL, 200 + govdede status/error (2026-08-12).
+
+    Neden: 500, istemcilerde "gecici sunucu hatasi" sayilip yeniden deneniyor;
+    web 4 ardisik 500'den sonra jenerik mesajla cikiyor, mobil de ayni. Yani
+    TERMINAL bir basarisizlik gecici hatadan ayirt edilemiyordu ve sebep
+    (`insufficient_credits` gibi) HICBIR yuzeye ulasmiyordu — istemcilerin
+    `status=='failed'` dallari olu koddu. Web (App.jsx) ve mobil
+    (result/[jobId].tsx) bu dallari ZATEN tasiyor; 200+govde onlari canlandirir."""
+    return {"job_id": job_id, "status": "failed", "error": _guvenli_hata_kodu(err)}
+
+
 @app.get("/api/audit/{job_id}")
 async def get_audit_status(job_id: str):
     _valid_job_id(job_id)
@@ -1195,7 +1289,10 @@ async def get_audit_status(job_id: str):
                 raise ApiHata(410, "ozel_tarama_silindi")
             return {"job_id": job_id, "status": "complete", "result": sonuc, "email_sent": True}
         if row["status"] == "failed":
-            raise ApiHata(500, "tarama_basarisiz")
+            # Sebep update_audit_status'un yazdigi kompakt hata nesnesinde
+            # (result_json.error); yalniz guvenli kodlar gecer (maskeleme).
+            rj = row.get("result_json")
+            return _failed_govdesi(job_id, rj.get("error") if isinstance(rj, dict) else None)
         if row["status"] == "partial":
             # Progressive result (Fable 2026-07-24): SOV hala hesaplaniyor ama
             # crawl+recall+judge'a dayali TAM SEKILLI bir ara skor hazir. Eski
@@ -1204,14 +1301,27 @@ async def get_audit_status(job_id: str):
             # ederler. Yeni client'lar result'u hemen gosterip pollemeyi
             # surdurebilir (result.sov_pending=true -> "SOV hesaplaniyor" rozeti).
             return {"job_id": job_id, "status": "partial", "result": row.get("result_json"), "email_sent": False}
+        # 🔴 TERK EDILMIS IS (K2, 2026-08-12): marka ucundaki 20 dk kurali web'de
+        # YOKTU — worker 3 kez cokup mesaj DLQ'ya dusunce ya da durum PATCH'i
+        # sessizce yutulunca (db.update_audit_status) satir sonsuza dek
+        # "crawling/scoring"de kaliyor ve istemci tavana kadar polluyordu.
+        # Ayni esik, ayni gerekce: en uzun olculen tarama ~2 dk, pay 20 dk;
+        # yas cozulemezse (None) ESKI SAYMA — calisan isi oldurme.
+        yas = _satir_yasi_sn(row.get("created_at"))
+        if yas is not None and yas > 1200:
+            logger.warning("terk edilmis is (web): job=%s yas=%.0fsn status=%s",
+                           job_id, yas, row["status"])
+            return _failed_govdesi(job_id, "tarama_zaman_asimi")
         return {"job_id": job_id, "status": row["status"], "created_at": row.get("created_at")}
     job = jobs_store[job_id]
     if job["status"] == "complete":
         return {"job_id": job_id, "status": "complete", "result": job["result"], "email_sent": job.get("email_sent", False)}
     elif job["status"] == "failed":
         # Ham istisna metni ISTEMCIYE GITMEZ (bilgi sizmasi); yalniz loga.
+        # Guvenli kodlar (or. insufficient_credits) ise AYNEN gecer ki istemci
+        # dogru CTA'yi gosterebilsin.
         logger.error(f"Audit job {job_id} failed: {job['error']}")
-        raise ApiHata(500, "tarama_basarisiz")
+        return _failed_govdesi(job_id, job.get("error"))
     elif job["status"] == "partial":
         return {"job_id": job_id, "status": "partial", "result": job.get("result"), "email_sent": False}
     else:
@@ -1512,7 +1622,9 @@ async def get_brand_check_status(job_id: str):
         if row["status"] == "complete":
             return {"job_id": job_id, "status": "complete", "result": row.get("result_json")}
         if row["status"] == "failed":
-            raise ApiHata(500, "tarama_basarisiz")
+            # failed = 200 + govde (500 degil) — gerekce _failed_govdesi'nde.
+            rj2 = row.get("result_json")
+            return _failed_govdesi(job_id, rj2.get("error") if isinstance(rj2, dict) else None)
         # 🔴 BITMEYECEK ISI SONSUZA DEK "kosuyor" GOSTERME. Satir bellekte
         # bulunamadi demek, isi kosturan surec artik YOK demek (dagitim /
         # MinCapacity=0'dan uyanma / olcekleme). Kimse o satiri bir daha
@@ -1525,14 +1637,14 @@ async def get_brand_check_status(job_id: str):
         if yas is not None and yas > 1200:
             logger.warning("terk edilmis is: job=%s yas=%.0fsn status=%s",
                            job_id, yas, row["status"])
-            raise ApiHata(500, "tarama_basarisiz")
+            return _failed_govdesi(job_id, "tarama_zaman_asimi")
         return {"job_id": job_id, "status": row["status"], "created_at": row.get("created_at")}
     job = brand_checks_store[job_id]
     if job["status"] == "complete":
         return {"job_id": job_id, "status": "complete", "result": job["result"]}
     elif job["status"] == "failed":
         logger.error(f"Brand check job {job_id} failed: {job['error']}")
-        raise ApiHata(500, "tarama_basarisiz")
+        return _failed_govdesi(job_id, job.get("error"))
     else:
         # `progress`: mobil bekleme ekraninin GERCEK ilerlemesi (bkz. kaydet_adim).
         # Is bellekte degilse (coklu-instance/DB fallback) alan hic gelmez; istemci

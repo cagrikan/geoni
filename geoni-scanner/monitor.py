@@ -7,8 +7,17 @@ otomatik olarak yeniden taranir:
   - type=person/brand -> marka bilinirligi kontrolu (recall + SOV)
 
 Kurallar:
-  - Izleme taramalari UCRETSIZDIR (deduct=False) — kontor dusmez,
-    credits_spent=0 yazilir. Elde tutma (retention) ozelligidir.
+  - Izleme taramalari ELLE TARAMAYLA AYNI BEDELI ODER (deduct=True).
+    Gerekce kurucunun kendi cumlesi (2026-08-12): "bize maliyet hep ayni" —
+    otomatik tarama da ~$0,32'ye mal oluyor, bedelinin farkli olmasi icin
+    sebep yok. Bedel tipine gore: web/marka 20, sosyal 10 (scan_costs.py).
+    ONCEDEN UCRETSIZDI ve bu yuzden 2026-08-08'de ozellik tamamen kapatildi
+    ("11 hedef x 15 gunde bir x ~$0,31 ≈ $7/ay, karsiliginda gelir yok").
+    Krediye baglanmasi o gerekceyi ortadan kaldirdigi icin ozellik geri aciliyor.
+  - Ucretsiz deneme donemi YOK: ilk otomatik taramadan itibaren ucretlidir.
+  - Bakiye yetmezse tarama ATLANIR, hedef listede KALIR ve kullaniciya
+    "izleme duraklatildi" bildirimi gider; jeton yuklenince kendiliginden
+    devam eder (bkz. _process_item).
   - Kayitlar audits tablosuna normal tarama gibi yazilir; dashboard'daki
     trend/sparkline ayni gecmisten beslenmeye devam eder.
   - Skor son otomatik skora gore ±5 puan degistiyse kullaniciya
@@ -37,7 +46,8 @@ from db import (
     _claim_daily_job, run_attachment_retention, run_audit_retention, run_low_balance_alert,
     sweep_private_results,
 )
-from mailer import send_monitor_email
+from mailer import send_monitor_email, send_ticket_email
+from scan_costs import WEB_SCAN_COST, BRAND_SCAN_COST, SOCIAL_SCAN_COST
 from pushnotify import send_score_change_push
 from stability import build_stability
 from audit_payload import build_audit_result_payload
@@ -63,16 +73,30 @@ SCORE_CHANGE_THRESHOLD = 5     # bildirim esigi (puan) — web/kisi/marka
 # yeniden hesaplanmali: esik, tek hucrenin genel skordaki karsiligindan BUYUK,
 # iki hucreninkinden KUCUK olmali.
 SOCIAL_SCORE_CHANGE_THRESHOLD = 10
-FREE_MONITOR_DAYS = 30         # ilk ay ucretsiz; sonrasi aktif bakiye sarti
+# FREE_MONITOR_DAYS KALDIRILDI (2026-08-12, kurucu karari): "ilk 30 gun
+# ucretsiz" donemi yok. Izleme ilk otomatik taramadan itibaren ucretli.
+# Eski davranis: ilk ay bedelsiz + sonrasinda yalnizca "bakiye > 0" sarti
+# aranıyordu ama tarama yine kontor DUSMUYORDU — yani hicbir zaman
+# ucretlendirilmiyordu. Bedel artik gercekten dusuluyor.
 
-# 🔴 OTOMATIK TARAMA KAPALI — KURUCU KARARI (2026-08-08: "artik otomatik tarama
-# istemiyorum"). Izleme listesindeki hedefler artik KENDILIGINDEN yeniden
-# taranmiyor. Sebep para: 11 hedef x 15 gunde bir x ~$0,31 ≈ $7/ay, karsiliginda
-# sifir gelir. Kullanicinin ELLE baslattigi taramalar ETKILENMEZ.
+# OTOMATIK TARAMA — env ile aciliyor. TARIHCE onemli, silme:
 #
-# 🪤 VARSAYILAN KAPALI olmali: env yoksa acilirsa, yeni bir ortamda (yeni task
-# def, yerel kosu, gecici servis) bu karar SESSIZCE geri gelir ve para yeniden
-# akmaya baslar. Geri acmak icin BILINCLI olarak MONITOR_AUTO_SCAN=1 verilir.
+# 2026-08-08'de KAPATILDI (kurucu: "artik otomatik tarama istemiyorum").
+# Sebep para: 11 hedef x 15 gunde bir x ~$0,31 ≈ $7/ay, karsiliginda SIFIR
+# gelir — cunku izleme taramalari o zaman UCRETSIZDI (deduct=False).
+#
+# 2026-08-12'de bedel eklendi (kurucu: "bize maliyet hep ayni") — izleme
+# taramasi artik elle taramayla ayni kontoru duser. Kapatma gerekcesi boylece
+# ortadan kalkti; ozellik acilabilir.
+#
+# 🪤 VARSAYILAN yine KAPALI: env yoksa acilirsa, yeni bir ortamda (yeni task
+# def, yerel kosu, gecici servis) tarama SESSIZCE baslar ve kullanicilarin
+# kontoru habersiz duser. Acmak BILINCLI bir hareket olmali: MONITOR_AUTO_SCAN=1.
+#
+# 🔴 IKI BAYRAK BIRLIKTE DEGISIR: burasi acilirken arayuz tarafindaki
+# geoni-frontend/src/lib/otomatikIzleme.js -> OTOMATIK_IZLEME_ACIK da true
+# yapilmali. Biri unutulursa arayuz yalan soyler (bir yon: is yapiliyor ama
+# "Kayitli" yaziyor; oteki yon: "izleniyor" yaziyor ama tarama yok).
 #
 # Dongunun DIGER isleri (dusuk-bakiye uyarisi, retention temizligi) calismaya
 # DEVAM EDER — onlar tarama degil, bakim.
@@ -116,8 +140,12 @@ async def _scan_web_item(item: dict) -> int | None:
         auto_monitor=True)
 
     job_id = str(uuid.uuid4())
+    # deduct=True (2026-08-12): izleme taramasi da kontor duser. Dusum
+    # save_audit'in ICINDE ve YALNIZ kayit basarili olursa yapilir; dusum
+    # basarisiz olursa credits_spent geri sifirlanir (db.py _maliyeti_sifirla).
+    # Yani basarisiz tarama kullanicinin parasini yakmaz.
     await save_audit(job_id, {"domain": domain, "email": ""}, result_payload,
-                     item.get("user_id"), deduct=False)
+                     item.get("user_id"), deduct=True)
     return score_result["overall_score"]
 
 
@@ -171,38 +199,78 @@ async def _scan_brand_item(item: dict) -> int | None:
         {"type": item.get("type") or "person", "name": name, "topic": target.get("topic") or ""},
         result_payload,
         item.get("user_id"),
-        deduct=False,
+        # deduct=True (2026-08-12): web yolundaki ile ayni gerekce — izleme
+        # taramasi elle taramayla ayni bedeli oder.
+        deduct=True,
     )
     return result.get("score")
 
 
-def _is_in_free_period(item: dict) -> bool:
-    """Izleme kaydinin ilk-ay-ucretsiz doneminde olup olmadigi."""
-    from datetime import timezone, timedelta
-    raw = item.get("created_at") or ""
-    try:
-        created = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        if created.tzinfo is None:
-            created = created.replace(tzinfo=timezone.utc)
-        return datetime.now(timezone.utc) - created <= timedelta(days=FREE_MONITOR_DAYS)
-    except (ValueError, AttributeError):
-        return True  # tarih okunamadiysa kullanici aleyhine davranma
+def _izleme_bedeli(item: dict) -> int:
+    """Bu hedefin izleme taramasinin kontor bedeli.
+
+    Elle taramayla AYNI: bedel scan_costs.py'den gelir, burada elle yazilmaz.
+    (Sayiyi ikinci bir yere yazmak, scan_costs.py'nin bastaki notunda anlatilan
+    'alti ayri yerde elle yazili' hatasini geri getirirdi.)
+    """
+    tip = (item.get("type") or "").lower()
+    if tip == "web":
+        return WEB_SCAN_COST
+    if tip == "social":
+        return SOCIAL_SCAN_COST
+    return BRAND_SCAN_COST      # person / brand
+
+
+async def _duraklatma_bildir(user_id: str, label: str, bedel: int, bakiye: int):
+    """'Izleme duraklatildi' bildirimi — kullanici basina GUNDE EN COK BIR kez.
+
+    Debounce sart: dongü saatlik ve bakiyesiz hedef her turda yeniden siraya
+    gelir; debounce olmasa kullaniciya saatte bir e-posta giderdi.
+    _claim_daily_job zaten cok-instance guvenli tek-sefer kilidi sagliyor.
+    """
+    if not await _claim_daily_job(f"monitor_duraklama_{user_id}"):
+        return
+    email = await get_auth_email(user_id)
+    if not email:
+        return
+    await send_ticket_email(
+        email,
+        subject="GEONI: izleme duraklatıldı — jeton bitti",
+        heading="İzleme duraklatıldı",
+        lines=[
+            f"<b>{label}</b> hedefinin otomatik taraması yapılamadı.",
+            f"Bu tarama {bedel} jeton gerektiriyor, bakiyeniz {bakiye} jeton.",
+            "Hedef listenizden <b>çıkarılmadı</b> — jeton yüklediğinizde "
+            "izleme kaldığı yerden kendiliğinden devam eder.",
+        ],
+        cta_label="Jeton yükle",
+        cta_url="https://app.geoni.ai",
+    )
 
 
 async def _process_item(item: dict):
     label = item.get("label", "?")
+    user_id = item.get("user_id")
 
-    # Ucretlendirme kapisi: ilk FREE_MONITOR_DAYS gun ucretsiz; sonrasinda
-    # izleme yalnizca aktif token bakiyesi olan kullanicilar icin surer.
-    # Taramanin kendisi yine kontor dusmez (deduct=False) — bakiye sadece
-    # "aktif musteri" kosulu. Bakiyesizlerde tarama atlanir, sira haftaya
-    # ertelenir; panel 'izleme duraklatildi' rozetini gosterir.
-    if not _is_in_free_period(item):
-        balance = await get_credit_balance(item.get("user_id"))
-        if balance <= 0:
-            logger.info(f"monitor: '{label}' atlandi — ucretsiz ay bitti, bakiye yok")
-            await update_watchlist_after_scan(item.get("id"), None)
-            return
+    # ── UCRETLENDIRME KAPISI ────────────────────────────────────────────────
+    # Izleme taramasi elle taramayla AYNI bedeli oder (kurucu karari 2026-08-12:
+    # "bize maliyet hep ayni"). Ucretsiz deneme donemi YOK.
+    #
+    # Bakiye yetmezse: tarama ATLANIR, hedef listede KALIR, kullaniciya gunde
+    # en cok bir kez bildirim gider.
+    #
+    # 🔴 last_auto_scan_at'e DOKUNULMAZ. Onceki kod atlarken de zamani
+    # guncelliyordu; bu, jeton yukleyen kullaniciyi 15 gun daha bekletirdi
+    # ("odedim ama hala taranmiyor"). Zamani guncellemeyince hedef sirada
+    # kalir ve bakiye gelir gelmez bir sonraki turda taranir. Bedeli: bakiyesiz
+    # hedef her turda bir bakiye sorgusu — ucuz ve dogru taraf.
+    bedel = _izleme_bedeli(item)
+    bakiye = await get_credit_balance(user_id) if user_id else 0
+    if bakiye < bedel:
+        logger.info(f"monitor: '{label}' atlandi — bakiye {bakiye} < bedel {bedel}")
+        if user_id:
+            await _duraklatma_bildir(user_id, label, bedel, bakiye)
+        return
 
     try:
         # Kullanici taramalariyla ayni kuyruk: izleme asla kaynaklari bogamaz

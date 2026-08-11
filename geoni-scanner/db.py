@@ -189,9 +189,18 @@ async def pending_satiri_sil(job_id: str) -> bool:
 
 
 async def update_audit_status(job_id: str, status: str, result: dict = None, score=None,
-                              error: str | None = None) -> None:
+                              error: str | None = None) -> bool:
     """Kosan isin durumunu audits satirina isler (SQS modunda). Sessizce
     loglar — durum guncellemesi taramayi asla dusurmemeli.
+
+    Donus (2026-08-12): True = PATCH 2xx ile gecti, False = HTTP hatasi/istisna.
+    Cagiranlarin cogu donusu umursamaz (durum yazimi best-effort kalir) ama
+    PRIVATE tarama icin bu yazim TEK teslim kanalidir: kredi dusuldukten sonra
+    yazim sessizce yutulursa kullanici 20 kredi odemis, sonucu hicbir yerde
+    olmayan bir taramaya bakakalir (worker bellegi de pop ediliyor). O yol artik
+    donusu kontrol edip iade tetikler (bkz. main.run_audit_job private dali).
+    ⚠️ False "satir yok" DEMEK DEGIL (PATCH 0 satir eslesse de 2xx doner);
+    yalniz tasima/HTTP hatasini yakalar — iade karari icin yeterli.
 
     `error`: BASARISIZ taramanin sebebi. 2026-08-06'da olculdu — bes basarisizlik
     yolunun besinde de sebep yalnizca bellekteki `jobs_store`'a yaziliyordu,
@@ -204,7 +213,7 @@ async def update_audit_status(job_id: str, status: str, result: dict = None, sco
     (harvest, content_decay, oz-gelisim) `status=eq.complete` suzuyor, bu yuzden
     bu satirlari zaten okumuyorlar."""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-        return
+        return False
     patch: dict = {"status": status}
     if result is not None:
         patch["result_json"] = result
@@ -217,12 +226,18 @@ async def update_audit_status(job_id: str, status: str, result: dict = None, sco
         patch["completed_at"] = datetime.now(timezone.utc).isoformat()
     try:
         async with httpx.AsyncClient() as client:
-            await client.patch(
+            r = await client.patch(
                 f"{SUPABASE_URL}/rest/v1/audits?id=eq.{job_id}",
                 headers=_headers(), json=patch, timeout=10,
             )
+            if r.status_code >= 300:
+                logger.warning(f"update_audit_status({job_id},{status}) HTTP {r.status_code}: "
+                               f"{r.text[:200]}")
+                return False
+            return True
     except Exception as e:
         logger.warning(f"update_audit_status({job_id},{status}) failed: {e}")
+        return False
 
 
 async def get_audit_row(job_id: str) -> dict | None:
@@ -613,6 +628,54 @@ async def deduct_credits_detayli(user_id: str, amount: int, description: str,
         logger.warning(f"Credit deduction error: {e}")
         return False, "istisna"
     return False, "bilinmiyor"
+
+
+async def tarama_bedelini_iade_et(user_id: str, amount: int, job_id: str, sebep: str) -> bool:
+    """Dusum YAPILDIKTAN sonra sonuc teslim EDILEMEZSE bedeli geri verir.
+
+    Neden var (fonksiyonel denetim 2026-08-12, Ö1): private web taramasinda
+    sira "dus -> sonucu satira yaz" ve yazim update_audit_status icinde hata
+    yutuyordu; worker da bellekteki sonucu pop ediyor. Yazim duserse kullanici
+    20 kredi odemis, rapor HICBIR yerde yok — ve tarama yolunda iade fonksiyonu
+    yoktu (bilet tarafindaki `_telafi_et` yalniz purchase_ticket'ta).
+
+    Sirayi tersine cevirmek ("once yaz, sonra dus") COZUM DEGIL: o zaman dusum
+    basarisizliginda rapor ucretsiz teslim edilmis olurdu (guvenlik O2 sinifi).
+    Dogru desen: dusum kalir, teslim kanitlanamazsa TELAFI.
+
+    apply_credit_change kullanilir (ledger + bakiye tek transaction) ve
+    p_external_id = "scan_refund_<job_id>" UNIQUE oldugu icin IDEMPOTENT:
+    ayni is icin iki kez cagrilsa bile tek iade yazilir. `_telafi_et`teki
+    deduct_credits_if_enough + ayri ledger POST'u BILEREK kullanilmadi — o
+    ikili atomik degil (ledger yazimi ayri istek, arada kopabilir)."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id or amount <= 0:
+        return False
+    try:
+        async with httpx.AsyncClient() as client:
+            rpc = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/apply_credit_change",
+                headers=_headers(),
+                json={"p_user_id": user_id, "p_amount": amount, "p_type": "scan_refund",
+                      "p_description": f"Tarama iadesi — {sebep} ({job_id})",
+                      "p_channel": "system", "p_external_id": f"scan_refund_{job_id}",
+                      "p_idempotent": True},
+                timeout=10,
+            )
+            if rpc.status_code != 200:
+                # Elle mutabakat gerekir; sessiz gecme (Sentry bunu gormeli).
+                logger.error("TARAMA IADESI BASARISIZ: job=%s user=%s amount=%s http=%s %s",
+                             job_id, user_id, amount, rpc.status_code, rpc.text[:200])
+                return False
+            res = rpc.json() or {}
+            if isinstance(res, dict) and (res.get("applied") or res.get("reason") == "duplicate"):
+                logger.warning("tarama bedeli iade edildi: job=%s user=%s amount=%s sebep=%s",
+                               job_id, user_id, amount, sebep)
+                return True
+            logger.error("TARAMA IADESI UYGULANMADI: job=%s user=%s res=%s", job_id, user_id, res)
+            return False
+    except Exception as e:
+        logger.error("TARAMA IADESI BASARISIZ (istisna): job=%s user=%s: %s", job_id, user_id, e)
+        return False
 
 
 _token_cache: dict[str, tuple[str | None, float]] = {}

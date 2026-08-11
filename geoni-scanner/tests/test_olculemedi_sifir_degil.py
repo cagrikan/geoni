@@ -53,15 +53,51 @@ def test_schema_sayfa_yoksa_olculemedi_sifir_degil():
     assert res2["measured"] is True
 
 
-def test_freshness_sayfa_yoksa_zaten_notr_kaliyor():
-    """Bu boyut ZATEN dogru davraniyordu (notr 50) — degistirmedik, kilitliyoruz."""
-    assert scoring.compute_freshness_score([], None)["score"] == 50.0
+def test_freshness_sayfa_ve_tarih_yoksa_OLCULEMEDI():
+    """v5 tamamlama (2026-08-12, Ö3): eskiden 0 sayfada SABIT 50 donuyordu ve
+    "olculmus" sayiliyordu — index/schema None olurken freshness formule uydurma
+    sayiyla giriyordu. Artik ayni kurala tabi: olculemedi -> None -> agirlik
+    kalan boyutlara dagilir."""
+    res = scoring.compute_freshness_score([], None)
+    assert res["score"] is None
+    assert res["measured"] is False
+
+
+def test_freshness_sayfa_yok_ama_sitemap_tarihi_varsa_OLCULUR():
+    """🪤 Eski erken donus, sitemap_lastmods DOLU olsa bile tarihleri yok
+    sayiyordu. Sitemap httpx'le okunur; bot korumasi sayfa crawl'ini kesse de
+    sitemap gelmis olabilir — gercek sinyal ATILMAZ."""
+    from datetime import datetime, timezone
+    taze = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    res = scoring.compute_freshness_score([], [taze])
+    assert res["measured"] is True
+    assert res["signal"] == "real_dates"
+    assert res["score"] == 100.0  # 20 + 1.0*50 + 1.0*30
+
+
+def test_engagement_hic_sinyal_yoksa_OLCULEMEDI_taban_20_degil():
+    """Eski `max(20.0, self_declared)` tabani olcum degil uydurma sayiydi."""
+    assert scoring.compute_engagement_score([], own_domain="x.com") is None
+    assert scoring.compute_engagement_score(None, own_domain="x.com") is None
+
+
+def test_engagement_sameAs_beyani_varsa_o_kadari_OLCULMUSTUR():
+    """Kendi-beyan sosyal linkler (JSON-LD sameAs) crawl'dan gelir; dis arama
+    verisi olmasa da bu gercek bir olcumdur — None DEGIL."""
+    res = scoring.compute_engagement_score(
+        [], own_domain="x.com",
+        same_as=["https://linkedin.com/company/x", "https://instagram.com/x"])
+    assert res == 40.0  # 2 platform × 20
 
 
 # ── Formul seviyesi ─────────────────────────────────────────────────────────
 
-async def _skor(pages, monkeypatch, brave=None, brand=60.0):
-    """Ag cagrisi yok: authority sahte. Digerleri saf fonksiyon."""
+async def _skor(pages, monkeypatch, brave=None, brand=60.0, web_results=None):
+    """Ag cagrisi yok: authority sahte. Digerleri saf fonksiyon.
+
+    web_results: brand_recall'un dis arama sonuclari. Bos liste = etkilesim
+    verisi YOK (v5: engagement olculemedi sayilir); basarili-tarama senaryosu
+    icin dolu liste gecilir."""
     async def sahte_authority(domain, brand_name="", web_results=None):
         return {"score": 80.0, "legs": {}, "kg": None}
     monkeypatch.setattr(scoring, "estimate_authority_score", sahte_authority)
@@ -70,49 +106,63 @@ async def _skor(pages, monkeypatch, brave=None, brand=60.0):
         status["brave_indexed"] = brave
     return await scoring.compute_ai_visibility_score(
         {"domain": "x.com", "pages": pages}, status,
-        {"checked": True, "score": brand, "name": "X", "web_results": []})
+        {"checked": True, "score": brand, "name": "X",
+         "web_results": web_results or []})
 
 
 def test_olculemeyen_boyut_kirilimda_YER_ALMAZ(monkeypatch):
     """Frontend eksik anahtari `?? 100` ile karsiliyor -> 'oneri yok' olur.
-    0 yazsaydik kullaniciya 'schema'n sifir' diye YANLIS tavsiye verirdik."""
+    0 yazsaydik kullaniciya 'schema'n sifir' diye YANLIS tavsiye verirdik.
+
+    2026-08-12: freshness ve engagement da ayni kurala girdi (Ö3) — 0 sayfa +
+    0 dis sonuc senaryosunda dort boyut birden 'olculemedi'."""
     import asyncio
     r = asyncio.run(_skor([], monkeypatch))
     assert "schema" not in r["breakdown"]
     assert "index_coverage" not in r["breakdown"]
+    assert "freshness" not in r["breakdown"]      # eskiden uydurma 50 giriyordu
+    assert "engagement" not in r["breakdown"]     # eskiden uydurma 20 giriyordu
     assert "authority" in r["breakdown"]          # crawl'a bagli olmayanlar durur
-    assert set(r["diagnostics"]["unmeasured_dimensions"]) == {"schema", "index_coverage"}
+    assert set(r["diagnostics"]["unmeasured_dimensions"]) == {
+        "schema", "index_coverage", "freshness", "engagement"}
     assert r["diagnostics"]["low_confidence"] is True
 
 
 def test_agirliklar_yeniden_dagitiliyor_toplam_bir(monkeypatch):
     import asyncio
     r = asyncio.run(_skor([], monkeypatch))
-    assert abs(sum(r["weights_used"].values()) - 1.0) < 1e-6
+    # weights_used 4 ondalıga YUVARLANMIS gosterim degeri (scoring.py round(...,4));
+    # 3 boyut kalinca yuvarlama artigi 1e-4 olabiliyor. Gercek pay (yuvarlamasiz)
+    # tam 1.0 — tolerans gosterim yuvarlamasini karsilar, formul hatasini yakalar.
+    assert abs(sum(r["weights_used"].values()) - 1.0) < 1e-3
     assert "schema" not in r["weights_used"]
 
 
 def test_erisilemeyen_site_artik_cezalandirilmiyor(monkeypatch):
     """Asil dava: ayni sinyallerle, crawl kesildiginde skor COKMEMELI."""
     import asyncio
-    kesik = asyncio.run(_skor([], monkeypatch))["overall_score"]
-    # Eski davranista index_coverage=0 + schema=0 sabit agirlikla giriyordu:
+    r = asyncio.run(_skor([], monkeypatch))
+    kesik = r["overall_score"]
+    # Eski davranista index=0 + schema=0 sabit agirlikla giriyor, freshness'a
+    # uydurma 50, engagement'a uydurma 20 taban yaziliyordu:
     eski = (0 * 0.20) + (80 * 0.15) + (50 * 0.10) + (0 * 0.10) + \
-           (asyncio.run(_skor([], monkeypatch))["breakdown"]["ai_access"] * 0.12) + \
-           (asyncio.run(_skor([], monkeypatch))["breakdown"]["engagement"] * 0.08) + (60 * 0.25)
+           (r["breakdown"]["ai_access"] * 0.12) + (20 * 0.08) + (60 * 0.25)
     assert kesik > eski, f"v5 skoru ({kesik}) eski hesaptan ({eski:.1f}) yuksek olmali"
 
 
 def test_crawl_BASARILIYSA_davranis_degismiyor(monkeypatch):
-    """Kritik: duzeltme yalniz 0-sayfa dalini etkiler. Sayfa varsa tum
-    boyutlar olculur, agirliklar orijinal degerlerinde kalir."""
+    """Kritik: duzeltme yalniz olculemeyen dallari etkiler. Sayfa + dis arama
+    sonucu varsa tum boyutlar olculur, agirliklar orijinal degerlerinde kalir."""
     import asyncio
-    r = asyncio.run(_skor(_sayfalar(), monkeypatch))
+    r = asyncio.run(_skor(_sayfalar(), monkeypatch,
+                          web_results=[{"url": "https://www.linkedin.com/company/x"}]))
     assert r["diagnostics"]["unmeasured_dimensions"] == []
     assert r["diagnostics"]["low_confidence"] is False
     assert r["weights_used"]["brand_recall"] == 0.25
     assert r["weights_used"]["index_coverage"] == 0.20
     assert r["weights_used"]["schema"] == 0.10
+    assert r["weights_used"]["freshness"] == 0.10
+    assert r["weights_used"]["engagement"] == 0.08
 
 
 def test_surum_v5_ve_lig_sabiti_ESLESIYOR():

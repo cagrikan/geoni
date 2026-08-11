@@ -131,6 +131,37 @@ def _check(key: str, limit: int, window_seconds: int) -> None:
     RATE_LIMIT_STORE.check_and_record(key, limit, window_seconds)
 
 
+def kanonik_eposta(email: str) -> str:
+    """Rate-limit/karsilastirma ANAHTARI icin e-postayi kanonikler.
+
+    Y1 (guvenlik denetimi 2026-08-12): yalniz `strip().lower()` yapiliyordu.
+    Gmail noktalari ve `+etiket`i yok sayar — `u.s.e.r@gmail.com`, `user+1@...`,
+    `user+2@...` hepsi AYNI posta kutusu ama burada AYRI kova sayiliyordu; tek
+    Gmail hesabi varyant basina sifirdan sayacla sinirsiz istek uretebiliyordu
+    (kara liste de tek noktayla asiliyordu — CLAUDE.md'deki acik madde).
+
+    Kurallar:
+      - `+etiket` HER saglayicida atilir (alt-adres uzantisi; Gmail/Outlook/
+        Fastmail hepsinde ayni kutuya duser).
+      - Noktalar YALNIZ gmail.com/googlemail.com yerel kisminda silinir —
+        baska saglayicida `a.b` ile `ab` FARKLI kutular olabilir, oradan silmek
+        mesru iki kullaniciyi ayni kovaya kilitler.
+      - googlemail.com -> gmail.com (ayni servis, iki ad).
+
+    ⚠️ Bu fonksiyon yalniz KARSILASTIRMA anahtari uretir; DB'deki e-posta
+    kayitlarina/Supabase hesaplarina DOKUNMAZ ve e-posta gonderiminde
+    KULLANILMAZ (kullaniciya yazilan adres oldugu gibi kalir)."""
+    e = (email or "").strip().lower()
+    if "@" not in e:
+        return e
+    yerel, _, saglayici = e.rpartition("@")
+    yerel = yerel.split("+", 1)[0]
+    if saglayici in ("gmail.com", "googlemail.com"):
+        yerel = yerel.replace(".", "")
+        saglayici = "gmail.com"
+    return f"{yerel}@{saglayici}"
+
+
 def enforce_audit_rate_limits(client_ip: str, email: str, domain: str, skip_ip: bool = False) -> None:
     """
     Enforce all three rate limit dimensions for an incoming audit request.
@@ -139,7 +170,8 @@ def enforce_audit_rate_limits(client_ip: str, email: str, domain: str, skip_ip: 
     cheapest to hit and most indicative of scripted abuse). Redis (paylasimli)
     varsa onu, yoksa in-memory'yi kullanir — cagiran imzasi degismez.
     """
-    normalized_email = email.strip().lower()
+    # Y1: varyantlar (nokta/+etiket) tek kovada sayilsin — bkz. kanonik_eposta.
+    normalized_email = kanonik_eposta(email)
     normalized_domain = domain.strip().lower()
 
     try:

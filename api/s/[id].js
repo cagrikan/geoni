@@ -32,7 +32,14 @@ export default async function handler(req, res) {
   const label = esc(data.label || '');
   const score = Math.round(data.score);
   const isWeb = data.type === 'web';
-  const scoreColor = score >= 70 ? '#2fbd84' : score >= 40 ? '#F5A623' : '#f0616d';
+  // Renk esikleri uygulamayla AYNI kaynaktan: geoni-frontend lib/skor.js
+  // SKOR_IYI=65 / SKOR_ORTA=40. 65-69 bandi uygulamada yesilken burada
+  // turuncu gorunuyordu — ayni skor iki renk anlatamaz.
+  const scoreColor = score >= 65 ? '#2fbd84' : score >= 40 ? '#F5A623' : '#f0616d';
+  // Kismi olcum cekincesi: 3 sayfadan az okunduysa ekran/kart PNG/e-posta
+  // ucgeninin tasidigi ayni serh burada da tasinir. Kural: puan DEGISMEZ,
+  // yalniz altina cekince eklenir (MIN_CRAWLED_PAGES = 3 ile ayni esik).
+  const partial = isWeb && Number.isInteger(data.pages) && data.pages < 3;
 
   // Dil: ?lang= parametresi > tarayici dili (Accept-Language) > EN
   const q = String(req.query.lang || '').toLowerCase();
@@ -50,7 +57,8 @@ export default async function handler(req, res) {
     hook: 'AI seni tanıyor mu?',
     sub: `Bu skor; ChatGPT, Claude, Gemini ve Perplexity'nin bu ${isWeb ? 'siteyi' : 'ismi'} ne kadar tanıdığını gösteriyor. Peki seninki kaç?`,
     cta: 'Kendi skorunu ölç →',
-    free: 'ücretsiz · üyelik gerekmez',
+    free: 'ilk tarama ücretsiz · girişle başla',
+    partial: 'Kısmi ölçüm — sitenin tamamı okunamadı; skor, okunabilen sayfalara dayanır.',
   } : {
     title: `AI Visibility Score: ${score}/100 — ${label}`,
     desc: "What's yours? Measure how your brand, name or site shows up in ChatGPT, Claude, Gemini and Perplexity — free, in minutes.",
@@ -59,7 +67,8 @@ export default async function handler(req, res) {
     hook: 'Does AI know you?',
     sub: `This score shows how well ChatGPT, Claude, Gemini and Perplexity know this ${isWeb ? 'site' : 'name'}. So — what's yours?`,
     cta: 'Measure your score →',
-    free: 'free · no sign-up',
+    free: 'first scan free · sign in to start',
+    partial: 'Partial measurement — the whole site could not be read; the score reflects the pages that were readable.',
   };
   const title = L.title;
   const desc = L.desc;
@@ -96,6 +105,7 @@ body{min-height:100vh;display:grid;place-items:center;background:#0A0B10;color:#
 .of{color:#6E7391;font-size:.95rem;margin-bottom:18px}
 .bar{height:8px;border-radius:99px;background:#1c1f2e;overflow:hidden;margin-bottom:26px}
 .bar i{display:block;height:100%;width:${Math.max(score, 4)}%;background:${scoreColor};border-radius:99px}
+.partial{color:#D2A24C;background:rgba(210,162,76,.08);border:1px solid rgba(210,162,76,.35);border-radius:8px;font-size:.8rem;line-height:1.5;padding:8px 12px;margin:-12px 0 24px;text-align:left}
 .q{font-size:1.25rem;font-weight:700;margin-bottom:8px}
 .sub{color:#A8ADC4;font-size:.92rem;line-height:1.6;margin-bottom:24px}
 .cta{display:inline-block;background:#7C86F5;color:#fff;text-decoration:none;font-weight:700;font-size:1rem;padding:14px 34px;border-radius:10px}
@@ -114,6 +124,7 @@ body{min-height:100vh;display:grid;place-items:center;background:#0A0B10;color:#
   <div class="score">${score}<small>/100</small></div>
   <div class="of">${L.scoreLabel}</div>
   <div class="bar"><i></i></div>
+  ${partial ? `<div class="partial">${L.partial}</div>` : ''}
   <div class="q">${L.hook}</div>
   <p class="sub">${L.sub}</p>
   <a class="cta" href="https://app.geoni.ai?utm_source=share&utm_medium=scorecard${refQS}">${L.cta}</a>

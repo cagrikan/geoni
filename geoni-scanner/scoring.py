@@ -527,18 +527,24 @@ def compute_freshness_score(pages: list[dict], sitemap_lastmods: list[str] | Non
       2) sayfalardaki JSON-LD datePublished/dateModified (schema_dates)
     Agirlik: sabit 20 taban + p90_ratio ×50 (ana) + p365_ratio ×30 (genis taban).
     Hic gercek tarih yoksa eski yil-metni sezgiseline (fallback) dusulur.
-    """
-    if not pages:
-        return {"score": 50.0, "signal": "none", "dated_count": 0,
-                "recent_ratio": 0.0, "p90_ratio": 0.0}
 
+    v5 tamamlama (2026-08-12, Ö3): 0 sayfada SABIT 50 donup "olculmus"
+    sayiliyordu — index/schema `measured=False` olurken freshness formule
+    uydurma bir sayiyla giriyordu ("erisemedim ≠ yok" kuralinin yarim kalmis
+    hali). Ustelik erken donus, sitemap_lastmods DOLU olsa bile gercek
+    tarihleri yok sayiyordu (sitemap httpx'le okunur; bot korumasi sayfa
+    crawl'ini kesse de sitemap gelmis olabilir). Artik once tarihler toplanir:
+      - gercek tarih varsa sayfa sayisindan bagimsiz OLCULUR,
+      - tarih yok + sayfa yok -> {"score": None, "measured": False} — boyut
+        formulden duser, agirligi kalanlara dagilir (compute_ai_visibility_score).
+    """
     now = datetime.now(timezone.utc)
     dates: list[datetime] = []
     for raw in (sitemap_lastmods or []):
         d = _parse_any_date(raw)
         if d:
             dates.append(d)
-    for page in pages:
+    for page in (pages or []):
         for raw in page.get("schema_dates", []) or []:
             d = _parse_any_date(raw)
             if d:
@@ -553,10 +559,19 @@ def compute_freshness_score(pages: list[dict], sitemap_lastmods: list[str] | Non
         ratio = recent / len(dates)          # 365-gun: genis taban
         p90 = very_recent / len(dates)       # 90-gun: atif olasiliginin ANA sinyali
         score = min(100.0, 20 + p90 * 50 + ratio * 30)
-        return {"score": score, "signal": "real_dates", "dated_count": len(dates),
+        return {"score": score, "measured": True, "signal": "real_dates",
+                "dated_count": len(dates),
                 "recent_ratio": round(ratio, 2), "p90_ratio": round(p90, 2)}
 
-    # Fallback: eski yil-metni sezgiseli (gercek tarih yoksa)
+    if not pages:
+        # Sayfa da tarih de yok: tazelik OLCULEMEDI. 50 yazmak olcum degil,
+        # yer tutucuydu (self_improve content_decay bunu ayrica filtrelemek
+        # zorunda kaliyordu — ayni sinif hatanin ikinci kurbani).
+        return {"score": None, "measured": False, "signal": "unmeasured",
+                "dated_count": 0, "recent_ratio": 0.0, "p90_ratio": 0.0}
+
+    # Fallback: eski yil-metni sezgiseli (gercek tarih yoksa; sayfa VAR, yani
+    # bakip bulamadik — bu bir olcum, "olculemedi" degil)
     current_year = now.year
     recent_signals = 0
     for page in pages:
@@ -566,7 +581,8 @@ def compute_freshness_score(pages: list[dict], sitemap_lastmods: list[str] | Non
         if str(current_year) in text_blob or str(current_year - 1) in text_blob:
             recent_signals += 1
     ratio = recent_signals / len(pages)
-    return {"score": min(100.0, 40 + ratio * 60), "signal": "year_text_fallback",
+    return {"score": min(100.0, 40 + ratio * 60), "measured": True,
+            "signal": "year_text_fallback",
             "dated_count": 0, "recent_ratio": round(ratio, 2), "p90_ratio": 0.0}
 
 
@@ -656,7 +672,7 @@ _SAMEAS_SOCIAL = ("linkedin.com", "instagram.com", "facebook.com", "youtube.com"
 
 
 def compute_engagement_score(web_results: list | None, own_domain: str = "",
-                             same_as: list | None = None) -> float:
+                             same_as: list | None = None) -> float | None:
     """
     v3: Etkilesim, otorite boyutuyla ayni sinyali (domain cesitliligi) cifte
     saymayi birakti. Sinyaller:
@@ -668,6 +684,13 @@ def compute_engagement_score(web_results: list | None, own_domain: str = "",
         olani alinir (max), cifte-sayim yok. Eskiden sameAs HIC kullanilmiyordu.
       - Haber/medya orani: %40.
     Kendi domain sonuclari sayilmaz.
+
+    v5 tamamlama (2026-08-12, Ö3): dis arama verisi (web_results) yokken
+    `max(20.0, self_declared)` taban veriliyordu — 20, olcum degil UYDURMA
+    sayiydi ve boyut "olculmus" gibi formule giriyordu. Artik:
+      - sameAs beyani varsa o kadarini OLCTUK -> self_declared doner,
+      - hicbir sinyal yoksa None -> boyut formulden duser, agirligi kalanlara
+        dagilir ("erisemedim ≠ yok" kuralinin kod karsiligi).
     """
     external = _external_domains(web_results or [], own_domain)
     social_hits = {
@@ -688,8 +711,9 @@ def compute_engagement_score(web_results: list | None, own_domain: str = "",
     social_score = max(tavily_social, self_declared)  # guclu/guvenilir sinyal
 
     if not web_results:
-        # Veri yok: yalniz kendi-beyan varsa onu ver, yoksa notr-dusuk baseline.
-        return max(20.0, self_declared)
+        # Dis arama verisi yok: kendi-beyan varsa yalniz onu ver (olculdu),
+        # hicbir sinyal yoksa OLCULEMEDI (None) — 20 taban yok.
+        return self_declared if declared else None
 
     news_hits = sum(
         1 for r in web_results

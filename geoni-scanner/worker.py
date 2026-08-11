@@ -86,6 +86,18 @@ async def process_message(body: str, receipt: str):
         main.jobs_store[job_id] = {"job_id": job_id, "status": "queued",
                                    "domain": request.domain, "email": request.email,
                                    "created_at": "", "result": None, "error": None}
+        # 🔴 K1 (2026-08-12): ucretsiz-hak kaydi API surecinde degil BURADA
+        # yasamali. `_bekleyen_hak` surec-yerel; API kendi sozlugune yazip isi
+        # SQS'e atinca worker'daki kopya bos kaliyordu ve `_hakki_yak` no-op'tu
+        # -> hak (profiles.free_scans_used + DeviceCheck biti) HIC yakilmiyordu.
+        # Mesajdaki `hak` alani kosumdan ONCE worker'in sozlugune konur ki
+        # run_audit_job'in basari yolu record_free_scan'i gercekten cagirsin.
+        # Basarisizlikta yakilmaz (bilincli: hak yalniz BASARILI taramada gider);
+        # artakalan girdi asagidaki finally'de temizlenir.
+        hak = payload.get("hak")
+        if hak:
+            main._bekleyen_hak[job_id] = (hak.get("user_id"), hak.get("device_token"),
+                                          hak.get("gate_info") or {})
         logger.info(f"tarama basliyor: {job_id} {request.domain}")
         await main.run_audit_job(job_id, request, payload.get("token", ""),
                                  ic_dogrulama=bool(payload.get("ic_dogrulama")))
@@ -104,6 +116,9 @@ async def process_message(body: str, receipt: str):
         if "payload" in dir():
             main.jobs_store.pop(payload.get("job_id", ""), None)
             main.audit_events.pop(payload.get("job_id", ""), None)
+            # K1: basarisiz iste hak yakilmadan kalan girdi sizmasin. pop ≠ yak:
+            # record_free_scan cagrilmadigi icin kullanicinin hakki DURUYOR.
+            main._bekleyen_hak.pop(payload.get("job_id", ""), None)
         if delete_after:
             try:
                 await asyncio.to_thread(sqs.delete_message, QueueUrl=QUEUE_URL, ReceiptHandle=receipt)
