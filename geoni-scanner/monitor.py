@@ -310,9 +310,10 @@ async def _process_item(item: dict):
             release_scan_slot()
     except Exception as e:
         logger.warning(f"monitor: '{label}' taramasi basarisiz: {e}")
-        # Basarisiz denemede de zamani guncelle — bozuk hedef her saat
-        # kuyrugun basini tikamasin, sirasi haftaya yeniden gelsin.
-        await update_watchlist_after_scan(item.get("id"), None)
+        # Zaman yine yazilir (bozuk hedef her saat kuyrugu tikamasin) ama
+        # basarisiz=True ile GERIYE alinarak: bir sonraki deneme ~1 gun sonra,
+        # 15 gun sonra degil. Bkz. db.update_watchlist_after_scan'deki not.
+        await update_watchlist_after_scan(item.get("id"), None, basarisiz=True)
         return
 
     old_score = item.get("last_score")

@@ -5656,11 +5656,25 @@ async def list_due_watchlist_items(limit: int = 3, interval_days: int = 7) -> li
     return []
 
 
-async def update_watchlist_after_scan(item_id: str, score) -> bool:
-    """Otomatik tarama sonrasi izleme kaydini gunceller (zaman + son skor)."""
+async def update_watchlist_after_scan(item_id: str, score, basarisiz: bool = False) -> bool:
+    """Otomatik tarama sonrasi izleme kaydini gunceller (zaman + son skor).
+
+    `basarisiz=True`: tarama patladi. Zaman yine yazilir ki bozuk hedef her
+    saat kuyrugun basini tikamasin — AMA tam 15 gun ileri itilmez.
+
+    🪤 NEDEN (2026-08-12'de yasandi): basarisiz denemede de zaman "simdi"
+    yaziliyordu, yani gecici bir hata hedefi 15 GUN kuyruk disi birakiyordu.
+    `target` bicim hatasi yuzunden odeyen musterinin iki hedefi coktu; hata
+    ayni gece duzeldi ama hedefler 26 Agustos'a kadar taranmayacakti.
+    Simdi tarih geriye alinarak yaziliyor: bir sonraki deneme ~1 GUN sonra.
+    Boylece hem kuyruk tikanmiyor hem gecici hata 15 gune mal olmuyor.
+    """
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         return False
-    from datetime import datetime, timezone
+    from datetime import datetime, timezone, timedelta
+    simdi = datetime.now(timezone.utc)
+    # Basarisizda: (aralik - 1 gun) kadar geriye yaz -> ~1 gun sonra tekrar sirada.
+    damga = simdi - timedelta(days=14) if basarisiz else simdi
     try:
         async with httpx.AsyncClient() as client:
             r = await client.patch(
@@ -5668,7 +5682,7 @@ async def update_watchlist_after_scan(item_id: str, score) -> bool:
                 headers=_headers(),
                 params={"id": f"eq.{item_id}"},
                 json={
-                    "last_auto_scan_at": datetime.now(timezone.utc).isoformat(),
+                    "last_auto_scan_at": damga.isoformat(),
                     **({"last_score": int(score)} if score is not None else {}),
                 },
                 timeout=10,
