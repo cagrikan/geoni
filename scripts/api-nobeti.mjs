@@ -77,4 +77,42 @@ de('saglam ust akis normal donuyor', r.ok && (await r.json()).ok === true);
 
 takilan.close();
 saglam.close();
+
+// ── /api/surum — KENDINI KILITLEME KAPANI ────────────────────────────────────
+// 🪤 `enAz > surum` olursa HERKESE zorunlu guncelleme gosterilir ve kimse
+// indiremez: uygulama kendini kilitler. Bu, yanlis bir sayi yazmakla olusan ve
+// TUM kullanicilari ayni anda vuran bir kusur — canlida fark edilene kadar
+// uygulama kullanilamaz. Bu yuzden yapilandirma CI'da denetleniyor.
+{
+  const m = await import('./api/surum.js');
+  const { SURUMLER, karsilastir } = m._test;
+
+  for (const [platform, bilgi] of Object.entries(SURUMLER)) {
+    de(`${platform}: enAz <= surum (kendini kilitlemez)`,
+       !bilgi.enAz || karsilastir(bilgi.enAz, bilgi.surum) <= 0,
+       `enAz=${bilgi.enAz} surum=${bilgi.surum}`);
+    de(`${platform}: surum sayisal bicimde`,
+       /^\d+(\.\d+)*$/.test(bilgi.surum), bilgi.surum);
+  }
+
+  // Karsilastirma SAYISAL olmali — dizgi karsilastirmasi '1.0.9' > '1.0.10'
+  // der ve onuncu yamadan sonra uyari sessizce kaybolur.
+  de('surum karsilastirmasi SAYISAL (1.0.9 < 1.0.10)',
+     karsilastir('1.0.9', '1.0.10') === -1);
+
+  // Bozuk yapilandirma istemciye SIZMAMALI: uc o platformu atlamali.
+  const sahte = { setHeader() {}, status() { return this; }, json(g) { this._g = g; return this; } };
+  m.default({ method: 'GET' }, sahte);
+  const govde = sahte._g || {};
+  for (const [platform, bilgi] of Object.entries(govde)) {
+    de(`${platform}: cikti da kilitlemiyor`,
+       !bilgi.enAz || karsilastir(bilgi.enAz, bilgi.surum) <= 0);
+  }
+  de('GET disi yontem reddedilir', (() => {
+    const s = { setHeader() {}, status(k) { this._k = k; return this; }, json() { return this; } };
+    m.default({ method: 'POST' }, s);
+    return s._k === 405;
+  })());
+}
+
 process.exit(kotu);
