@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ölçüm Raporu: Dört AI Motoru Aynı Markayı Nasıl Farklı Görüyor — GEONI Rehber</title>
+<meta name="description" content="88 marka ve 99 site üzerinde ölçüm: ChatGPT markaların yalnız %66'sını tanıdı, Gemini %89'unu tanıdı ama %30 oranında uydurma şüphesi taşıdı. Aynı marka için motorlar arası ortalama puan farkı 43.">
+<link rel="canonical" href="https://geoni.ai/rehber/ai-gorunurluk-olcum-raporu">
+<link rel="alternate" hreflang="tr" href="https://geoni.ai/rehber/ai-gorunurluk-olcum-raporu">
+<link rel="icon" href="/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/rehber.css">
+<script src="/theme-toggle.js"></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "Dört AI Motoru Aynı Markayı Nasıl Farklı Görüyor — Ölçüm Raporu",
+      "description": "88 marka/kişi ve 99 site üzerinde ChatGPT, Claude, Gemini ve Perplexity'nin tanıma oranları, uydurma sıklığı ve motorlar arası puan farkları.",
+      "author": { "@type": "Organization", "name": "GEONI", "url": "https://geoni.ai" },
+      "publisher": { "@id": "https://geoni.ai/#organization" },
+      "datePublished":"2026-08-17","dateModified":"2026-08-17",
+      "mainEntityOfPage": "https://geoni.ai/rehber/ai-gorunurluk-olcum-raporu",
+      "inLanguage": "tr"
+    },
+    {
+      "@type": "Dataset",
+      "name": "AI cevap motorlarında marka görünürlüğü ölçümleri (Temmuz–Ağustos 2026)",
+      "description": "88 benzersiz marka/kişi ve 99 benzersiz alan adı üzerinde dört AI cevap motorunun tanıma oranı, uydurma şüphesi, bağımsız hakem doğruluk puanı ve motorlar arası puan farkı.",
+      "creator": { "@type": "Organization", "name": "GEONI", "url": "https://geoni.ai" },
+      "temporalCoverage": "2026-07/2026-08",
+      "inLanguage": "tr", "isAccessibleForFree": true,
+      "url": "https://geoni.ai/rehber/ai-gorunurluk-olcum-raporu"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Hangi AI motoru markaları en az tanıyor?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Ölçtüğümüz 88 marka ve kişide en düşük tanıma oranı ChatGPT'de çıktı: %66. Gemini ve Perplexity %89, Claude %84 oranında tanıdı. Bir markanın Gemini tarafından bilinmesi, ChatGPT tarafından da bilindiği anlamına gelmiyor." }
+        },
+        {
+          "@type": "Question",
+          "name": "AI motorları markalar hakkında ne sıklıkla yanlış bilgi veriyor?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Bağımsız hakem modelin cevapları canlı web verisiyle karşılaştırdığı ölçümde uydurma şüphesi oranları: Gemini %30, Perplexity %16, Claude %15, ChatGPT %11. En çok marka tanıyan motor aynı zamanda en çok uyduran motor oldu." }
+        },
+        {
+          "@type": "Question",
+          "name": "Tek bir AI motorunda görünür olmak yeterli mi?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Hayır. Ölçtüğümüz 88 öznenin 26'sında motorların bir kısmı markayı tanıdı, bir kısmı hiç tanımadı. Aynı marka için en yüksek ve en düşük motor puanı arasındaki fark ortalama 43, en uçta 92 puan çıktı." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<nav class="nav">
+  <a href="/"><img src="/favicon.png" alt="" width="26" height="26" style="border-radius:6px">geoni</a>
+  <span class="crumb"><a href="/rehber">Rehber</a> / Ölçüm raporu</span>
+</nav>
+<main>
+  <span class="eyebrow">// GEONI Ölçüm Raporu</span>
+  <h1>Dört AI Motoru Aynı Markayı Nasıl Farklı Görüyor</h1>
+  <p class="updated">17 Ağustos 2026 · GEONI Ekibi · Ölçüm dönemi: Temmuz–Ağustos 2026</p>
+
+  <p class="lead">Temmuz–Ağustos 2026'da <b>88 benzersiz marka/kişi</b> ve <b>99 benzersiz alan adı</b> üzerinde yaptığımız taramaların toplu sonuçları. Bu sayfadaki her rakam <b>kendi ölçümümüzden</b> gelir; sektör tahmini ya da başka bir kaynaktan alıntı yoktur. Hiçbir müşterinin adı, alan adı veya tekil skoru yer almaz.</p>
+
+  <h2>Bulgu 1 — ChatGPT markaların üçte birini hiç tanımadı</h2>
+  <div class="scroll-x" style="overflow-x:auto">
+  <table style="border-collapse:collapse;width:100%;min-width:560px;font-size:14.5px;margin:0 0 18px">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--border,#ddd)">Motor</th>
+        <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--border,#ddd)">Markayı tanıdı</th>
+        <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--border,#ddd)">Uydurma şüphesi</th>
+        <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--border,#ddd)">Hakem doğruluk puanı</th>
+        <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--border,#ddd)">Ortalama görünürlük</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td style="padding:10px 12px"><b>Perplexity</b></td><td style="padding:10px 12px">%89</td><td style="padding:10px 12px">%16</td><td style="padding:10px 12px">76</td><td style="padding:10px 12px"><b>67</b></td></tr>
+      <tr><td style="padding:10px 12px"><b>Claude</b></td><td style="padding:10px 12px">%84</td><td style="padding:10px 12px">%15</td><td style="padding:10px 12px">75</td><td style="padding:10px 12px">59</td></tr>
+      <tr><td style="padding:10px 12px"><b>Gemini</b></td><td style="padding:10px 12px">%89</td><td style="padding:10px 12px"><b>%30</b></td><td style="padding:10px 12px">66</td><td style="padding:10px 12px">57</td></tr>
+      <tr><td style="padding:10px 12px"><b>ChatGPT</b></td><td style="padding:10px 12px"><b>%66</b></td><td style="padding:10px 12px">%11</td><td style="padding:10px 12px">73</td><td style="padding:10px 12px">46</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>En çok kullanılan motor, markaları en az tanıyan motor çıktı. ChatGPT ölçtüğümüz özneleri yalnız <b>%66</b> oranında tanıdı; Gemini ve Perplexity <b>%89</b>'unu tanıdı. Pratik karşılığı şu: <b>bir markanın Gemini tarafından bilinmesi, ChatGPT tarafından da bilindiği anlamına gelmiyor.</b></p>
+
+  <h2>Bulgu 2 — En çok tanıyan motor, en çok uyduran motor</h2>
+  <p>Her cevabı bağımsız bir hakem model canlı web verisiyle karşılaştırdı; çelişki ve doğrulanamayan iddia aradı. Gemini ölçümlerin <b>%30'unda</b> uydurma şüphesi taşıdı — ChatGPT'nin (%11) yaklaşık üç katı. Gemini'nin ortalama hakem doğruluk puanı da en düşüğü: 66.</p>
+  <p>Buradan çıkan sonuç ters yönlü: <b>tanınmak ile doğru tanınmak aynı şey değil.</b> Bir motorun markanızdan söz etmesi, doğru söz ettiği anlamına gelmiyor.</p>
+
+  <h2>Bulgu 3 — Motorlar birbirine katılmıyor: ortalama 43 puan fark</h2>
+  <ul>
+    <li>Aynı özne için en yüksek ve en düşük motor puanı arasındaki fark: <b>ortalama 43 puan</b></li>
+    <li>Ölçülen en büyük fark: <b>92 puan</b> — bir motor neredeyse tam, bir motor neredeyse sıfır</li>
+    <li>88 öznenin <b>46'sında</b> fark 40 puanın üzerinde</li>
+    <li><b>26 öznede</b> motorların bir kısmı tanıdı, bir kısmı hiç tanımadı</li>
+    <li>8 özneyi <b>hiçbir motor</b> tanımadı</li>
+  </ul>
+  <p>Dört motorun dördünde birden tanınan özne sayısı 54 — yani ölçtüğümüz markaların yalnız <b>%61'i</b> tüm motorlarda mevcut. Geri kalan %39 için “AI'da görünür müyüm” sorusunun cevabı <i>hangi AI'ı sorduğuna bağlı</i>.</p>
+
+  <h2>Bulgu 4 — Siteler AI tarayıcılarını engellemiyor; eksik olan başka şey</h2>
+  <p>99 benzersiz alan adının teknik denetiminde:</p>
+  <ul>
+    <li><b>45 sitede robots.txt hiç yok</b> (54 sitede var)</li>
+    <li><b>69 sitede llms.txt yok</b> (30 sitede var)</li>
+    <li>GPTBot yalnız <b>4</b>, ClaudeBot <b>2</b>, Google-Extended <b>4</b> sitede engelli</li>
+  </ul>
+  <p>Yaygın kanının aksine siteler yapay zekâ tarayıcılarını kapatmıyor — engelleme oranı %5'in altında. Sorun erişim izni değil, <b>okunacak yapının olmaması</b>.</p>
+
+  <h2>Yöntem ve sınırlar</h2>
+  <p>Neyi ölçmediğimizi de yazıyoruz:</p>
+  <ul>
+    <li><b>Örneklem:</b> 88 benzersiz marka/kişi, 99 benzersiz alan adı. Aynı özne birden çok kez tarandıysa yalnız en son ölçüm sayıldı.</li>
+    <li><b>Dönem:</b> Temmuz–Ağustos 2026. Modeller güncellendikçe sayılar değişir; bu bir fotoğraftır, sabit bir gerçek değil.</li>
+    <li><b>Dil ve coğrafya yanlılığı:</b> örneklem ağırlıklı olarak Türkçe içerikli ve Türkiye merkezli özneler içerir; küresel ortalama değildir.</li>
+    <li><b>Hakem:</b> doğruluk puanı, cevabı üreten modellerden <i>farklı</i> bir model tarafından verilir ve üç ölçümün medyanı alınır — öz-tercih yanlılığını azaltmak için.</li>
+    <li><b>“Uydurma şüphesi”</b> kesin hata iddiası değildir: hakem modelin canlı web verisiyle doğrulayamadığı iddiaları işaret eder.</li>
+  </ul>
+
+  <h2>Ne yapmalı</h2>
+  <p>Ölçümün pratik sonucu tek cümlede: <b>görünürlük tek motorda ölçülmez ve tanınmak yetmez.</b> Markanızın dört motorda ayrı ayrı nerede durduğunu, hangi kaynakların rakiplerinizi gösterip sizi göstermediğini ve sitenizin makine tarafından okunabilirliğini ölçebilirsiniz.</p>
+
+  <p class="updated">Veriler GEONI'nin üretim veritabanından 17 Ağustos 2026'da toplulaştırıldı. Alıntılamak serbesttir; kaynak olarak <code>geoni.ai/rehber/ai-gorunurluk-olcum-raporu</code> gösterilmesi yeterlidir.</p>
+
+  <div class="cta">
+    <h2>Kendi markanız dört motorda nerede duruyor?</h2>
+    <p>GEONI soru havuzunuzu ChatGPT, Claude, Gemini ve Perplexity'ye ayrı ayrı sorar, cevapların gösterdiği kaynakları çıkarır, Google AI Özeti kutusunu kontrol eder ve sitenizin AI botlarınca gezilebildiğini doğrular. İlk taramanız ücretsiz.</p>
+    <a href="https://app.geoni.ai/?utm_source=rehber&utm_medium=ai-gorunurluk-olcum-raporu&utm_campaign=organik">Ücretsiz Tara →</a>
+  </div>
+
+  <div class="also">
+    <h2>İlgili rehberler</h2>
+    <ul class="guide-list">
+      <li><a href="/rehber/ai-motorlari-karsilastirma">ChatGPT, Claude, Gemini, Perplexity: aynı soruya farklı cevaplar</a></li>
+      <li><a href="/rehber/llms-txt-nedir">llms.txt nedir, ne işe yarar</a></li>
+      <li><a href="/rehber/ai-botlari-robots-txt">AI botları ve robots.txt</a></li>
+      <li><a href="/rehber/markam-chatgptde-gorunmuyor">Markam ChatGPT'de görünmüyor</a></li>
+    </ul>
+  </div>
+</main>
+<footer>
+  <span>© 2026 geoni — Generative Engine Optimization</span>
+  <a href="/rehber">Rehber</a>
+  <a href="/privacy">Gizlilik</a>
+  <a href="/terms">Şartlar</a>
+</footer>
+<script>
+// Gelen UTM, sayfadaki SABIT rehber etiketini EZER (oteki rehberlerle ayni mantik).
+(function () {
+  var g = new URLSearchParams(location.search);
+  var k = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+  if (!k.some(function (x) { return g.get(x); })) return;
+  document.querySelectorAll('a[href^="https://app.geoni.ai"]').forEach(function (a) {
+    var u = new URL(a.href);
+    k.forEach(function (x) { if (g.get(x)) u.searchParams.set(x, g.get(x)); });
+    a.href = u.toString();
+  });
+})();
+</script>
+</body>
+</html>
