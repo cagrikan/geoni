@@ -826,6 +826,20 @@ async def health():
     return {"status": "healthy", "version": "0.9.0", "commit": _KOSAN_COMMIT,
             "timestamp": datetime.now().isoformat()}
 
+
+@app.get("/robots.txt")
+async def robots():
+    """API'nin taranmasini kapatir.
+
+    NEDEN: api.geoni.ai'nin robots.txt'i YOKTU (404) ve Search Console mulku
+    `sc-domain:geoni.ai` oldugu icin ALT ALAN ADLARINI da kapsiyor. Googlebot
+    api.geoni.ai'yi tarayip /docs, /audit gibi uclarda 404 aliyordu; bu 404'ler
+    17 Agu 2026'da geoni.ai'nin raporuna "Baska bir 4xx sorunu nedeniyle
+    engellendi" uyarisi olarak dustu. API'nin dizine girecek hicbir sayfasi yok,
+    taranmasi yalnizca yanlis alarm ve bosa tarama butcesi uretiyor.
+    """
+    return Response(content="User-agent: *\nDisallow: /\n", media_type="text/plain")
+
 def _daily_display_count() -> int:
     """
     Vitrin sayaci (kullanici istegi): "Bugun X tarama tamamlandi".
