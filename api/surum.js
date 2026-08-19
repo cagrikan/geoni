@@ -23,9 +23,9 @@ const SURUMLER = {
   // ve ASC ile 14 Agustos'ta dogrulandi. 1.0.7'de kalan uc gun boyunca bu alan
   // eskimisti: guncelleme uyarisi 1.0.8'i hic duyurmadi.
   ios: { surum: '1.0.8', enAz: '1.0.0' },
-  // Android uretim kanali henuz acilmadi; kapali testteki surum 1.0.7.
+  // Android uretim kanali henuz acilmadi; kapali test + dahili kanalda 1.0.8
   // Uretim acilana kadar enAz dusuk tutuluyor — kimseyi kilitlemeyelim.
-  android: { surum: '1.0.7', enAz: '1.0.0' },
+  android: { surum: '1.0.8', enAz: '1.0.0' },
 };
 
 // 🪤 KENDINI KILITLEME KAPANI: `enAz > surum` olursa HERKESE zorunlu
