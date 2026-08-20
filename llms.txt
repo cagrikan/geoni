@@ -52,6 +52,7 @@ Each service ships with a work-breakdown checklist, in-app messaging with the as
 
 - [GEO nedir? (Üretken Motor Optimizasyonu)](https://geoni.ai/rehber/geo-nedir): GEO'nun tanımı, SEO ve AEO'dan farkı, nasıl ölçüldüğü.
 - [AEO nedir? (Cevap Motoru Optimizasyonu)](https://geoni.ai/rehber/aeo-nedir): AEO açıklaması, AEO/GEO/SEO ayrımı, ölçme ve iyileştirme.
+- [Ölçüm raporu: dört AI motoru aynı markayı nasıl farklı görüyor](https://geoni.ai/rehber/ai-gorunurluk-olcum-raporu): 88 marka ve 99 site üzerinde kendi ölçümümüz — tanıma oranları, uydurma sıklığı, motorlar arası puan farkları; alıntılanabilir veri sayfası.
 - [Markam ChatGPT'de görünmüyor](https://geoni.ai/rehber/markam-chatgptde-gorunmuyor): görünmemenin tipik sebepleri ve sırayla ne yapılacağı.
 - [Markanız ChatGPT'de nasıl görünür hale gelir?](https://geoni.ai/rehber/chatgpt-gorunurlugu): bot erişiminden güvenilir kaynak atıflarına altı somut adım.
 - [llms.txt nedir, nasıl eklenir?](https://geoni.ai/rehber/llms-txt-nedir): biçim, en küçük örnek ve yanına gereken robots.txt kuralları.
@@ -67,6 +68,8 @@ Each service ships with a work-breakdown checklist, in-app messaging with the as
 - [Main site — English](https://geoni.ai/en): product overview, live demo, token pricing (English edition of the home page)
 - [Main site — Türkçe](https://geoni.ai): same page in Turkish (x-default)
 - [App](https://app.geoni.ai): free account, scans and services
+- [iOS app](https://apps.apple.com/app/id6790143973): GEONI on the App Store
+- [Android app](https://play.google.com/store/apps/details?id=ai.geoni.app): GEONI on Google Play (published 2026-08-20)
 - [Free scan](https://geoni.ai#audit): run the first AI visibility audit without payment
 
 ## Contact

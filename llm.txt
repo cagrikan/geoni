@@ -38,6 +38,8 @@ Each service ships with a work-breakdown checklist, in-app messaging with the as
 
 - [Main site](https://geoni.ai): product overview, live demo, token pricing
 - [App](https://app.geoni.ai): free account, scans and services
+- [iOS app](https://apps.apple.com/app/id6790143973): GEONI on the App Store
+- [Android app](https://play.google.com/store/apps/details?id=ai.geoni.app): GEONI on Google Play (published 2026-08-20)
 - [Free scan](https://geoni.ai#audit): run the first AI visibility audit without payment
 
 ## Contact
