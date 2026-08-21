@@ -131,10 +131,12 @@ async function promoKoduAyir(senderId, batch) {
 }
 
 // Kodun NEREDE kullanilacagi acikca yazilir. "Uygulamada Cuzdan" demek yetmiyor:
-// promosyon alani once WEB'de yayinlandi, mobil surum App Store incelemesinde.
-// Adres verilmezse mobil kullanici kodu alip kullanamiyor.
+// 🪤 Eskiden burada 'app.geoni.ai' adresi yaziyordu, cunku promosyon alani ONCE
+// web'de yayinlanmisti. 1.0.8'den beri kod alani MOBILDE de var (PromoCodeCard,
+// Hesap sekmesi) — yani adres vermek gereksiz ve DM_SYSTEM'in "DM'de ASLA URL
+// yazma" kuralini ciyniyordu (Instagram her adres icin onizleme balonu aciyor).
 const KULLANIM_TARIFI =
-  'app.geoni.ai adresinde Cüzdan > "Promosyon kodun var mı?" alanına gir, '
+  'GEONI uygulamasında Hesap sekmesindeki "Promosyon kodun var mı?" alanına gir, '
   + 'tokenlar hesabına düşsün.';
 
 async function promoKoduGonder(senderId, cfg) {
@@ -147,7 +149,7 @@ async function promoKoduGonder(senderId, cfg) {
   if (sonuc.tukendi) {
     // Durust ol: "kod bitti" de, oyalama.
     metin = 'Bu kampanyadaki kodların hepsi dağıtıldı 😔 Yeni kod açtığımızda buradan duyuracağız. '
-      + 'Bu arada ilk taraman zaten ücretsiz: geoni.ai';
+      + 'Bu arada ilk taraman zaten ücretsiz — App Store ya da Google Play\'den GEONI\'yi indirmen yeterli.';
   } else if (sonuc.tekrar) {
     metin = `Sana daha önce verdiğim kod duruyor: ${sonuc.code}
 
@@ -195,6 +197,13 @@ BILGILERIN:
   (robots.txt/llms.txt), yapisal veri (schema), dizin kapsami, kaynak guveni. 0-100 skor.
 - Ucretsiz tarama: dakikalar içinde — site, kisi, marka veya sosyal hesap. Uyelik
   gerekmeden baslar.
+- KENDI OLCUMUMUZ (Temmuz-Agustos 2026, 88 marka/kisi ve 99 site): ChatGPT
+  markalarin yalnizca %66'sini tanidi; Gemini ve Perplexity %89, Claude %84.
+  88 oznenin 26'sinda bir motor taniyor otekiler tanimiyordu. En cok taniyan
+  motor (Gemini) ayni zamanda en cok uyduran motordu (%30 dogrulanamayan iddia,
+  ChatGPT'de %11). Ayni marka icin motorlar arasi ortalama puan farki 43.
+  BUNU KULLAN: "tek motora bakmak yetmiyor" ve "taninmak ile dogru taninmak
+  ayri sey" derken somut rakam ver. Rakamlari DEGISTIRME, uydurma ekleme.
 - Iyilestirme: uzman hizmetleri var (AI botlarina erisim dosyalari, schema kurulumu,
   AI'larin alintilayacagi icerik, guvenilir kaynaklarda gorunurluk, bilgi tabani kaydi).
   Odeme token'la; detaylar uygulamanin Hizmetler bolumunde.
@@ -214,9 +223,11 @@ BILGILERIN:
       musteriyi ve tahsilati GEONI yonetir, o isi yapip payini alir. Net oran icin "konusalim".
   (3) Ilgileniyorsa bilgi YAKALA: "hesabin ve nisin ne? Seni ekibe iletelim." de.
   Kesin yuzde/gelir rakami VAAT ETME (oran konusmada netlesir); sicak, capture odakli kal.
-- YONLENDIRME KURALI: Insanlari GEONI iPhone uygulamasina yonlendir —
-  "App Store'dan GEONI'yi indir" de. Net ve kendinden emin; "yakinda" gibi
-  ceviriler kullanma.
+- YONLENDIRME KURALI: Insanlari GEONI uygulamasina yonlendir. GEONI ARTIK HER
+  IKI MAGAZADA DA YAYINDA (Android 20 Agustos 2026'da Google Play'e cikti):
+  iPhone icin "App Store'dan GEONI'yi indir", Android icin "Google Play'den
+  GEONI'yi indir" de. Cihazi belli degilse "App Store ve Google Play'de GEONI"
+  de. Android icin "yakinda" demek ARTIK YANLIS.
 
 USLUP: Instagram DM'i gibi yaz — COK KISA: 1-3 kisa cumle, asla 4'u gecme. Tek
 konuya odaklan; detay istenirse ac. Samimi ve net. Ekip agziyla konus ("olcuyoruz",
