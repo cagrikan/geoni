@@ -23,7 +23,8 @@ const SURUMLER = {
   // ve ASC ile 14 Agustos'ta dogrulandi. 1.0.7'de kalan uc gun boyunca bu alan
   // eskimisti: guncelleme uyarisi 1.0.8'i hic duyurmadi.
   ios: { surum: '1.0.8', enAz: '1.0.0' },
-  // Android uretim kanali henuz acilmadi; kapali test + dahili kanalda 1.0.8
+  // Android 20 Agustos 2026'da URETIM kanalinda yayinlandi (1.0.8 / vc12,
+  // 176 ulke). Kapali test ayrica vc13'te (R8 surumu, testcilerde deneniyor).
   // Uretim acilana kadar enAz dusuk tutuluyor — kimseyi kilitlemeyelim.
   android: { surum: '1.0.8', enAz: '1.0.0' },
 };
