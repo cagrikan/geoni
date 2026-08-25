@@ -82,6 +82,10 @@
       "destination": "/guides/ai-visibility-tools.html"
     },
     {
+      "source": "/guides/ai-visibility-measurement-report",
+      "destination": "/guides/ai-visibility-measurement-report.html"
+    },
+    {
       "source": "/guides/ai-visibility-providers",
       "destination": "/guides/ai-visibility-providers.html"
     },

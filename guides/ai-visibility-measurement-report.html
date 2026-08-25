@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Measurement Report: How Four AI Engines See the Same Brand — GEONI Guides</title>
+<meta name="description" content="Original data from 154 measured subjects across ChatGPT, Claude, Gemini and Perplexity: recognition rates, hallucination suspicion, judge accuracy, and the bimodal disagreement between engines. Every number is our own measurement.">
+<link rel="canonical" href="https://geoni.ai/guides/ai-visibility-measurement-report">
+<link rel="alternate" hreflang="en" href="https://geoni.ai/guides/ai-visibility-measurement-report">
+<link rel="alternate" hreflang="tr" href="https://geoni.ai/rehber/ai-gorunurluk-olcum-raporu">
+<link rel="alternate" hreflang="x-default" href="https://geoni.ai/guides/ai-visibility-measurement-report">
+<link rel="icon" href="/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/rehber.css">
+<script src="/theme-toggle.js"></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "Measurement Report: How Four AI Engines See the Same Brand",
+      "description": "Original measurement of 154 subjects across ChatGPT, Claude, Gemini and Perplexity: recognition rates, hallucination suspicion, independent judge accuracy, and a bimodal pattern in between-engine disagreement.",
+      "author": { "@type": "Organization", "name": "GEONI", "url": "https://geoni.ai" },
+      "publisher": { "@id": "https://geoni.ai/#organization" },
+      "mainEntityOfPage": "https://geoni.ai/guides/ai-visibility-measurement-report",
+      "datePublished": "2026-08-25",
+      "dateModified": "2026-08-25",
+      "inLanguage": "en",
+      "isBasedOn": "GEONI production scan database, aggregated 25 August 2026"
+    },
+    {
+      "@type": "Dataset",
+      "name": "GEONI AI visibility baseline, July–August 2026",
+      "description": "Aggregated results of 154 unique measured subjects (websites, brands, people, social accounts) scanned across ChatGPT, Claude, Gemini and Perplexity between 9 July and 24 August 2026. Published as aggregate statistics only; no individual subject, domain or score is disclosed.",
+      "creator": { "@type": "Organization", "name": "GEONI", "url": "https://geoni.ai" },
+      "temporalCoverage": "2026-07-09/2026-08-24",
+      "license": "https://geoni.ai/terms",
+      "url": "https://geoni.ai/guides/ai-visibility-measurement-report"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Do AI engines agree about which brands they know?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Mostly they do not. Across 90 subjects measured on all four engines, only 63 percent were recognised by all four, and 9 percent were recognised by none. The gap between the highest- and lowest-scoring engine on the same subject had a median of 47 points, and 51 percent of subjects showed a gap of 40 points or more." }
+        },
+        {
+          "@type": "Question",
+          "name": "Which AI engine recognises brands most often?",
+          "acceptedAnswer": { "@type": "Answer", "text": "In this sample Gemini recognised the most subjects at 90 percent and Perplexity followed at 89 percent, while ChatGPT recognised the fewest at 67 percent. Recognition is not the same as accuracy: Gemini also carried the highest rate of hallucination suspicion at 29 percent, roughly twice ChatGPT's 12 percent." }
+        },
+        {
+          "@type": "Question",
+          "name": "Is a single AI visibility measurement reliable?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Not on its own. Engine answers are non-deterministic: the same subject asked the same question on the same day can be recognised in one run and not recognised in the next, and recognition carries a large share of any visibility score. Any serious measurement needs repeat sampling, a dated log of each run, and smoothing across runs rather than a single reading." }
+        },
+        {
+          "@type": "Question",
+          "name": "Are websites blocking AI crawlers?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Almost never. Across the 100 websites in this sample, none blocked AI search crawlers and none blocked AI training crawlers. What was common was absence rather than restriction: 45 of 100 had no robots.txt at all, 70 of 100 had no llms.txt, and 71 of 100 had no discoverable sitemap. The constraint is not permission to crawl; it is the absence of machine-readable structure worth citing." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<nav class="nav">
+  <a href="/en"><img src="/favicon.png" alt="" width="26" height="26" style="border-radius:6px">geoni</a>
+  <span class="crumb"><a href="/guides">Guides</a> / Measurement report · <a href="/rehber/ai-gorunurluk-olcum-raporu">TR</a></span>
+</nav>
+<main>
+  <span class="eyebrow">// GEONI Measurement Report</span>
+  <h1>How Four AI Engines See the Same Brand</h1>
+  <p class="updated">25 August 2026 · GEONI Team · Measurement window: 9 July – 24 August 2026</p>
+
+  <p class="lead">Aggregated results from <b>154 unique measured subjects</b> — websites, brands, people and social accounts — scanned across ChatGPT, Claude, Gemini and Perplexity. <b>Every number on this page comes from our own measurement.</b> There are no industry estimates and no figures quoted from anyone else. No customer name, domain or individual score appears anywhere.</p>
+
+  <h2>Finding 1 — the most used engine recognises the fewest brands</h2>
+  <div class="scroll-x" style="overflow-x:auto">
+  <table style="border-collapse:collapse;width:100%;min-width:560px;font-size:14.5px;margin:0 0 18px">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--border,#ddd)">Engine</th>
+        <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--border,#ddd)">Recognised the subject</th>
+        <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--border,#ddd)">Hallucination suspicion</th>
+        <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--border,#ddd)">Judge accuracy score</th>
+        <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--border,#ddd)">Average visibility</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td style="padding:10px 12px"><b>Perplexity</b></td><td style="padding:10px 12px">89%</td><td style="padding:10px 12px">19%</td><td style="padding:10px 12px">75.2</td><td style="padding:10px 12px"><b>65.6</b></td></tr>
+      <tr><td style="padding:10px 12px"><b>Claude</b></td><td style="padding:10px 12px">84%</td><td style="padding:10px 12px">13%</td><td style="padding:10px 12px"><b>76.0</b></td><td style="padding:10px 12px">59.7</td></tr>
+      <tr><td style="padding:10px 12px"><b>Gemini</b></td><td style="padding:10px 12px"><b>90%</b></td><td style="padding:10px 12px"><b>29%</b></td><td style="padding:10px 12px">68.6</td><td style="padding:10px 12px">59.2</td></tr>
+      <tr><td style="padding:10px 12px"><b>ChatGPT</b></td><td style="padding:10px 12px"><b>67%</b></td><td style="padding:10px 12px">12%</td><td style="padding:10px 12px">72.9</td><td style="padding:10px 12px">45.7</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>The engine with the largest user base recognised the fewest subjects. ChatGPT knew <b>67%</b> of what we measured; Gemini knew <b>90%</b>. The practical consequence: <b>being known to Gemini tells you nothing about being known to ChatGPT.</b> A brand that checks its visibility in one chat window and concludes it is fine has measured one quarter of the surface.</p>
+
+  <h2>Finding 2 — the engine that recognises most also invents most</h2>
+  <p>Every answer was compared against live web data by an independent judge model looking for contradictions and unverifiable claims. Gemini carried hallucination suspicion in <b>29%</b> of measurements — roughly <b>2.4× ChatGPT's 12%</b>. Gemini also had the lowest judge accuracy score at 68.6, while Claude had the highest at 76.0.</p>
+  <p>The conclusion runs opposite to intuition: <b>being recognised and being described correctly are different properties.</b> An engine mentioning your brand is not evidence that it is saying true things about you, and the engine most likely to mention you is the one most likely to be wrong.</p>
+
+  <h2>Finding 3 — engines either agree closely or disagree wildly, with almost nothing in between</h2>
+  <p>For each subject measured on all four engines we took the gap between the highest and lowest engine score. We expected a normal-looking spread around some average. What we found was <b>bimodal</b>:</p>
+
+  <div class="scroll-x" style="overflow-x:auto">
+  <table style="border-collapse:collapse;width:100%;min-width:420px;font-size:14.5px;margin:0 0 18px">
+    <thead>
+      <tr>
+        <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--border,#ddd)">Gap between best and worst engine</th>
+        <th style="text-align:left;padding:10px 12px;border-bottom:1px solid var(--border,#ddd)">Subjects</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td style="padding:8px 12px">0–19 points — engines broadly agree</td><td style="padding:8px 12px"><b>40</b></td></tr>
+      <tr><td style="padding:8px 12px">20–39 points — partial disagreement</td><td style="padding:8px 12px"><b>4</b></td></tr>
+      <tr><td style="padding:8px 12px">40+ points — engines fundamentally disagree</td><td style="padding:8px 12px"><b>46</b></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>Only <b>4 of 90 subjects</b> sit in the middle band. A brand is either seen roughly the same way everywhere, or it is seen completely differently depending on which engine you ask — there is no gradual middle. Median gap: <b>46.8 points</b>. Largest gap measured: <b>91.5 points</b>, one engine near-complete and another near-zero on the same subject on the same day.</p>
+  <ul>
+    <li><b>63%</b> of subjects were recognised by all four engines</li>
+    <li><b>9%</b> were recognised by none of them</li>
+    <li>The remaining <b>28%</b> exist in some engines and not others</li>
+  </ul>
+  <p>For that 28%, the question &ldquo;am I visible in AI?&rdquo; has no single answer. It depends entirely on which AI you ask.</p>
+
+  <h2>Finding 4 — websites are not blocking AI crawlers; something else is missing</h2>
+  <p>In the technical audit of the <b>100 websites</b> in this sample:</p>
+  <ul>
+    <li><b>0 of 100</b> blocked AI search crawlers. <b>0 of 100</b> blocked AI training crawlers. Not a low number — <b>zero</b>.</li>
+    <li><b>45 of 100</b> had <b>no robots.txt at all</b></li>
+    <li><b>70 of 100</b> had <b>no llms.txt</b></li>
+    <li><b>71 of 100</b> had <b>no discoverable sitemap</b></li>
+  </ul>
+  <p>Contrary to the common assumption, sites are not shutting AI crawlers out — in this sample not one of them did. Access is not the constraint. What is missing is <b>machine-readable structure worth citing</b>: a page an engine can parse into a claim it is willing to repeat. The gap is not a locked door, it is an empty room.</p>
+
+  <h2>Finding 5 — a single measurement is not a measurement</h2>
+  <p>This is the finding we would most like other people to test against their own data, because it changes how every number above should be read.</p>
+  <p>Engine answers are <b>non-deterministic</b>. In repeat runs of the same subject on the same day, we observed recognition flipping between runs: an engine recognises the subject, then does not, then does again, within a window of well under two hours. Because recognition gates a large share of any visibility score, a single flip moves the headline number dramatically.</p>
+  <p>The practical consequence for anyone building or buying this kind of measurement: <b>one reading is noise.</b> What makes a number trustworthy is repeat sampling, a dated log of every run and the prompt that produced it, and smoothing across runs rather than reporting the latest value. A tool that shows you one number with no history is showing you a coin flip.</p>
+
+  <h2>Method and limits</h2>
+  <p>What we did not measure matters as much as what we did:</p>
+  <ul>
+    <li><b>Sample:</b> 154 unique subjects (100 websites, 29 social accounts, 17 people, 8 brands). Where the same subject was scanned more than once, only the most recent measurement counts. 90 of them carry a complete four-engine measurement; the engine-comparison findings use those 90.</li>
+    <li><b>Window:</b> 9 July – 24 August 2026. Model versions change; these numbers are a photograph, not a fixed truth.</li>
+    <li><b>Language and geography bias:</b> the sample skews towards Turkish-language and Turkey-based subjects. This is not a global average and should not be read as one.</li>
+    <li><b>Judge:</b> the accuracy score is assigned by a model <i>different</i> from the ones that produced the answers, and the median of three measurements is used, to reduce self-preference bias.</li>
+    <li><b>&ldquo;Hallucination suspicion&rdquo;</b> is not a claim of proven error. It flags assertions the judge model could not verify against live web data, including plausible ones. Anyone comparing this figure with their own should first align on that definition — the number is meaningless across two different definitions.</li>
+    <li><b>Grok was excluded.</b> It appeared in earlier measurements in shadow mode and was later switched off entirely. Including it would create a false trend in any follow-up comparison.</li>
+  </ul>
+
+  <h2>What to do with this</h2>
+  <p>The practical takeaway in one sentence: <b>visibility cannot be measured on one engine, recognition is not accuracy, and one reading is not a measurement.</b> If you are checking your own brand, check it on all four, check what sources the answers cite, and check it more than once before believing the number.</p>
+
+  <p class="updated">Aggregated from GEONI's production scan database on 25 August 2026. Quoting is welcome; a citation of <code>geoni.ai/guides/ai-visibility-measurement-report</code> is sufficient. If you run a comparable measurement and get different results, we would genuinely like to see it — the definitions matter more than the numbers.</p>
+
+  <div class="cta">
+    <h2>Where does your own brand stand across four engines?</h2>
+    <p>GEONI asks your category questions to ChatGPT, Claude, Gemini and Perplexity separately, extracts the sources those answers cite, checks the Google AI Overview box, and verifies that AI crawlers can reach your site. Your first scan is free.</p>
+    <a href="https://app.geoni.ai/?utm_source=guides&utm_medium=ai-visibility-measurement-report&utm_campaign=organic">Run a free scan →</a>
+  </div>
+
+  <div class="also">
+    <h2>Other guides</h2>
+    <ul class="guide-list">
+      <li><a href="/guides/ai-engines-compared">ChatGPT, Claude, Gemini, Perplexity: different answers to the same question</a></li>
+      <li><a href="/guides/ai-visibility-tools">AI visibility tracking tools: a 2026 comparison guide</a></li>
+      <li><a href="/guides/what-is-llms-txt">What llms.txt is and what it does</a></li>
+      <li><a href="/guides/brand-not-in-chatgpt">My brand does not show up in ChatGPT</a></li>
+    </ul>
+  </div>
+</main>
+<footer>
+  <span>© 2026 geoni — Generative Engine Optimization</span>
+  <a href="/guides">Guides</a>
+  <a href="/privacy">Privacy</a>
+  <a href="/terms">Terms</a>
+</footer>
+<script>
+// Incoming UTM overrides the page's fixed guide tag (same logic as the other guides).
+(function () {
+  var g = new URLSearchParams(location.search);
+  var k = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+  if (!k.some(function (x) { return g.get(x); })) return;
+  document.querySelectorAll('a[href^="https://app.geoni.ai"]').forEach(function (a) {
+    var u = new URL(a.href);
+    k.forEach(function (x) { if (g.get(x)) u.searchParams.set(x, g.get(x)); });
+    a.href = u.toString();
+  });
+})();
+</script>
+</body>
+</html>
