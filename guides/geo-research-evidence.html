@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Does GEO Actually Work? What the Peer-Reviewed Research Says — GEONI Guides</title>
+<meta name="description" content="The KDD 2024 GEO study tested nine content changes across a 10,000-query benchmark: adding statistics and quotations raised visibility 30-40%, while classic keyword stuffing scored BELOW the untouched baseline. A sourced summary.">
+<link rel="canonical" href="https://geoni.ai/guides/geo-research-evidence">
+<link rel="alternate" hreflang="en" href="https://geoni.ai/guides/geo-research-evidence">
+<link rel="alternate" hreflang="tr" href="https://geoni.ai/rehber/geo-akademik-kanit">
+<link rel="alternate" hreflang="x-default" href="https://geoni.ai/guides/geo-research-evidence">
+<link rel="icon" href="/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/rehber.css">
+<script src="/theme-toggle.js"></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "Does GEO Actually Work? What the Peer-Reviewed Research Says",
+      "description": "Method, numbers and limits of the KDD 2024 Generative Engine Optimization study, taken from the primary source.",
+      "author": { "@type": "Organization", "name": "GEONI", "url": "https://geoni.ai" },
+      "publisher": { "@id": "https://geoni.ai/#organization" },
+      "mainEntityOfPage": "https://geoni.ai/guides/geo-research-evidence",
+      "datePublished": "2026-08-25",
+      "dateModified": "2026-08-25",
+      "inLanguage": "en",
+      "citation": "Aggarwal, P., Murahari, V., Rajpurohit, T., Kalyan, A., Narasimhan, K., Deshpande, A. (2024). GEO: Generative Engine Optimization. Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining. arXiv:2311.09735"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Is there scientific evidence that GEO works?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. \"GEO: Generative Engine Optimization\", published at ACM SIGKDD (KDD) in 2024, tested nine different content modifications in a controlled experiment on GEO-bench, a benchmark of 10,000 queries. The top methods, citing sources, adding quotations and adding statistics, produced a relative improvement of 30 to 40 percent on the Position-Adjusted Word Count metric over the unoptimised baseline." }
+        },
+        {
+          "@type": "Question",
+          "name": "Does keyword stuffing work in AI answers?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. In the same study, keyword stuffing inherited from classic SEO scored below untouched content: 17.7 against a baseline of 19.3. The paper classifies it under non-performing methods. Tactics that once worked in ranking-based search do not transfer to a system that generates the answer." }
+        },
+        {
+          "@type": "Question",
+          "name": "Which content change helps most?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Adding quotations scored highest, followed by adding statistics; citing sources was in the same top group. Improving fluency and readability also produced gains of 15 to 30 percent. The common thread is that generative engines favour sentences that are verifiable and quotable." }
+        },
+        {
+          "@type": "Question",
+          "name": "Do these results apply to every sector?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No, and this is the study's most important caveat. The effect of the same method varies dramatically by domain: adding quotations reduced visibility by 22.9 percent in one domain while increasing it by 99.7 percent in another. The authors explicitly call for domain-specific optimisation. Measuring in your own domain matters more than applying a general recipe." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<nav class="nav">
+  <a href="/en"><img src="/favicon.png" alt="" width="26" height="26" style="border-radius:6px">geoni</a>
+  <span class="crumb"><a href="/guides">Guides</a> / GEO research evidence · <a href="/rehber/geo-akademik-kanit">TR</a></span>
+</nav>
+<main>
+  <span class="eyebrow">// GEONI Guides</span>
+  <h1>Does GEO Actually Work? What the Peer-Reviewed Research Says</h1>
+  <p class="updated">25 August 2026 · GEONI Team</p>
+
+  <p class="lead">“You can increase your visibility in AI answers” is said constantly, usually with nothing behind it. But the claim does have a <b>peer-reviewed source</b>: <i>GEO: Generative Engine Optimization</i>, published at ACM SIGKDD in 2024. This page summarises what that study did, what numbers it found, and <b>where it stops</b>. Every figure here is taken directly from the paper.</p>
+
+  <h2>What the study did</h2>
+  <p>The researchers built a benchmark called <b>GEO-bench</b>: <b>10,000 queries</b>, drawn from nine different sources, spread across <b>25 domains</b>. They put those queries to a generative engine, recorded which sources the answers cited, then <b>modified the content of a single source</b> and asked again. What is measured is whether that modification raised or lowered that source's visibility.</p>
+  <p>The design matters: this is a <b>controlled experiment</b>. Unlike “we did this and our traffic went up” case studies, one variable changes and its effect is isolated.</p>
+
+  <h2>How visibility was measured</h2>
+  <p>Two metrics were defined, because merely appearing in an answer means little on its own:</p>
+  <ul>
+    <li><b>Position-Adjusted Word Count</b> — the word count of sentences attributable to a source, weighted by where in the answer they appear. Being discussed at length up front is not the same as a single mention at the bottom.</li>
+    <li><b>Subjective Impression</b> — a language model's judgement of how much the source dominates the answer, across dimensions such as relevance, uniqueness and influence.</li>
+  </ul>
+
+  <h2>Results: what worked and what did not</h2>
+  <p>Nine methods were tested. Untouched content scored a baseline of <b>19.3</b>. The figures below are the paper's Overall column:</p>
+
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Method</th><th>Score</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td><b>Quotation Addition</b></td><td>27.2</td><td>Highest</td></tr>
+      <tr><td><b>Statistics Addition</b></td><td>25.2</td><td>Strong</td></tr>
+      <tr><td><b>Fluency Optimization</b></td><td>24.7</td><td>Strong</td></tr>
+      <tr><td>Technical Terms</td><td>22.7</td><td>Positive</td></tr>
+      <tr><td>Easy-to-Understand</td><td>22.0</td><td>Positive</td></tr>
+      <tr><td>Authoritative</td><td>21.3</td><td>Positive</td></tr>
+      <tr><td style="opacity:.75">Unique Words</td><td style="opacity:.75">20.5</td><td style="opacity:.75">No real effect</td></tr>
+      <tr><td style="opacity:.75"><b>Keyword Stuffing</b></td><td style="opacity:.75"><b>17.7</b></td><td style="opacity:.75"><b>BELOW baseline</b></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>In the paper's own words, the three top methods — <b>Cite Sources, Quotation Addition and Statistics Addition</b> — achieved a relative improvement of <b>30–40%</b> on Position-Adjusted Word Count and <b>15–30%</b> on Subjective Impression. The best methods beat the baseline by <b>41%</b> and <b>28%</b> respectively.</p>
+
+  <h2>The striking result: an old SEO tactic actively hurt</h2>
+  <p><b>Keyword stuffing performed worse than doing nothing at all</b> (17.7 against 19.3). The study files it directly under non-performing methods.</p>
+  <p>The practical reading is clean: density-based tactics that once worked in ranking-era search find no purchase in a system that <i>generates</i> the answer. A generative engine does not rank your page, it <b>quotes your sentence</b> — and a stuffed sentence is not a quotable one.</p>
+
+  <h2>The real caveat: there is no single recipe</h2>
+  <p>This is the study's most frequently skipped finding. The effect of the same method <b>varies dramatically by domain</b>. Quotation Addition, across the domains measured, <b>reduced</b> visibility by <b>22.9%</b> at one end and <b>increased</b> it by <b>99.7%</b> at the other.</p>
+  <p>That is why the authors explicitly argue for <b>domain-specific optimisation</b>. Any listicle telling you “do these five things to appear in AI” is stepping over this result. The defensible approach is not to apply the general recipe but to <b>measure in your own domain</b>.</p>
+
+  <h2>Limits of this study</h2>
+  <p>Reading a source honestly means stating where it stops:</p>
+  <ul>
+    <li><b>Controlled setting.</b> Measurement ran on the researchers' generative-engine setup. It is not identical to how ChatGPT or Gemini behave live today.</li>
+    <li><b>Timing.</b> The work was prepared in late 2023 and published in 2024. Models have been updated many times since.</li>
+    <li><b>Relative metrics.</b> The results describe share of visibility inside an answer, not customers acquired. Commercial outcome is a separate question this study does not measure.</li>
+    <li><b>One source optimised.</b> In reality competitors optimise simultaneously; the experiment does not model that.</li>
+  </ul>
+
+  <h2>What it means in practice</h2>
+  <p>The direction the study points in is consistent: generative engines reward content that is <b>verifiable and quotable</b>. Supporting a claim with a number, showing where it came from, grounding it in a credible quotation, and writing the sentence clearly — all four produced measured gains. Density and repetition did not.</p>
+  <p>But the study's own warning matters most: <b>the effect depends on the domain.</b> Nothing on this page substitutes for measuring in yours.</p>
+
+  <h2>Source</h2>
+  <p>Aggarwal, P., Murahari, V., Rajpurohit, T., Kalyan, A., Narasimhan, K., Deshpande, A. (2024). <i>GEO: Generative Engine Optimization.</i> Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining (KDD '24), Barcelona.</p>
+  <ul>
+    <li>Paper (arXiv): <a href="https://arxiv.org/abs/2311.09735" rel="nofollow noopener" target="_blank">arxiv.org/abs/2311.09735</a></li>
+    <li>Proceedings (ACM): <a href="https://dl.acm.org/doi/10.1145/3637528.3671900" rel="nofollow noopener" target="_blank">dl.acm.org/doi/10.1145/3637528.3671900</a></li>
+  </ul>
+  <p class="updated">All figures on this page are taken directly from the paper above, not relayed from secondary summaries. If you spot an error, tell us: mail@geoni.ai</p>
+
+  <div class="cta">
+    <h2>Measure in your own domain</h2>
+    <p>The study's conclusion in one line: there is no general recipe, only domain-specific measurement. GEONI puts your category questions to ChatGPT, Claude, Gemini and Perplexity separately, extracts the sources those answers cite, and audits whether your site is machine-readable. Your first scan is free.</p>
+    <a href="https://app.geoni.ai/?utm_source=guides&utm_medium=geo-research-evidence&utm_campaign=organic">Run a free scan →</a>
+  </div>
+
+  <div class="also">
+    <h2>Other guides</h2>
+    <ul class="guide-list">
+      <li><a href="/guides/what-is-geo">What is GEO (Generative Engine Optimization)?</a></li>
+      <li><a href="/guides/ai-visibility-measurement-report">Measurement report: how four AI engines see the same brand</a></li>
+      <li><a href="/guides/ai-engines-compared">ChatGPT, Claude, Gemini, Perplexity: different answers to the same question</a></li>
+      <li><a href="/guides/what-is-llms-txt">What llms.txt is and what it does</a></li>
+    </ul>
+  </div>
+</main>
+<footer>
+  <span>© 2026 geoni — Generative Engine Optimization</span>
+  <a href="/guides">Guides</a>
+  <a href="/privacy">Privacy</a>
+  <a href="/terms">Terms</a>
+</footer>
+<script>
+(function () {
+  var g = new URLSearchParams(location.search);
+  var k = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+  if (!k.some(function (x) { return g.get(x); })) return;
+  document.querySelectorAll('a[href^="https://app.geoni.ai"]').forEach(function (a) {
+    var u = new URL(a.href);
+    k.forEach(function (x) { if (g.get(x)) u.searchParams.set(x, g.get(x)); });
+    a.href = u.toString();
+  });
+})();
+</script>
+</body>
+</html>

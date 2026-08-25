@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GEO Gerçekten İşe Yarıyor mu? Akademik Kanıt Ne Diyor — GEONI Rehber</title>
+<meta name="description" content="KDD 2024'te yayımlanan GEO araştırması 10 bin sorguluk bir ölçütle test etti: istatistik ve alıntı eklemek görünürlüğü %30-40 artırdı, klasik SEO'nun anahtar kelime doldurması ise taban değerin ALTINA düşürdü. Kaynaklı özet.">
+<link rel="canonical" href="https://geoni.ai/rehber/geo-akademik-kanit">
+<link rel="alternate" hreflang="tr" href="https://geoni.ai/rehber/geo-akademik-kanit">
+<link rel="alternate" hreflang="en" href="https://geoni.ai/guides/geo-research-evidence">
+<link rel="alternate" hreflang="x-default" href="https://geoni.ai/guides/geo-research-evidence">
+<link rel="icon" href="/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/rehber.css">
+<script src="/theme-toggle.js"></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Article",
+      "headline": "GEO Gerçekten İşe Yarıyor mu? Akademik Kanıt Ne Diyor",
+      "description": "KDD 2024'te yayımlanan hakemli GEO araştırmasının yöntemi, sayıları ve sınırları — birincil kaynaktan.",
+      "author": { "@type": "Organization", "name": "GEONI", "url": "https://geoni.ai" },
+      "publisher": { "@id": "https://geoni.ai/#organization" },
+      "mainEntityOfPage": "https://geoni.ai/rehber/geo-akademik-kanit",
+      "datePublished": "2026-08-25",
+      "dateModified": "2026-08-25",
+      "inLanguage": "tr",
+      "citation": "Aggarwal, P., Murahari, V., Rajpurohit, T., Kalyan, A., Narasimhan, K., Deshpande, A. (2024). GEO: Generative Engine Optimization. Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining. arXiv:2311.09735"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "GEO'nun işe yaradığına dair bilimsel kanıt var mı?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Var. 2024'te ACM SIGKDD (KDD) konferansında yayımlanan \"GEO: Generative Engine Optimization\" çalışması, 10 bin sorgudan oluşan GEO-bench ölçütü üzerinde dokuz farklı içerik değişikliğini kontrollü olarak test etti. En iyi yöntemler, kaynak gösterme, alıntı ekleme ve istatistik ekleme, Position-Adjusted Word Count metriğinde taban değere göre yüzde 30 ila 40 arasında göreli iyileşme sağladı." }
+        },
+        {
+          "@type": "Question",
+          "name": "Anahtar kelime doldurmak yapay zekâ cevaplarında işe yarar mı?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Hayır. Aynı çalışmada klasik SEO'dan devralınan anahtar kelime doldurma (keyword stuffing), hiç müdahale edilmemiş içeriğin altında kaldı: taban 19,3 iken 17,7 puan aldı. Araştırma bunu \"performans göstermeyen yöntemler\" başlığı altında sınıflandırdı. Arama motorlarında bir dönem işe yarayan taktiklerin üretken motorlarda karşılığı yok." }
+        },
+        {
+          "@type": "Question",
+          "name": "Hangi içerik değişikliği en çok işe yarıyor?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Çalışmada en yüksek skoru alıntı eklemek (Quotation Addition) ve istatistik eklemek (Statistics Addition) aldı; kaynak göstermek (Cite Sources) de aynı üst gruptaydı. Akıcılığı ve okunabilirliği artırmak da yüzde 15 ila 30 arasında kazanç sağladı. Ortak nokta şu: üretken motorlar doğrulanabilir ve alıntılanabilir cümleleri tercih ediyor." }
+        },
+        {
+          "@type": "Question",
+          "name": "Bu sonuçlar her sektör için aynı mı?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Hayır ve çalışmanın en önemli uyarısı bu. Aynı yöntemin etkisi alana göre dramatik biçimde değişiyor: alıntı ekleme bir alanda görünürlüğü yüzde 22,9 düşürürken başka bir alanda yüzde 99,7 artırdı. Yazarlar bu yüzden alana özgü optimizasyon gerektiğini vurguluyor. Genel bir reçete uygulamak yerine kendi alanınızda ölçmek gerekiyor." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<nav class="nav">
+  <a href="/"><img src="/favicon.png" alt="" width="26" height="26" style="border-radius:6px">geoni</a>
+  <span class="crumb"><a href="/rehber">Rehber</a> / GEO akademik kanıt · <a href="/guides/geo-research-evidence">EN</a></span>
+</nav>
+<main>
+  <span class="eyebrow">// GEONI Rehber</span>
+  <h1>GEO Gerçekten İşe Yarıyor mu? Akademik Kanıt Ne Diyor</h1>
+  <p class="updated">25 Ağustos 2026 · GEONI Ekibi</p>
+
+  <p class="lead">“Yapay zekâ cevaplarında görünürlük artırılabilir” cümlesi çok söyleniyor, çoğu zaman kaynaksız. Oysa bu iddianın <b>hakemli bir kaynağı</b> var: 2024'te ACM SIGKDD konferansında yayımlanan <i>GEO: Generative Engine Optimization</i> çalışması. Bu sayfa o çalışmanın ne yaptığını, hangi sayıları bulduğunu ve <b>nerede durduğunu</b> özetliyor. Buradaki her rakam doğrudan makaleden alınmıştır.</p>
+
+  <h2>Çalışma ne yaptı</h2>
+  <p>Araştırmacılar <b>GEO-bench</b> adında bir ölçüt kurdu: <b>10 bin sorgu</b>, dokuz farklı kaynaktan derlenmiş, <b>25 farklı alana</b> yayılmış. Sonra bir üretken motora bu sorguları sordular, cevapların hangi kaynakları alıntıladığını kaydettiler, ardından <b>tek bir kaynağın içeriğini değiştirip</b> aynı soruyu tekrar sordular. Değişiklik o kaynağın görünürlüğünü artırdı mı, azalttı mı — ölçülen bu.</p>
+  <p>Bu tasarımın önemi şu: <b>kontrollü bir deney.</b> “Şunu yaptık, trafiğimiz arttı” türü vaka anlatımlarından farklı olarak, tek değişken değiştiriliyor ve etkisi izole ediliyor.</p>
+
+  <h2>Görünürlük nasıl ölçüldü</h2>
+  <p>İki metrik tanımlandı, çünkü bir cevabın içinde “geçmek” tek başına anlamlı değil:</p>
+  <ul>
+    <li><b>Position-Adjusted Word Count</b> — kaynağa ait cümlelerin kelime sayısı, cevabın neresinde geçtiğine göre ağırlıklandırılmış. Cevabın başında uzun uzun anlatılmak ile sonunda bir kez anılmak aynı şey değil.</li>
+    <li><b>Subjective Impression</b> — bir dil modelinin, kaynağın cevaba ne kadar hâkim olduğuna dair öznel değerlendirmesi (alaka, benzersizlik, etki gibi boyutlarda).</li>
+  </ul>
+
+  <h2>Sonuçlar: ne işe yaradı, ne yaramadı</h2>
+  <p>Dokuz yöntem test edildi. Hiç müdahale edilmemiş içeriğin taban skoru <b>19,3</b>. Aşağıdaki sayılar makaledeki genel (Overall) sütunundan:</p>
+
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Yöntem</th><th>Skor</th><th>Sonuç</th></tr></thead>
+    <tbody>
+      <tr><td><b>Alıntı ekleme</b> (Quotation Addition)</td><td>27,2</td><td>En yüksek</td></tr>
+      <tr><td><b>İstatistik ekleme</b> (Statistics Addition)</td><td>25,2</td><td>Çok iyi</td></tr>
+      <tr><td><b>Akıcılık iyileştirme</b> (Fluency Optimization)</td><td>24,7</td><td>İyi</td></tr>
+      <tr><td>Teknik terimler (Technical Terms)</td><td>22,7</td><td>İyi</td></tr>
+      <tr><td>Anlaşılır dil (Easy-to-Understand)</td><td>22,0</td><td>İyi</td></tr>
+      <tr><td>Otoriter üslup (Authoritative)</td><td>21,3</td><td>İyi</td></tr>
+      <tr><td style="opacity:.75">Benzersiz kelimeler (Unique Words)</td><td style="opacity:.75">20,5</td><td style="opacity:.75">Etkisiz</td></tr>
+      <tr><td style="opacity:.75"><b>Anahtar kelime doldurma</b> (Keyword Stuffing)</td><td style="opacity:.75"><b>17,7</b></td><td style="opacity:.75"><b>Tabanın ALTINDA</b></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>Makalenin kendi ifadesiyle en iyi üç yöntem — <b>kaynak gösterme, alıntı ekleme ve istatistik ekleme</b> — Position-Adjusted Word Count metriğinde <b>%30-40</b>, Subjective Impression metriğinde <b>%15-30</b> göreli iyileşme sağladı. En iyi yöntemler tabanı <b>%41</b> ve <b>%28</b> oranında aştı.</p>
+
+  <h2>En çarpıcı bulgu: eski SEO taktiği zarar verdi</h2>
+  <p><b>Anahtar kelime doldurma, hiç dokunulmamış içerikten daha kötü sonuç verdi</b> (17,7 &lt; 19,3). Çalışma bu yöntemi doğrudan “performans göstermeyen” başlığı altında sınıflandırıyor.</p>
+  <p>Bunun pratik karşılığı net: arama motorları çağında bir dönem işe yarayan yoğunluk temelli taktikler, cevabı <i>üreten</i> bir sistemde karşılık bulmuyor. Üretken motor sayfayı sıralamıyor, <b>cümleyi alıntılıyor</b> — ve alıntılanabilir cümle, doldurulmuş cümle değil.</p>
+
+  <h2>Asıl uyarı: tek bir reçete yok</h2>
+  <p>Çalışmanın en kolay atlanan sonucu bu. Aynı yöntemin etkisi <b>alana göre dramatik biçimde değişiyor</b>. Alıntı ekleme yöntemi, ölçülen alanlar arasında bir uçta görünürlüğü <b>%22,9 düşürürken</b>, öteki uçta <b>%99,7 artırdı</b>.</p>
+  <p>Yazarlar bu yüzden <b>alana özgü optimizasyon</b> gerektiğini açıkça söylüyor. “AI'da görünmek için şu 5 şeyi yapın” diyen bir liste, bu bulgunun üzerinden atlıyor demektir. Doğru yaklaşım, genel reçeteyi uygulamak değil <b>kendi alanınızda ölçmek</b>.</p>
+
+  <h2>Bu çalışmanın sınırları</h2>
+  <p>Kaynağı dürüst okumak, sınırlarını da söylemeyi gerektirir:</p>
+  <ul>
+    <li><b>Kontrollü ortam.</b> Ölçüm, araştırmacıların kurduğu üretken motor düzeneğinde yapıldı. ChatGPT ya da Gemini'nin bugünkü canlı davranışının birebir aynısı değildir.</li>
+    <li><b>Zaman.</b> Çalışma 2023 sonunda hazırlandı, 2024'te yayımlandı. Modeller o günden bu yana defalarca güncellendi.</li>
+    <li><b>Göreli metrikler.</b> Sonuçlar “şu kadar müşteri geldi” değil, cevap içindeki görünürlük payıdır. Ticari sonuç ayrı bir sorudur ve bu çalışma onu ölçmez.</li>
+    <li><b>Tek kaynak optimize edildi.</b> Gerçek hayatta rakipler de aynı anda optimize eder; deney bunu modellemez.</li>
+  </ul>
+
+  <h2>Pratikte ne anlama geliyor</h2>
+  <p>Çalışmanın işaret ettiği yön tutarlı: üretken motorlar <b>doğrulanabilir ve alıntılanabilir</b> içeriği ödüllendiriyor. İddiayı sayıyla desteklemek, kaynağını göstermek, güvenilir bir alıntıya dayandırmak ve cümleyi anlaşılır kurmak — dördü de ölçülmüş kazanç sağladı. Yoğunluk ve tekrar ise sağlamadı.</p>
+  <p>Ama en önemlisi, çalışmanın kendi uyarısı: <b>etki alana göre değişiyor.</b> O yüzden buradaki hiçbir madde, kendi alanınızdaki ölçümün yerine geçmez.</p>
+
+  <h2>Kaynak</h2>
+  <p>Aggarwal, P., Murahari, V., Rajpurohit, T., Kalyan, A., Narasimhan, K., Deshpande, A. (2024). <i>GEO: Generative Engine Optimization.</i> Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining (KDD '24), Barselona.</p>
+  <ul>
+    <li>Makale (arXiv): <a href="https://arxiv.org/abs/2311.09735" rel="nofollow noopener" target="_blank">arxiv.org/abs/2311.09735</a></li>
+    <li>Yayın (ACM): <a href="https://dl.acm.org/doi/10.1145/3637528.3671900" rel="nofollow noopener" target="_blank">dl.acm.org/doi/10.1145/3637528.3671900</a></li>
+  </ul>
+  <p class="updated">Bu sayfadaki tüm sayılar yukarıdaki makaleden doğrudan alınmıştır; ikinci el özetlerden aktarılmamıştır. Bir hata görürseniz bize yazın: mail@geoni.ai</p>
+
+  <div class="cta">
+    <h2>Kendi alanınızda ölçün</h2>
+    <p>Çalışmanın sonucu tek cümlede: genel reçete yok, alana özgü ölçüm var. GEONI kategori sorularınızı ChatGPT, Claude, Gemini ve Perplexity'ye ayrı ayrı sorar, cevapların gösterdiği kaynakları çıkarır ve sitenizin makine tarafından okunabilirliğini denetler. İlk taramanız ücretsiz.</p>
+    <a href="https://app.geoni.ai/?utm_source=rehber&utm_medium=geo-akademik-kanit&utm_campaign=organik">Ücretsiz Tara →</a>
+  </div>
+
+  <div class="also">
+    <h2>İlgili rehberler</h2>
+    <ul class="guide-list">
+      <li><a href="/rehber/geo-nedir">GEO (Üretken Motor Optimizasyonu) nedir?</a></li>
+      <li><a href="/rehber/ai-gorunurluk-olcum-raporu">Ölçüm raporu: dört AI motoru aynı markayı nasıl farklı görüyor</a></li>
+      <li><a href="/rehber/ai-motorlari-karsilastirma">ChatGPT, Claude, Gemini, Perplexity: aynı soruya farklı cevaplar</a></li>
+      <li><a href="/rehber/llms-txt-nedir">llms.txt nedir, ne işe yarar</a></li>
+    </ul>
+  </div>
+</main>
+<footer>
+  <span>© 2026 geoni — Generative Engine Optimization</span>
+  <a href="/rehber">Rehber</a>
+  <a href="/privacy">Gizlilik</a>
+  <a href="/terms">Şartlar</a>
+</footer>
+<script>
+(function () {
+  var g = new URLSearchParams(location.search);
+  var k = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+  if (!k.some(function (x) { return g.get(x); })) return;
+  document.querySelectorAll('a[href^="https://app.geoni.ai"]').forEach(function (a) {
+    var u = new URL(a.href);
+    k.forEach(function (x) { if (g.get(x)) u.searchParams.set(x, g.get(x)); });
+    a.href = u.toString();
+  });
+})();
+</script>
+</body>
+</html>

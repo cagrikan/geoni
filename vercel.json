@@ -78,6 +78,14 @@
       "destination": "/rehber/ai-botlari-robots-txt.html"
     },
     {
+      "source": "/rehber/geo-akademik-kanit",
+      "destination": "/rehber/geo-akademik-kanit.html"
+    },
+    {
+      "source": "/guides/geo-research-evidence",
+      "destination": "/guides/geo-research-evidence.html"
+    },
+    {
       "source": "/guides/ai-visibility-tools",
       "destination": "/guides/ai-visibility-tools.html"
     },
