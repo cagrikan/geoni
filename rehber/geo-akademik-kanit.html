@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GEO Gerçekten İşe Yarıyor mu? Akademik Kanıt Ne Diyor — GEONI Rehber</title>
-<meta name="description" content="KDD 2024'te yayımlanan GEO araştırması 10 bin sorguluk bir ölçütle test etti: istatistik ve alıntı eklemek görünürlüğü %30-40 artırdı, klasik SEO'nun anahtar kelime doldurması ise taban değerin ALTINA düşürdü. Kaynaklı özet.">
+<meta name="description" content="KDD 2024 GEO araştırması ile GEONI'nin 154 öznelik canlı ölçümü yan yana: alıntı ve istatistik eklemek görünürlüğü %30-40 artırdı, anahtar kelime doldurmak tabanın ALTINA düştü — ve ölçtüğümüz 100 sitenin sıfırı AI botunu engelliyordu.">
 <link rel="canonical" href="https://geoni.ai/rehber/geo-akademik-kanit">
 <link rel="alternate" hreflang="tr" href="https://geoni.ai/rehber/geo-akademik-kanit">
 <link rel="alternate" hreflang="en" href="https://geoni.ai/guides/geo-research-evidence">
@@ -26,7 +26,7 @@
       "publisher": { "@id": "https://geoni.ai/#organization" },
       "mainEntityOfPage": "https://geoni.ai/rehber/geo-akademik-kanit",
       "datePublished": "2026-08-25",
-      "dateModified": "2026-08-25",
+      "dateModified": "2026-08-26",
       "inLanguage": "tr",
       "citation": "Aggarwal, P., Murahari, V., Rajpurohit, T., Kalyan, A., Narasimhan, K., Deshpande, A. (2024). GEO: Generative Engine Optimization. Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining. arXiv:2311.09735"
     },
@@ -58,6 +58,24 @@
   ]
 }
 </script>
+<style>
+/* Kendi olcumumuzu kaynagin sesinden AYIRAN blok: okur her an kimin
+   konustugunu bilir. Renk sitenin kendi belirteclerinden turetildi. */
+:root{--mine:#0F7A6B;--mine-soft:#E2F2EF;--mine-edge:#B8DED7}
+:root[data-theme="dark"]{--mine:#4FCDB6;--mine-soft:#122A26;--mine-edge:#1E4741}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--mine:#4FCDB6;--mine-soft:#122A26;--mine-edge:#1E4741}}
+.ours{border:1px solid var(--mine-edge);border-left:3px solid var(--mine);background:var(--mine-soft);border-radius:6px;padding:20px 24px;margin:26px 0}
+.ours .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--mine);font-weight:600;margin:0 0 10px}
+.ours h3{font-size:20px;line-height:1.3;margin:0 0 10px;color:var(--text)}
+.ours p{color:var(--text);margin:0 0 10px}
+.ours p:last-child{margin-bottom:0}
+.bars{display:flex;flex-direction:column;gap:8px;margin:14px 0;font-family:var(--mono);font-size:13px}
+.bar{display:grid;grid-template-columns:120px 1fr 34px;align-items:center;gap:12px}
+.bar .t{color:var(--text-sub)}
+.bar .track{height:14px;background:var(--bg);border:1px solid var(--mine-edge);border-radius:3px;overflow:hidden}
+.bar .fill{height:100%;background:var(--mine);opacity:.85}
+.bar .v{text-align:right;font-variant-numeric:tabular-nums;color:var(--mine);font-weight:600}
+</style>
 </head>
 <body>
 <nav class="nav">
@@ -67,9 +85,9 @@
 <main>
   <span class="eyebrow">// GEONI Rehber</span>
   <h1>GEO Gerçekten İşe Yarıyor mu? Akademik Kanıt Ne Diyor</h1>
-  <p class="updated">25 Ağustos 2026 · GEONI Ekibi</p>
+  <p class="updated">26 Ağustos 2026 · GEONI Ekibi</p>
 
-  <p class="lead">“Yapay zekâ cevaplarında görünürlük artırılabilir” cümlesi çok söyleniyor, çoğu zaman kaynaksız. Oysa bu iddianın <b>hakemli bir kaynağı</b> var: 2024'te ACM SIGKDD konferansında yayımlanan <i>GEO: Generative Engine Optimization</i> çalışması. Bu sayfa o çalışmanın ne yaptığını, hangi sayıları bulduğunu ve <b>nerede durduğunu</b> özetliyor. Buradaki her rakam doğrudan makaleden alınmıştır.</p>
+  <p class="lead">“Yapay zekâ cevaplarında görünürlük artırılabilir” cümlesi çok söyleniyor, çoğu zaman kaynaksız. Oysa bu iddianın <b>hakemli bir kaynağı</b> var: 2024'te ACM SIGKDD konferansında yayımlanan <i>GEO: Generative Engine Optimization</i> çalışması. Biz de aynı soruyu 2026’da, canlı motorlarda, <b>154 özne</b> üzerinde ölçtük. Bu sayfa ikisini yan yana koyuyor: araştırmanın bulduğu, bizim ölçtüğümüz, ve ikisinin nerede örtüştüğü. Araştırma sayıları doğrudan makaleden, GEONI sayıları kendi ölçümümüzden.</p>
 
   <h2>Çalışma ne yaptı</h2>
   <p>Araştırmacılar <b>GEO-bench</b> adında bir ölçüt kurdu: <b>10 bin sorgu</b>, dokuz farklı kaynaktan derlenmiş, <b>25 farklı alana</b> yayılmış. Sonra bir üretken motora bu sorguları sordular, cevapların hangi kaynakları alıntıladığını kaydettiler, ardından <b>tek bir kaynağın içeriğini değiştirip</b> aynı soruyu tekrar sordular. Değişiklik o kaynağın görünürlüğünü artırdı mı, azalttı mı — ölçülen bu.</p>
@@ -107,11 +125,39 @@
   <p><b>Anahtar kelime doldurma, hiç dokunulmamış içerikten daha kötü sonuç verdi</b> (17,7 &lt; 19,3). Çalışma bu yöntemi doğrudan “performans göstermeyen” başlığı altında sınıflandırıyor.</p>
   <p>Bunun pratik karşılığı net: arama motorları çağında bir dönem işe yarayan yoğunluk temelli taktikler, cevabı <i>üreten</i> bir sistemde karşılık bulmuyor. Üretken motor sayfayı sıralamıyor, <b>cümleyi alıntılıyor</b> — ve alıntılanabilir cümle, doldurulmuş cümle değil.</p>
 
+
+  <div class="ours">
+    <p class="lbl">GEONI ölçümü · Temmuz–Ağustos 2026</p>
+    <h3>Araştırma “alıntılanabilir ol” diyor. Biz sitelerin çoğunun alıntılanacak yapıyı hiç kurmadığını ölçtük.</h3>
+    <p>Çalışma, kazandıran yöntemlerin ortak yanının doğrulanabilirlik olduğunu gösteriyor. Peki siteler bunun neresinde? Ölçtüğümüz <b>100 web sitesinde</b>:</p>
+    <div class="bars">
+      <div class="bar"><span class="t">robots.txt yok</span><span class="track"><span class="fill" style="width:45%"></span></span><span class="v">45</span></div>
+      <div class="bar"><span class="t">llms.txt yok</span><span class="track"><span class="fill" style="width:70%"></span></span><span class="v">70</span></div>
+      <div class="bar"><span class="t">sitemap yok</span><span class="track"><span class="fill" style="width:71%"></span></span><span class="v">71</span></div>
+      <div class="bar"><span class="t">botu engelleyen</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="v">0</span></div>
+    </div>
+    <p><b>Yüz sitenin sıfırı</b> AI tarayıcılarını engelliyordu. Yani sorun izin değil. Eksik olan kilitli kapı değil, <b>boş oda</b>: motorun ayrıştırıp alıntılayacağı yapı hiç kurulmamış.</p>
+  </div>
+
   <h2>Asıl uyarı: tek bir reçete yok</h2>
   <p>Çalışmanın en kolay atlanan sonucu bu. Aynı yöntemin etkisi <b>alana göre dramatik biçimde değişiyor</b>. Alıntı ekleme yöntemi, ölçülen alanlar arasında bir uçta görünürlüğü <b>%22,9 düşürürken</b>, öteki uçta <b>%99,7 artırdı</b>.</p>
   <p>Yazarlar bu yüzden <b>alana özgü optimizasyon</b> gerektiğini açıkça söylüyor. “AI'da görünmek için şu 5 şeyi yapın” diyen bir liste, bu bulgunun üzerinden atlıyor demektir. Doğru yaklaşım, genel reçeteyi uygulamak değil <b>kendi alanınızda ölçmek</b>.</p>
 
-  <h2>Bu çalışmanın sınırları</h2>
+
+  <div class="ours">
+    <p class="lbl">GEONI ölçümü · 90 özne, dört motor</p>
+    <h3>Aynı savrulmayı motorlar arasında da ölçtük — ve dağılım iki tepeli çıktı.</h3>
+    <p>Her özne için en yüksek ve en düşük motor puanı arasındaki farka baktık. Beklenen, bir ortalama etrafında yayılmaktı:</p>
+    <ul>
+      <li><b>0–19 puan</b> (motorlar hemfikir) — <b>40</b> özne</li>
+      <li><b>20–39 puan</b> (kısmi ayrışma) — <b>4</b> özne</li>
+      <li><b>40+ puan</b> (taban tabana zıt) — <b>46</b> özne</li>
+    </ul>
+    <p>90 öznenin yalnız <b>4'ü ortada</b>. Bir marka ya her motorda benzer görülüyor ya da tamamen farklı — kademe yok. Ortanca fark <b>46,8</b>, ölçtüğümüz en büyük fark <b>91,5</b>: aynı özne, aynı gün, bir motorda neredeyse tam, ötekinde neredeyse sıfır.</p>
+    <p>Araştırma “etki alana göre değişir” diyor; bizim ölçümümüz ikinci bir eksen ekliyor: <b>etki motora göre de değişiyor</b>, üstelik kademesiz.</p>
+  </div>
+
+  <h2>Araştırmanın sınırları — ve bizim eklediğimiz</h2>
   <p>Kaynağı dürüst okumak, sınırlarını da söylemeyi gerektirir:</p>
   <ul>
     <li><b>Kontrollü ortam.</b> Ölçüm, araştırmacıların kurduğu üretken motor düzeneğinde yapıldı. ChatGPT ya da Gemini'nin bugünkü canlı davranışının birebir aynısı değildir.</li>
@@ -120,8 +166,16 @@
     <li><b>Tek kaynak optimize edildi.</b> Gerçek hayatta rakipler de aynı anda optimize eder; deney bunu modellemez.</li>
   </ul>
 
+
+  <div class="ours">
+    <p class="lbl">GEONI ölçümü · tekrar taramalar</p>
+    <h3>Rakipler hiç kıpırdamasa bile sayı yerinde durmuyor.</h3>
+    <p>Aynı özneyi <b>aynı gün, 83 dakika içinde</b> dört kez ölçtük. Motorların özneyi tanıyıp tanımaması turdan tura değişti; skor <b>34 → 17 → 15 → 65</b> gitti. Hiçbir şey değişmemişti — içerik de, rakipler de.</p>
+    <p>Pratik sonucu sert: <b>tek okuma ölçüm sayılmaz.</b> Bir sayıyı güvenilir yapan şey tekrar örnekleme, her turun tarihiyle kaydedilmesi ve turlar arası yumuşatmadır. Size tek bir sayı gösterip geçmişini göstermeyen bir araç, yazı tura sonucunu gösteriyor demektir.</p>
+  </div>
+
   <h2>Pratikte ne anlama geliyor</h2>
-  <p>Çalışmanın işaret ettiği yön tutarlı: üretken motorlar <b>doğrulanabilir ve alıntılanabilir</b> içeriği ödüllendiriyor. İddiayı sayıyla desteklemek, kaynağını göstermek, güvenilir bir alıntıya dayandırmak ve cümleyi anlaşılır kurmak — dördü de ölçülmüş kazanç sağladı. Yoğunluk ve tekrar ise sağlamadı.</p>
+  <p>İki kaynak aynı yeri işaret ediyor. Araştırma <b>ne yazılacağını</b> söylüyor: iddiayı sayıyla destekle, kaynağını göster, güvenilir alıntıya dayandır, cümleyi anlaşılır kur. Bizim ölçümümüz <b>nerede durulduğunu</b> söylüyor: çoğu site bunun öncesindeki yapıyı bile kurmamış, ve tek motora ya da tek okumaya bakmak yanıltıyor.</p>
   <p>Ama en önemlisi, çalışmanın kendi uyarısı: <b>etki alana göre değişiyor.</b> O yüzden buradaki hiçbir madde, kendi alanınızdaki ölçümün yerine geçmez.</p>
 
   <h2>Kaynak</h2>
@@ -130,6 +184,7 @@
     <li>Makale (arXiv): <a href="https://arxiv.org/abs/2311.09735" rel="nofollow noopener" target="_blank">arxiv.org/abs/2311.09735</a></li>
     <li>Yayın (ACM): <a href="https://dl.acm.org/doi/10.1145/3637528.3671900" rel="nofollow noopener" target="_blank">dl.acm.org/doi/10.1145/3637528.3671900</a></li>
   </ul>
+  <p style="margin-top:14px">GEONI ölçümü: 9 Temmuz – 24 Ağustos 2026, 154 özne (90'ı dört motorda birden). Toplu sayılar yayımlanır; hiçbir müşterinin adı, alan adı ya da tekil skoru paylaşılmaz. Örneklem Türkçe içerik ağırlıklıdır, küresel ortalama değildir.</p>
   <p class="updated">Bu sayfadaki tüm sayılar yukarıdaki makaleden doğrudan alınmıştır; ikinci el özetlerden aktarılmamıştır. Bir hata görürseniz bize yazın: mail@geoni.ai</p>
 
   <div class="cta">

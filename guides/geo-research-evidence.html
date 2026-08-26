@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Does GEO Actually Work? What the Peer-Reviewed Research Says — GEONI Guides</title>
-<meta name="description" content="The KDD 2024 GEO study tested nine content changes across a 10,000-query benchmark: adding statistics and quotations raised visibility 30-40%, while classic keyword stuffing scored BELOW the untouched baseline. A sourced summary.">
+<meta name="description" content="The KDD 2024 GEO study alongside GEONI's live measurement of 154 subjects: quotations and statistics raised visibility 30-40%, keyword stuffing scored BELOW the baseline — and zero of the 100 sites we measured were blocking AI crawlers.">
 <link rel="canonical" href="https://geoni.ai/guides/geo-research-evidence">
 <link rel="alternate" hreflang="en" href="https://geoni.ai/guides/geo-research-evidence">
 <link rel="alternate" hreflang="tr" href="https://geoni.ai/rehber/geo-akademik-kanit">
@@ -26,7 +26,7 @@
       "publisher": { "@id": "https://geoni.ai/#organization" },
       "mainEntityOfPage": "https://geoni.ai/guides/geo-research-evidence",
       "datePublished": "2026-08-25",
-      "dateModified": "2026-08-25",
+      "dateModified": "2026-08-26",
       "inLanguage": "en",
       "citation": "Aggarwal, P., Murahari, V., Rajpurohit, T., Kalyan, A., Narasimhan, K., Deshpande, A. (2024). GEO: Generative Engine Optimization. Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining. arXiv:2311.09735"
     },
@@ -58,6 +58,24 @@
   ]
 }
 </script>
+<style>
+/* Kendi olcumumuzu kaynagin sesinden AYIRAN blok: okur her an kimin
+   konustugunu bilir. Renk sitenin kendi belirteclerinden turetildi. */
+:root{--mine:#0F7A6B;--mine-soft:#E2F2EF;--mine-edge:#B8DED7}
+:root[data-theme="dark"]{--mine:#4FCDB6;--mine-soft:#122A26;--mine-edge:#1E4741}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--mine:#4FCDB6;--mine-soft:#122A26;--mine-edge:#1E4741}}
+.ours{border:1px solid var(--mine-edge);border-left:3px solid var(--mine);background:var(--mine-soft);border-radius:6px;padding:20px 24px;margin:26px 0}
+.ours .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--mine);font-weight:600;margin:0 0 10px}
+.ours h3{font-size:20px;line-height:1.3;margin:0 0 10px;color:var(--text)}
+.ours p{color:var(--text);margin:0 0 10px}
+.ours p:last-child{margin-bottom:0}
+.bars{display:flex;flex-direction:column;gap:8px;margin:14px 0;font-family:var(--mono);font-size:13px}
+.bar{display:grid;grid-template-columns:120px 1fr 34px;align-items:center;gap:12px}
+.bar .t{color:var(--text-sub)}
+.bar .track{height:14px;background:var(--bg);border:1px solid var(--mine-edge);border-radius:3px;overflow:hidden}
+.bar .fill{height:100%;background:var(--mine);opacity:.85}
+.bar .v{text-align:right;font-variant-numeric:tabular-nums;color:var(--mine);font-weight:600}
+</style>
 </head>
 <body>
 <nav class="nav">
@@ -67,9 +85,9 @@
 <main>
   <span class="eyebrow">// GEONI Guides</span>
   <h1>Does GEO Actually Work? What the Peer-Reviewed Research Says</h1>
-  <p class="updated">25 August 2026 · GEONI Team</p>
+  <p class="updated">26 August 2026 · GEONI Team</p>
 
-  <p class="lead">“You can increase your visibility in AI answers” is said constantly, usually with nothing behind it. But the claim does have a <b>peer-reviewed source</b>: <i>GEO: Generative Engine Optimization</i>, published at ACM SIGKDD in 2024. This page summarises what that study did, what numbers it found, and <b>where it stops</b>. Every figure here is taken directly from the paper.</p>
+  <p class="lead">“You can increase your visibility in AI answers” is said constantly, usually with nothing behind it. But the claim does have a <b>peer-reviewed source</b>: <i>GEO: Generative Engine Optimization</i>, published at ACM SIGKDD in 2024. We put the same question to live engines in 2026, across <b>154 subjects</b>. This page sets the two side by side: what the research found, what we measured, and where they meet. Research figures come straight from the paper; GEONI figures from our own measurement.</p>
 
   <h2>What the study did</h2>
   <p>The researchers built a benchmark called <b>GEO-bench</b>: <b>10,000 queries</b>, drawn from nine different sources, spread across <b>25 domains</b>. They put those queries to a generative engine, recorded which sources the answers cited, then <b>modified the content of a single source</b> and asked again. What is measured is whether that modification raised or lowered that source's visibility.</p>
@@ -107,11 +125,39 @@
   <p><b>Keyword stuffing performed worse than doing nothing at all</b> (17.7 against 19.3). The study files it directly under non-performing methods.</p>
   <p>The practical reading is clean: density-based tactics that once worked in ranking-era search find no purchase in a system that <i>generates</i> the answer. A generative engine does not rank your page, it <b>quotes your sentence</b> — and a stuffed sentence is not a quotable one.</p>
 
+
+  <div class="ours">
+    <p class="lbl">GEONI measurement · July–August 2026</p>
+    <h3>The study says “be quotable”. We measured that most sites have not built the structure to be quoted from.</h3>
+    <p>The paper shows the winning methods share one property: verifiability. So where do sites actually stand? Across the <b>100 websites</b> we measured:</p>
+    <div class="bars">
+      <div class="bar"><span class="t">no robots.txt</span><span class="track"><span class="fill" style="width:45%"></span></span><span class="v">45</span></div>
+      <div class="bar"><span class="t">no llms.txt</span><span class="track"><span class="fill" style="width:70%"></span></span><span class="v">70</span></div>
+      <div class="bar"><span class="t">no sitemap</span><span class="track"><span class="fill" style="width:71%"></span></span><span class="v">71</span></div>
+      <div class="bar"><span class="t">blocking bots</span><span class="track"><span class="fill" style="width:0%"></span></span><span class="v">0</span></div>
+    </div>
+    <p><b>Zero of one hundred</b> blocked AI crawlers. Access is not the constraint. The gap is not a locked door, it is an <b>empty room</b>: the structure an engine could parse and quote was never built.</p>
+  </div>
+
   <h2>The real caveat: there is no single recipe</h2>
   <p>This is the study's most frequently skipped finding. The effect of the same method <b>varies dramatically by domain</b>. Quotation Addition, across the domains measured, <b>reduced</b> visibility by <b>22.9%</b> at one end and <b>increased</b> it by <b>99.7%</b> at the other.</p>
   <p>That is why the authors explicitly argue for <b>domain-specific optimisation</b>. Any listicle telling you “do these five things to appear in AI” is stepping over this result. The defensible approach is not to apply the general recipe but to <b>measure in your own domain</b>.</p>
 
-  <h2>Limits of this study</h2>
+
+  <div class="ours">
+    <p class="lbl">GEONI measurement · 90 subjects, four engines</p>
+    <h3>We measured the same swing between engines — and the distribution came out bimodal.</h3>
+    <p>For each subject we took the gap between its highest- and lowest-scoring engine. We expected a spread around some average:</p>
+    <ul>
+      <li><b>0–19 points</b> (engines broadly agree) — <b>40</b> subjects</li>
+      <li><b>20–39 points</b> (partial disagreement) — <b>4</b> subjects</li>
+      <li><b>40+ points</b> (fundamental disagreement) — <b>46</b> subjects</li>
+    </ul>
+    <p>Only <b>4 of 90</b> sit in the middle. A brand is either seen roughly the same way everywhere or completely differently — there is no gradual middle. Median gap <b>46.8</b>; largest measured <b>91.5</b>: same subject, same day, near-complete in one engine and near-zero in another.</p>
+    <p>The study says the effect varies by domain. Our measurement adds a second axis: <b>it varies by engine too</b>, and without gradation.</p>
+  </div>
+
+  <h2>Limits of the study — and what we add</h2>
   <p>Reading a source honestly means stating where it stops:</p>
   <ul>
     <li><b>Controlled setting.</b> Measurement ran on the researchers' generative-engine setup. It is not identical to how ChatGPT or Gemini behave live today.</li>
@@ -120,8 +166,16 @@
     <li><b>One source optimised.</b> In reality competitors optimise simultaneously; the experiment does not model that.</li>
   </ul>
 
+
+  <div class="ours">
+    <p class="lbl">GEONI measurement · repeat scans</p>
+    <h3>Even when no competitor moves, the number does not stay still.</h3>
+    <p>We measured the same subject four times <b>on the same day, within 83 minutes</b>. Whether the engines recognised it flipped between runs; the score went <b>34 → 17 → 15 → 65</b>. Nothing had changed — not the content, not the competitors.</p>
+    <p>The practical consequence is blunt: <b>one reading is not a measurement.</b> What makes a number trustworthy is repeat sampling, a dated log of every run, and smoothing across runs. A tool that shows you one number with no history is showing you a coin flip.</p>
+  </div>
+
   <h2>What it means in practice</h2>
-  <p>The direction the study points in is consistent: generative engines reward content that is <b>verifiable and quotable</b>. Supporting a claim with a number, showing where it came from, grounding it in a credible quotation, and writing the sentence clearly — all four produced measured gains. Density and repetition did not.</p>
+  <p>Both sources point the same way. The research says <b>what to write</b>: support the claim with a number, show where it came from, ground it in a credible quotation, write the sentence clearly. Our measurement says <b>where people actually stand</b>: most sites have not built even the structure that precedes all of that, and looking at one engine — or one reading — misleads.</p>
   <p>But the study's own warning matters most: <b>the effect depends on the domain.</b> Nothing on this page substitutes for measuring in yours.</p>
 
   <h2>Source</h2>
@@ -130,6 +184,7 @@
     <li>Paper (arXiv): <a href="https://arxiv.org/abs/2311.09735" rel="nofollow noopener" target="_blank">arxiv.org/abs/2311.09735</a></li>
     <li>Proceedings (ACM): <a href="https://dl.acm.org/doi/10.1145/3637528.3671900" rel="nofollow noopener" target="_blank">dl.acm.org/doi/10.1145/3637528.3671900</a></li>
   </ul>
+  <p style="margin-top:14px">GEONI measurement: 9 July – 24 August 2026, 154 subjects (90 with a complete four-engine measurement). Only aggregates are published; no customer name, domain or individual score is disclosed. The sample skews Turkish-language and is not a global average.</p>
   <p class="updated">All figures on this page are taken directly from the paper above, not relayed from secondary summaries. If you spot an error, tell us: mail@geoni.ai</p>
 
   <div class="cta">
