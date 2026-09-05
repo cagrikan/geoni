@@ -57,6 +57,24 @@ logger = logging.getLogger(__name__)
 
 MONITOR_CYCLE_SECONDS = 3600   # saatte bir kontrol
 MONITOR_INTERVAL_DAYS = 15     # hedef basina en cok 15 gunde bir otomatik tarama
+
+# Izleme taramalari (ve onlarin e-postalari) yalniz TR saatiyle 09:00-21:00
+# arasinda kosar. Kurucu istegi 2026-09-05: "mailler gece 3'te gitmesin".
+# Tarama kendisi gece kosunca hem "izleme beklemede" hem de "skor degisti"
+# e-postasi gece cikiyordu; kapi e-postaya degil DONGUYE konuldu ki iki
+# e-posta da tek yerden pencereye girsin. Turkiye sabit UTC+3 (yaz saati yok),
+# tzdata'ya bagimli olmadan hesaplanir.
+IZLEME_SAAT_BASI = 9
+IZLEME_SAAT_SONU = 21   # haric: 20:59 son, 21:00 dis
+
+
+def izleme_saati_uygun(simdi=None) -> bool:
+    from datetime import datetime, timezone, timedelta
+    simdi = simdi or datetime.now(timezone.utc)
+    if simdi.tzinfo is None:
+        simdi = simdi.replace(tzinfo=timezone.utc)
+    tr = simdi.astimezone(timezone(timedelta(hours=3)))
+    return IZLEME_SAAT_BASI <= tr.hour < IZLEME_SAAT_SONU
 MONITOR_BATCH_SIZE = 3         # donem basina en cok 3 hedef (kota korumasi)
 MONITOR_PAGE_LIMIT = 30        # izleme taramasi hafif crawl
 SCORE_CHANGE_THRESHOLD = 5     # bildirim esigi (puan) — web/kisi/marka
@@ -259,18 +277,26 @@ async def _duraklatma_bildir(user_id: str, label: str, bedel: int, bakiye: int):
     email = await get_auth_email(user_id)
     if not email:
         return
+    # Metin 2026-09-05'te yeniden yazildi. Eski hali ("jeton bitti", "bakiyeniz
+    # 0 jeton", tek CTA "Jeton yukle") kurucuya gore iticiydi; odeyen tek
+    # musteri bu e-postayi aldigi sabah izleme listesini bosaltmak istedi.
+    # Ilke: durumu anlat, secenegi kullaniciya birak, bastirma.
     await send_ticket_email(
         email,
-        subject="GEONI: izleme duraklatıldı — jeton bitti",
-        heading="İzleme duraklatıldı",
+        subject=f"GEONI: {label} için izleme beklemede",
+        heading="İzleme beklemede",
         lines=[
-            f"<b>{label}</b> hedefinin otomatik taraması yapılamadı.",
-            f"Bu tarama {bedel} jeton gerektiriyor, bakiyeniz {bakiye} jeton.",
-            "Hedef listenizden <b>çıkarılmadı</b> — jeton yüklediğinizde "
-            "izleme kaldığı yerden kendiliğinden devam eder.",
+            f"Merhaba, <b>{label}</b> için sıradaki otomatik taramayı bu kez yapamadık: "
+            f"bu tarama {bedel} token, hesabınızdaki bakiye buna yetmedi.",
+            "Telaşa gerek yok. Hedefiniz listenizde duruyor, önceki raporlarınız yerinde. "
+            "Token yüklerseniz izleme kaldığı yerden kendiliğinden sürer; yüklemezseniz "
+            "hiçbir şey olmaz, yeniden tarama yapılmaz ve ücret alınmaz.",
+            "İzlemeyi sürdürmek istemiyorsanız uygulamanın güncel sürümünde hedefe dokunup "
+            "«İzlemeden çıkar» diyebilirsiniz. Bir sorunuz olursa bu e-postayı yanıtlamanız yeter.",
         ],
-        cta_label="Jeton yükle",
+        cta_label="Hesabıma git",
         cta_url="https://app.geoni.ai",
+        footer="Bu bilgilendirme her hesap için günde en çok bir kez gönderilir.",
     )
 
 
@@ -342,6 +368,9 @@ async def monitor_loop():
             if not OTOMATIK_TARAMA_ACIK:
                 # Kurucu karari: kendiliginden tarama yok. Kuyrugu SORGULAMIYORUZ
                 # bile — bos donguyu her saat DB'ye vurdurmanin anlami yok.
+                pass
+            elif not izleme_saati_uygun():
+                # Gece penceresi: kuyruk beklesin, sabah 09:00'da (TR) surer.
                 pass
             else:
                 items = await list_due_watchlist_items(limit=MONITOR_BATCH_SIZE, interval_days=MONITOR_INTERVAL_DAYS)

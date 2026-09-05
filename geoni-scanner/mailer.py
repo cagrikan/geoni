@@ -422,7 +422,7 @@ async def send_brand_report_email(to_email: str, name: str, result: dict, lang: 
 _TICKET_MAIL_STYLE = "font-family:-apple-system,Segoe UI,sans-serif;background:#0A0B10;color:#EDEFF5;padding:32px;border-radius:14px;max-width:520px;margin:0 auto"
 
 
-async def send_ticket_email(to_email: str, subject: str, heading: str, lines: list, cta_label: str = "Bilete Git", cta_url: str = "https://app.geoni.ai") -> bool:
+async def send_ticket_email(to_email: str, subject: str, heading: str, lines: list, cta_label: str = "Bilete Git", cta_url: str = "https://app.geoni.ai", footer: str = "Bu e-posta GEONI bilet sisteminden otomatik gönderilmiştir.") -> bool:
     if not RESEND_API_KEY or RESEND_API_KEY == "your-resend-key-here":
         logger.warning("RESEND_API_KEY not configured, skipping ticket email")
         return False
@@ -438,7 +438,7 @@ async def send_ticket_email(to_email: str, subject: str, heading: str, lines: li
       <h2 style="font-size:18px;font-weight:600;margin:0 0 12px;color:#EDEFF5;">{heading}</h2>
       {body_rows}
       <a href="{cta_url}" style="display:inline-block;margin-top:20px;background:#7C86F5;color:#FFFFFF;padding:11px 22px;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;">{cta_label} →</a>
-      <p style="margin:24px 0 0;font-size:12px;color:#697083;">Bu e-posta GEONI bilet sisteminden otomatik gönderilmiştir.</p>
+      <p style="margin:24px 0 0;font-size:12px;color:#697083;">{footer}</p>
     </div>
     """
     try:
