@@ -70,11 +70,16 @@ async function replyToComment(commentId, text, token) {
 }
 
 async function sendDm(recipientId, text, token) {
-  await fetch(`${GRAPH}/me/messages`, {
+  const response = await fetch(`${GRAPH}/me/messages`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ recipient: { id: recipientId }, message: { text } }),
-  }).catch(() => {});
+  });
+  if (!response.ok) throw new Error(`Instagram DM rejected (HTTP ${response.status})`);
+  const result = await response.json();
+  if (typeof result.message_id !== 'string' || !result.message_id) {
+    throw new Error('Instagram DM acceptance not confirmed');
+  }
 }
 
 // ── Promosyon kodu dagitimi ───────────────────────────────────────────────
