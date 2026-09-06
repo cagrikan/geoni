@@ -65,10 +65,10 @@ logger = logging.getLogger(__name__)
 SCORING_VERSION = "v5"
 
 OPENPAGERANK_API_KEY = __import__("os").environ.get("OPENPAGERANK_API_KEY", "")
-# T8: Google Knowledge Graph varlik kontrolu icin mevcut GOOGLE_API_KEY
-# altyapisi (kgsearch.googleapis.com ucretsiz sorgulanir). Anahtar yoksa
-# KG bacagi sessizce atlanir (otorite notr kalir).
-GOOGLE_API_KEY = __import__("os").environ.get("GOOGLE_API_KEY", "")
+# Gemini auth anahtarlari KG Search icin gecerli degildir. KG icin yalniz
+# kgsearch.googleapis.com ile sinirli ayri standart anahtar kullanilir.
+# Eksikse Gemini anahtarina dusme: olculemedi (None) davranisini koru.
+GOOGLE_KG_API_KEY = __import__("os").environ.get("GOOGLE_KG_API_KEY", "")
 
 # KG resultScore esigi: adaslik/gurultuyu elemek icin kaba taban. KG "present"
 # yalnizca ad-eslesmesi + bu skorun ustunde. Google resultScore olceginde
@@ -421,12 +421,12 @@ async def _google_kg_presence(name: str) -> dict | None:
     """
     T8: Google Knowledge Graph varlik kontrolu. Gemini/AIO'nun asil dogrulama
     kaynagi KG'dir (AIO seciminde KG-baglanti yogunlugu r≈0.76); markanin/kisinin
-    orada bir 'entity' karsiligi var mi + resultScore. Mevcut GOOGLE_API_KEY ile
-    tek GET (ucretsiz). Anahtar yoksa / cagri duserse None doner -> otorite
+    orada bir 'entity' karsiligi var mi + resultScore. Ayri GOOGLE_KG_API_KEY ile
+    tek GET. Anahtar yoksa / cagri duserse None doner -> otorite
     notr kalir, tarama bozulmaz.
     Donus: {"present": bool, "score": float} veya None (olculemedi).
     """
-    if not GOOGLE_API_KEY or not name or not name.strip():
+    if not GOOGLE_KG_API_KEY or not name or not name.strip():
         return None
     if len(_norm_label(name)) < 3:
         return None
@@ -434,19 +434,20 @@ async def _google_kg_presence(name: str) -> dict | None:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
                 "https://kgsearch.googleapis.com/v1/entities:search",
-                params={"query": name.strip(), "key": GOOGLE_API_KEY,
+                params={"query": name.strip(),
                         "limit": 5, "indent": "false"},
-                timeout=8, headers=HEADERS,
+                timeout=8, headers={**HEADERS, "x-goog-api-key": GOOGLE_KG_API_KEY},
             )
             if resp.status_code == 200:
                 return _parse_kg_response(resp.json(), name)
             # Fable #4 (2026-07-23): KG bacagi 188/188 olu — anahtar VAR (Gemini'de calisiyor)
             # ama KG Search API GCP'de ayri etkinlestirilmeli. Anahtar varken hata = GORUNUR
             # olmali (warning), yoksa sessizce olur; 403 tipik "API kapali" isaretidir.
-            logger.warning(f"Google KG check HTTP {resp.status_code} for '{name}' "
-                           f"(anahtar var; 403 ise GCP'de Knowledge Graph Search API'yi etkinlestir): {resp.text[:120]}")
+            logger.warning("Google KG check HTTP %s (ayri KG anahtari ve API etkinligi kontrol edilmeli)",
+                           resp.status_code)
     except Exception as e:
-        logger.warning(f"Google KG check failed for '{name}': {e}")
+        # Istisna metni/yanit govdesi anahtar veya istek URL'i tasiyabilir.
+        logger.warning("Google KG check failed (%s)", type(e).__name__)
     return None
 
 
@@ -819,7 +820,7 @@ async def compute_ai_visibility_score(crawl_result: dict, indexing_status: dict,
             "freshness_p90_ratio": freshness.get("p90_ratio", 0.0),  # T7: 90-gun ana sinyal
             "ai_access": ai_access,
             # T8: Google Knowledge Graph varligi (Gemini/AIO dogrulama sinyali).
-            # KG olculemediyse (GOOGLE_API_KEY yok) None kalir.
+            # KG olculemediyse (GOOGLE_KG_API_KEY yok) None kalir.
             "kg_presence": (authority_kg.get("present") if authority_kg else None),
             "kg_score": (round(authority_kg.get("score", 0.0), 1) if authority_kg else None),
             # T5: Brave indeks sinyali (Claude retrieval); BRAVE_API_KEY yoksa None.
