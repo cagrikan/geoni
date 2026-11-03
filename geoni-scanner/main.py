@@ -220,6 +220,7 @@ from scanqueue import acquire_scan_slot, release_scan_slot, estimate_wait_second
 # (admin/webhook uclari + semalar) herkese acar — uretimde kapali. Yerel/dev
 # icin GEONI_ENABLE_DOCS=1 ile acilabilir.
 _docs_on = os.environ.get("GEONI_ENABLE_DOCS", "") == "1"
+_autonomy_paused = os.environ.get("GEONI_AUTONOMY_PAUSED", "0").strip() == "1"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # FastAPI lifespan (eski @app.on_event("startup") yerine — 0.115'te deprecated).
@@ -229,12 +230,19 @@ async def lifespan(app: FastAPI):
     init_sentry("api")
     # Izleme v2: haftalik otomatik yeniden tarama dongusu (bkz. monitor.py)
     asyncio.create_task(monitor_loop())
-    # Haftalik icerik uretimi: gercek tarama verisinden sosyal icerik uretip
-    # kurucuya e-postalar (bkz. content_gen.py). Post/DM ATMAZ.
-    asyncio.create_task(content_loop())
-    # Oz-gelisim motoru: gunluk olarak taramalardan sinyal turetir (kendi
-    # gorunurluk, icerik boslugu, nis aci, kalite). Riskli degisiklik yapmaz.
-    asyncio.create_task(improvement_loop())
+    # Otonom işler tek bir üretim kapısıyla duraklatılabilir. Bu kapı kullanıcı
+    # isteğiyle başlatılan taramaları ve monitor_loop içindeki retention/düşük
+    # bakiye bakımını etkilemez. Ücretli otomatik izleme ayrıca ve varsayılan
+    # kapalı MONITOR_AUTO_SCAN bayrağıyla korunur.
+    if _autonomy_paused:
+        logger.warning("GEONI autonomous content/improvement loops are paused")
+    else:
+        # Haftalik icerik uretimi: gercek tarama verisinden sosyal icerik uretip
+        # kurucuya e-postalar (bkz. content_gen.py). Post/DM ATMAZ.
+        asyncio.create_task(content_loop())
+        # Oz-gelisim motoru: gunluk olarak taramalardan sinyal turetir (kendi
+        # gorunurluk, icerik boslugu, nis aci, kalite). Riskli degisiklik yapmaz.
+        asyncio.create_task(improvement_loop())
     yield
     # shutdown: arka plan task'leri event loop kapaninca sonlanir; ozel temizlik yok.
 
