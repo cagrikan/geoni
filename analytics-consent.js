@@ -21,6 +21,8 @@
   ) {
     return;
   }
+  const DISABLE_KEY = `ga-disable-${MEASUREMENT_ID}`;
+  window[DISABLE_KEY] = true;
 
   const english = document.documentElement.lang.toLowerCase().startsWith('en');
   const copy = english
@@ -67,6 +69,9 @@
   gtag('set', 'allow_google_signals', false);
 
   let analyticsLoaded = false;
+  let analyticsScriptReady = false;
+  let analyticsEnabled = false;
+  let pendingPageView = false;
 
   const readConsent = () => {
     try {
@@ -96,12 +101,30 @@
     });
   };
 
+  const sendPageView = () => {
+    if (!analyticsEnabled || !analyticsScriptReady || !pendingPageView) return;
+    pendingPageView = false;
+    const pageLocation = `${window.location.origin}${window.location.pathname}`;
+    gtag('event', 'page_view', {
+      page_location: pageLocation,
+      page_path: publicPath,
+      page_title: document.title,
+      page_referrer: '',
+    });
+  };
+
   const loadAnalytics = () => {
+    const wasEnabled = analyticsEnabled;
+    window[DISABLE_KEY] = false;
+    analyticsEnabled = true;
     gtag('consent', 'update', { analytics_storage: 'granted' });
-    if (analyticsLoaded || document.getElementById('geoni-google-analytics')) return;
+    if (!wasEnabled) pendingPageView = true;
+    if (analyticsLoaded || document.getElementById('geoni-google-analytics')) {
+      sendPageView();
+      return;
+    }
     analyticsLoaded = true;
 
-    const pageLocation = `${window.location.origin}${window.location.pathname}`;
     gtag('js', new Date());
     gtag('config', MEASUREMENT_ID, {
       send_page_view: false,
@@ -109,18 +132,23 @@
       allow_ad_personalization_signals: false,
       cookie_flags: 'SameSite=Lax;Secure',
     });
-    gtag('event', 'page_view', {
-      page_location: pageLocation,
-      page_path: publicPath,
-      page_title: document.title,
-      page_referrer: '',
-    });
-
     const script = document.createElement('script');
     script.id = 'geoni-google-analytics';
     script.async = true;
     script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(MEASUREMENT_ID)}`;
+    script.addEventListener('load', () => {
+      analyticsScriptReady = true;
+      sendPageView();
+    });
     document.head.append(script);
+  };
+
+  const disableAnalytics = () => {
+    window[DISABLE_KEY] = true;
+    analyticsEnabled = false;
+    pendingPageView = false;
+    gtag('consent', 'update', deniedConsent);
+    clearAnalyticsCookies();
   };
 
   const banner = document.createElement('section');
@@ -179,8 +207,7 @@
     if (value === 'granted') {
       loadAnalytics();
     } else {
-      gtag('consent', 'update', deniedConsent);
-      clearAnalyticsCookies();
+      disableAnalytics();
     }
     hideBanner();
   };

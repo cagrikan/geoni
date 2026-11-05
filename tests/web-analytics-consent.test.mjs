@@ -26,6 +26,12 @@ test('analytics is restricted to consented public page views', async () => {
   assert.match(source, /send_page_view: false/);
   assert.match(source, /page_referrer: ''/);
   assert.match(source, /gtag\/js\?id=/);
+  assert.match(source, /const DISABLE_KEY = `ga-disable-\${MEASUREMENT_ID}`/);
+  assert.match(source, /window\[DISABLE_KEY\] = true/);
+  assert.match(source, /window\[DISABLE_KEY\] = false/);
+  assert.match(source, /if \(!analyticsEnabled \|\| !analyticsScriptReady \|\| !pendingPageView\) return/);
+  assert.match(source, /script\.addEventListener\('load'/);
+  assert.match(source, /pendingPageView = false;\n    gtag\('consent', 'update', deniedConsent\)/);
   assert.ok(source.indexOf("value === 'granted'") < source.indexOf('loadAnalytics();'));
 });
 
