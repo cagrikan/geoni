@@ -29,6 +29,16 @@ test('analytics is restricted to consented public page views', async () => {
   assert.ok(source.indexOf("value === 'granted'") < source.indexOf('loadAnalytics();'));
 });
 
+test('content security policy permits only the required GA4 endpoints', async () => {
+  const config = JSON.parse(await read('vercel.json'));
+  const catchAll = config.headers.find(({source}) => source === '/(.*)');
+  const policy = catchAll.headers.find(({key}) => key === 'Content-Security-Policy').value;
+
+  assert.match(policy, /script-src[^;]*https:\/\/www\.googletagmanager\.com/);
+  assert.match(policy, /connect-src[^;]*https:\/\/\*\.google-analytics\.com/);
+  assert.doesNotMatch(policy, /https:\/\/\*\.google\.com/);
+});
+
 test('privacy notice explains opt-in, withdrawal and exclusions', async () => {
   const html = await read('privacy.html');
 
