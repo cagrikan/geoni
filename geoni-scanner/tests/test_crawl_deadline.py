@@ -28,7 +28,7 @@ ALT = """<?xml version="1.0"?>
 def _kur(monkeypatch, alt_gecikme=0.0):
     cagri = {"n": 0}
 
-    async def sahte_get(client, url, timeout=10):
+    async def sahte_get(client, url, timeout=10, **kwargs):
         if url.endswith("/sitemap.xml"):
             return _Yanit(KOK)
         cagri["n"] += 1

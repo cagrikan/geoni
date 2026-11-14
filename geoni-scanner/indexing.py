@@ -23,6 +23,7 @@ from urllib.parse import urljoin
 from urllib.robotparser import RobotFileParser
 
 import httpx
+from egress_proxy import pinned_http_client
 
 from ssrf_guard import assert_public_host, BlockedHostError, safe_get
 
@@ -166,7 +167,7 @@ async def check_robots_ai_access(domain: str) -> dict:
     try:
         # SSRF-guvenli: safe_get her redirect hop'unu dogrular (apex<->www gibi
         # mesru kanonik redirect'ler korunur, ic adrese sicrama engellenir).
-        async with httpx.AsyncClient() as client:
+        async with pinned_http_client() as client:
             resp = await safe_get(client, robots_url, timeout=10, headers=HEADERS)
             # M6: robots yaniti challenge/403 ise bot korumasi AI crawler'larini
             # (Brave/Perplexity) sessizce engelliyor OLABILIR — soft bulgu.
@@ -225,7 +226,7 @@ async def check_llms_txt(domain: str) -> bool:
     llms_url = f"https://{domain}/llms.txt"
     try:
         # SSRF-guvenli redirect takibi (bkz. check_robots_ai_access).
-        async with httpx.AsyncClient() as client:
+        async with pinned_http_client() as client:
             resp = await safe_get(client, llms_url, timeout=8, headers=HEADERS)
             # T3: SPA soft-404 -> her path'e 200 + index.html doner. HTML iceren
             # yaniti llms.txt sayma (yanlis pozitif hem skoru hem "llms_robots"

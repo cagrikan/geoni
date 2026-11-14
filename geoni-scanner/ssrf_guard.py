@@ -18,6 +18,8 @@ import socket
 import time
 from urllib.parse import urljoin, urlparse
 
+import httpx
+
 # Cozumden bagimsiz, isim bazli kara liste (bazilari DNS'e cikmadan yakalanir)
 _BLOCKED_NAMES = {"localhost", "metadata", "metadata.google.internal"}
 _BLOCKED_SUFFIXES = (".localhost", ".local", ".internal")
@@ -166,7 +168,8 @@ def _baglantiyi_dogrula(resp, host: str) -> None:
             f"DNS rebinding: {host} dogrulamada public'ti ama baglanti {ip} adresine gitti")
 
 
-async def safe_get(client, url: str, *, max_redirects: int = 3, **kwargs):
+async def safe_get(client, url: str, *, max_redirects: int = 3,
+                   max_response_bytes: int | None = None, **kwargs):
     """SSRF-guvenli GET.
 
     🔒 TOCTOU / DNS-REBINDING SAVUNMASI (2026-08-04, kor denetim bulgusu).
@@ -194,8 +197,33 @@ async def safe_get(client, url: str, *, max_redirects: int = 3, **kwargs):
     current = url
     resp = None
     for _ in range(max_redirects + 1):
-        resp = await client.get(current, follow_redirects=False, **kwargs)
-        _baglantiyi_dogrula(resp, urlparse(current).hostname or "")
+        parsed = urlparse(current)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            raise BlockedHostError("gecersiz HTTP hedefi")
+        # Ilk istek de dahil: sitemap indexindeki <loc> dogrudan buraya gelir.
+        await asyncio.to_thread(assert_public_host, parsed.hostname)
+        if max_response_bytes is None:
+            resp = await client.get(current, follow_redirects=False, **kwargs)
+        else:
+            # client.get tum govdeyi sinirsiz tamponlar; sitemap'i akista kes.
+            async with client.stream("GET", current, follow_redirects=False, **kwargs) as streamed:
+                if not getattr(client, "_geoni_pinned_egress", False):
+                    _baglantiyi_dogrula(streamed, parsed.hostname)
+                body = bytearray()
+                async for chunk in streamed.aiter_bytes(chunk_size=65536):
+                    if len(body) + len(chunk) > max_response_bytes:
+                        raise ValueError("sitemap yaniti boyut sinirini asti")
+                    body.extend(chunk)
+                # aiter_bytes sikistirmayi acmis olur; eski Content-Encoding
+                # korunursa Response.text govdeyi ikinci kez acmaya calisir.
+                headers = httpx.Headers(streamed.headers)
+                headers.pop("content-encoding", None)
+                headers["content-length"] = str(len(body))
+                resp = httpx.Response(streamed.status_code, headers=headers,
+                                      content=bytes(body), request=streamed.request,
+                                      extensions=streamed.extensions)
+        if not getattr(client, "_geoni_pinned_egress", False):
+            _baglantiyi_dogrula(resp, parsed.hostname)
         if resp.status_code in (301, 302, 303, 307, 308):
             loc = resp.headers.get("location")
             if not loc:

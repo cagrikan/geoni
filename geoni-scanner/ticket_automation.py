@@ -22,6 +22,7 @@ from datetime import date
 from urllib.robotparser import RobotFileParser
 
 import httpx
+from egress_proxy import pinned_http_client
 
 from ssrf_guard import safe_get, assert_public_host, BlockedHostError
 from indexing import TRAINING_CRAWLER_AGENTS, SEARCH_CRAWLER_AGENTS
@@ -144,7 +145,7 @@ async def _find_sitemap(domain: str, audit: dict | None) -> str | None:
         return None
     for path in ("sitemap.xml", "sitemap_index.xml"):
         try:
-            async with httpx.AsyncClient() as c:
+            async with pinned_http_client() as c:
                 r = await safe_get(c, f"https://{domain}/{path}", timeout=8, headers=_UA)
             body = (r.text or "")[:2000].lower()
             if r.status_code == 200 and ("<urlset" in body or "<sitemapindex" in body or "<loc>" in body):
@@ -211,7 +212,7 @@ async def generate_robots_txt(domain: str, sitemap_path: str | None = None) -> t
     try:
         if not await _hedef_public_mi(domain):
             raise BlockedHostError(domain)
-        async with httpx.AsyncClient() as c:
+        async with pinned_http_client() as c:
             r = await safe_get(c, f"https://{domain}/robots.txt", timeout=8, headers=_UA)
         body = r.text or ""
         # soft-404: SPA her path'e 200 + index.html doner -> robots sayma.
