@@ -19,12 +19,9 @@
 // yukseltmek uyariyi degersizlestirir.
 
 const SURUMLER = {
-  // iOS 1.0.8: 12 Agustos 2026'da READY_FOR_SALE (build 80) — iTunes lookup
-  // ve ASC ile 14 Agustos'ta dogrulandi. 1.0.7'de kalan uc gun boyunca bu alan
-  // eskimisti: guncelleme uyarisi 1.0.8'i hic duyurmadi.
-  ios: { surum: '1.0.8', enAz: '1.0.0' },
-  // Android 20 Agustos 2026'da URETIM kanalinda yayinlandi (1.0.8 / vc12,
-  // 176 ulke). Kapali test ayrica vc13'te (R8 surumu, testcilerde deneniyor).
+  // 14 Kasim 2026: ASC ve halka acik lookup ile 1.0.9 / build 81 dogrulandi.
+  ios: { surum: '1.0.9', enAz: '1.0.0' },
+  // Android uretim 1.0.8 / vc13; 1.0.9 / vc14 yalniz internal kanalinda.
   // Uretim acilana kadar enAz dusuk tutuluyor — kimseyi kilitlemeyelim.
   android: { surum: '1.0.8', enAz: '1.0.0' },
 };
