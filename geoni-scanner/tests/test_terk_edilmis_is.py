@@ -39,7 +39,7 @@ def test_IKI_UCTA_DA_queued_satiri_aciliyor():
 def test_satir_isin_BASINDA_aciliyor():
     """Kuyruga girmeden once olmali; sonra acmak dayanikliligi saglamaz."""
     for imza in ('request.type or "person"', '"social"'):
-        i = MAIN.index(f"create_pending_brand_check(job_id, {imza}")
+        i = MAIN.index(imza, MAIN.index("await create_pending_brand_check("))
         j = MAIN.index("brand_check_events[job_id] = asyncio.Queue()", max(0, i - 1500))
         assert i < j, f"{imza}: satir kuyruk kurulduktan SONRA aciliyor"
 
@@ -78,11 +78,13 @@ def test_Z_ve_tzsiz_damga_ELE_ALINIYOR():
     assert "tzinfo is None" in govde
 
 
-def test_pending_satiri_TARAMAYI_OLDURMEZ():
-    """DB'nin gecici hatasi kullanicinin taramasini dusurmemeli."""
+def test_pending_satiri_hatasi_ACIKCA_BILDIRILIR():
+    """Kayitli tarama DB'de izlenemiyorsa baslamaz; gizli rapor kalmasin."""
     i = DB.index("async def create_pending_brand_check")
     govde = DB[i:i + 2200]
     assert "return False" in govde and "raise" not in govde.split("try:")[1][:600]
+    assert 'if not pending_saved:' in MAIN
+    assert 'if not pending_saved and sc_uid_erken:' in MAIN
 
 
 # ── Cache isabeti: acilan satir GERI ALINIR ──────────────────────────────
