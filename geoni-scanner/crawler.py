@@ -16,6 +16,7 @@ from urllib.robotparser import RobotFileParser
 import httpx
 
 from ssrf_guard import assert_public_host, BlockedHostError, safe_get
+from egress_proxy import pinned_egress_proxy, pinned_http_client
 
 # NOT: playwright import'u crawl_domain icine alindi (lazy) — sitemap/robots
 # yardimcilarini (fetch_sitemap, _parse_sitemap_xml) playwright kurulu olmayan
@@ -40,6 +41,7 @@ DEFAULT_TIMEOUT_PER_PAGE = 10  # seconds
 DEFAULT_TOTAL_TIMEOUT = int(os.environ.get("CRAWL_TOTAL_TIMEOUT", "90"))
 DEFAULT_DEPTH_LIMIT = 3
 DEFAULT_CONCURRENCY = int(os.environ.get("CRAWL_CONCURRENCY", "8"))
+MAX_SITEMAP_BYTES = 2 * 1024 * 1024
 
 
 def normalize_domain(domain: str) -> str:
@@ -117,7 +119,8 @@ async def fetch_sitemap(client: httpx.AsyncClient, base_url: str, limit: int = 2
     lastmods: list[str] = []
     found = False
     try:
-        resp = await safe_get(client, sitemap_url, timeout=10)
+        resp = await safe_get(client, sitemap_url, timeout=10,
+                              max_response_bytes=MAX_SITEMAP_BYTES)
         if resp.status_code == 200:
             found = True
             parsed = _parse_sitemap_xml(resp.text)
@@ -139,7 +142,8 @@ async def fetch_sitemap(client: httpx.AsyncClient, base_url: str, limit: int = 2
                         logger.info(f"Sitemap kesfi sure sinirinda kesildi ({len(urls)} URL toplandi)")
                         break
                     try:
-                        cr = await safe_get(client, cu, timeout=10)
+                        cr = await safe_get(client, cu, timeout=10,
+                                            max_response_bytes=MAX_SITEMAP_BYTES)
                         if cr.status_code == 200:
                             for e in _parse_sitemap_xml(cr.text)["entries"]:
                                 if len(urls) >= limit:
@@ -345,7 +349,7 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
 
     # SSRF: robots/sitemap alt-istekleri redirect KAPALI. Domain yukarida
     # assert_public_host'tan gecti; 30x ile ic adrese sicramasin.
-    async with httpx.AsyncClient(follow_redirects=False) as client:
+    async with pinned_http_client(follow_redirects=False) as client:
         robots = await fetch_robots_txt(client, base_url)
         # Kesif icin toplam butcenin YARISI: kalan yari gercek sayfa taramasina
         # kalsin. Sitemap bos donerse crawl yine ana sayfadan BFS ile ilerler.
@@ -357,7 +361,7 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
 
     semaphore = asyncio.Semaphore(DEFAULT_CONCURRENCY)
 
-    async with async_playwright() as p:
+    async with pinned_egress_proxy() as proxy_url, async_playwright() as p:
         # 🔒 DNS SABITLEME (kor denetim 2026-08-04, TOCTOU/DNS-rebinding).
         # `_ssrf_guard_route` her belge istegini dogruluyor ama dogrulamayi
         # assert_public_host'un DNS cozumuyle yapiyor; ardindan `route.continue_()`
@@ -372,12 +376,9 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
         # `metadata.google.internal` gibi BILINEN tehlikeli ADLARA gidisi keser.
         # Derinlemesine savunmanin bir katmanidir, tek basina yeterli degildir.
         #
-        # Rebinding'in ASIL savunmasi httpx tarafinda: baglanti sonrasi peer IP
-        # dogrulamasi (ssrf_guard._baglantiyi_dogrula). Playwright tarafinda ayni
-        # dogrulamayi yapmak icin Chromium'u kendi proxy'mize yoneltmek gerekir
-        # (--proxy-server) — ayri bir is, YAPILMADI. Bu yuzden crawl tarafinda
-        # rebinding riski TAM kapanmis DEGIL; robots/sitemap/llms.txt gibi httpx
-        # ile cekilen sinyaller korumali, sayfa gezintisi kismi korumali.
+        # Baglanti oncesi dogrulama pinned_egress_proxy'de yapilir. Proxy
+        # DNS sonucundaki public IP'ye dogrudan baglanir; Chromium'un daha
+        # sonraki DNS yanitina guvenilmez. Bu isim kurallari ek savunmadir.
         _COZUM_KURALI = (
             "MAP localhost ~NOTFOUND,"
             "MAP *.localhost ~NOTFOUND,"
@@ -389,7 +390,9 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
         )
         browser = await p.chromium.launch(
             headless=True,
-            args=[f"--host-resolver-rules={_COZUM_KURALI}"],
+            proxy={"server": proxy_url, "bypass": ""},
+            args=[f"--host-resolver-rules={_COZUM_KURALI}",
+                  "--proxy-bypass-list=<-loopback>"],
         )
         context = await browser.new_context(
             user_agent="GeoniBot/1.0 (+https://geoni.ai/bot)"
@@ -398,16 +401,15 @@ async def crawl_domain(domain: str, page_limit: int = 500) -> dict:
         # Fable 2026-07-23 (SSRF): page.goto redirect'leri Chromium ic-ele takip eder;
         # kullanicinin domaini 302 ile 169.254.170.2 (ECS credential ucu) / private IP'ye
         # yonlendirebilir. assert_public_host yalniz basta bir kez cagriliyordu -> yetersiz.
-        # HER BELGE (navigasyon+redirect) istegini SSRF guard'dan gecir; ic host -> ISTEGI KES.
+        # Her kaynak istegini SSRF guard'dan gecir; ic host -> ISTEGI KES.
         async def _ssrf_guard_route(route):
             req = route.request
-            if req.resource_type == "document":
-                host = (urlparse(req.url).hostname or "")
-                try:
-                    await asyncio.to_thread(assert_public_host, host)
-                except Exception:
-                    await route.abort()
-                    return
+            host = (urlparse(req.url).hostname or "")
+            try:
+                await asyncio.to_thread(assert_public_host, host)
+            except Exception:
+                await route.abort()
+                return
             await route.continue_()
         await context.route("**/*", _ssrf_guard_route)
 

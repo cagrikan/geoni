@@ -25,6 +25,7 @@ import re
 from urllib.parse import urlparse
 
 import httpx
+from egress_proxy import pinned_http_client
 
 from ssrf_guard import safe_get, assert_public_host
 
@@ -109,7 +110,7 @@ async def check_ssr(sayfalar: list[dict]) -> dict | None:
         return None
     ornek = aday[:SAMPLE_SIZE]
 
-    async with httpx.AsyncClient() as client:
+    async with pinned_http_client() as client:
         sonuc = await asyncio.gather(*[
             _tek_sayfa(client, p["url"], p["text_len"]) for p in ornek
         ])

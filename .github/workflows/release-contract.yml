@@ -1,0 +1,16 @@
+name: Published release information
+on:
+  push:
+    paths: ['api/surum.js', 'indir.html', 'download.html', 'tests/**', '.github/workflows/release-contract.yml']
+  pull_request:
+    paths: ['api/surum.js', 'indir.html', 'download.html', 'tests/**', '.github/workflows/release-contract.yml']
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node --test tests/*.test.mjs
