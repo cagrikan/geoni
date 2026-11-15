@@ -1477,8 +1477,18 @@ async def start_brand_check(request: BrandCheckRequest, background_tasks: Backgr
     # baslarsa (dagitim / MinCapacity=0'dan uyanma / olcekleme) durum kaybolur
     # ve status ucu 404 -> kullanicida "Tarama bulunamadi." Web'de bu yok cunku
     # submit'te 'queued' satiri aciliyordu; asimetri kapatildi.
-    await create_pending_brand_check(job_id, request.type or "person", request.name,
-                                     request.topic, user_id_rl2)
+    # Private reports never enter audits. A queued row here would remain forever
+    # and prevent the user from clearing their history. For saved reports the
+    # pending row is mandatory: otherwise history could be cleared while this
+    # process-only job is still running, then the report could reappear.
+    if not request.private:
+        pending_saved = await create_pending_brand_check(
+            job_id, request.type or "person", request.name,
+            request.topic, user_id_rl2)
+        if not pending_saved:
+            brand_checks_store.pop(job_id, None)
+            _bekleyen_hak.pop(job_id, None)
+            raise ApiHata(503, "tarama_baslatilamadi")
     brand_check_events[job_id] = asyncio.Queue()
     auth_header = http_request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
@@ -1606,8 +1616,12 @@ async def start_social_check(request: SocialCheckRequest, background_tasks: Back
     )
     brand_checks_store[job_id] = {"job_id": job_id, "status": "queued", "name": brand_req.name, "topic": brand_req.topic, "created_at": datetime.now().isoformat(), "result": None, "error": None}
     # Marka ucundaki ayni dayaniklilik satiri — sosyal de bellekte kosuyor.
-    await create_pending_brand_check(job_id, "social", brand_req.name,
-                                     brand_req.topic, sc_uid_erken)
+    pending_saved = await create_pending_brand_check(
+        job_id, "social", brand_req.name, brand_req.topic, sc_uid_erken)
+    if not pending_saved and sc_uid_erken:
+        brand_checks_store.pop(job_id, None)
+        _bekleyen_hak.pop(job_id, None)
+        raise ApiHata(503, "tarama_baslatilamadi")
     brand_check_events[job_id] = asyncio.Queue()
     background_tasks.add_task(run_brand_check_job, job_id, brand_req, token)
     logger.info(f"Social check job {job_id} created for '@{handle}' (ip={client_ip})")

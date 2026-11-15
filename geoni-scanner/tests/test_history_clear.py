@@ -25,16 +25,19 @@ def test_clear_history_scrubs_only_owner_and_keeps_usage_rows(monkeypatch):
 
     _mock_client(monkeypatch, respond)
     assert asyncio.run(db.clear_user_history("owner-123")) == "ok"
-    assert len(calls) == 3
+    assert len(calls) == 4
     assert all("user_id=eq.owner-123" in str(r.url) for r in calls)
-    patch = calls[1]
+    stale = calls[0]
+    assert stale.method == "PATCH" and "status=eq.queued" in str(stale.url)
+    assert "created_at=lt." in str(stale.url)
+    patch = calls[2]
     assert patch.method == "PATCH" and "/rest/v1/audits" in str(patch.url)
     assert "status.not.in.%28queued%2Ccrawling%2Cindexing%2Cscoring%2Cpartial%2Cdeleted%29" in str(patch.url)
     body = __import__("json").loads(patch.content)
     assert body["status"] == "deleted"
     assert all(body[k] is None for k in ("domain", "name", "role", "company", "location", "topic", "linkedin_url", "score", "result_json"))
     assert "user_id" not in body and "created_at" not in body and "credits_spent" not in body
-    assert calls[2].method == "PATCH" and "/rest/v1/watchlist" in str(calls[2].url)
+    assert calls[3].method == "PATCH" and "/rest/v1/watchlist" in str(calls[3].url)
 
 
 def test_clear_history_rejects_active_scan_before_any_mutation(monkeypatch):
@@ -46,8 +49,8 @@ def test_clear_history_rejects_active_scan_before_any_mutation(monkeypatch):
 
     _mock_client(monkeypatch, respond)
     assert asyncio.run(db.clear_user_history("owner-123")) == "active"
-    assert len(calls) == 1 and calls[0].method == "GET"
-    assert "created_at" not in str(calls[0].url)
+    assert len(calls) == 2 and calls[1].method == "GET"
+    assert "created_at" not in str(calls[1].url)
 
 
 def test_clear_history_fails_closed_when_check_fails(monkeypatch):
@@ -55,11 +58,13 @@ def test_clear_history_fails_closed_when_check_fails(monkeypatch):
 
     def respond(request):
         calls.append(request)
+        if request.method == "PATCH":
+            return httpx.Response(204)
         return httpx.Response(503)
 
     _mock_client(monkeypatch, respond)
     assert asyncio.run(db.clear_user_history("owner-123")) == "error"
-    assert len(calls) == 1 and calls[0].method == "GET"
+    assert len(calls) == 2 and calls[1].method == "GET"
 
 
 @pytest.mark.parametrize("kind", ["web", "brand"])
@@ -80,3 +85,64 @@ def test_deleted_report_cannot_leak_from_process_memory(monkeypatch, kind):
         assert job_id not in store
     finally:
         store.pop(job_id, None)
+
+
+def test_saved_brand_scan_does_not_start_without_pending_row(monkeypatch):
+    pytest.importorskip("fastapi")
+    from fastapi import BackgroundTasks
+    from starlette.requests import Request
+    import main
+
+    async def user(_): return "owner-123"
+    async def no(_): return False
+    async def yes(_): return True
+    async def allowed(*args, **kwargs): return True, {}
+    async def pending(*args, **kwargs): return False
+
+    monkeypatch.setattr(main, "get_user_id_from_token", user)
+    monkeypatch.setattr(main, "is_user_suspended", no)
+    monkeypatch.setattr(main, "check_is_premium", yes)
+    monkeypatch.setattr(main, "free_scan_gate", allowed)
+    monkeypatch.setattr(main, "create_pending_brand_check", pending)
+    monkeypatch.setattr(main, "_is_internal_scan", lambda _: True)
+    monkeypatch.setattr(main, "get_client_ip", lambda _: "127.0.0.1")
+    req = Request({"type": "http", "method": "POST", "path": "/api/brand-check",
+                   "headers": [(b"authorization", b"Bearer token")]})
+    tasks = BackgroundTasks()
+    before = set(main.brand_checks_store)
+    with pytest.raises(main.ApiHata) as exc:
+        asyncio.run(main.start_brand_check(main.BrandCheckRequest(name="Test Brand"), tasks, req))
+    assert exc.value.status_code == 503
+    assert set(main.brand_checks_store) == before
+    assert tasks.tasks == []
+
+
+def test_private_brand_scan_never_creates_history_row(monkeypatch):
+    pytest.importorskip("fastapi")
+    from fastapi import BackgroundTasks
+    from starlette.requests import Request
+    import main
+
+    async def user(_): return "owner-123"
+    async def no(_): return False
+    async def yes(_): return True
+    async def pending(*args, **kwargs):
+        raise AssertionError("private scan must not create an audits row")
+
+    monkeypatch.setattr(main, "get_user_id_from_token", user)
+    monkeypatch.setattr(main, "is_user_suspended", no)
+    monkeypatch.setattr(main, "check_is_premium", yes)
+    monkeypatch.setattr(main, "create_pending_brand_check", pending)
+    monkeypatch.setattr(main, "_is_internal_scan", lambda _: True)
+    monkeypatch.setattr(main, "get_client_ip", lambda _: "127.0.0.1")
+    req = Request({"type": "http", "method": "POST", "path": "/api/brand-check",
+                   "headers": [(b"authorization", b"Bearer token")]})
+    tasks = BackgroundTasks()
+    response = asyncio.run(main.start_brand_check(
+        main.BrandCheckRequest(name="Test Brand", private=True), tasks, req))
+    try:
+        assert response.status == "queued"
+        assert len(tasks.tasks) == 1
+    finally:
+        main.brand_checks_store.pop(response.job_id, None)
+        main.brand_check_events.pop(response.job_id, None)

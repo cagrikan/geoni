@@ -1765,9 +1765,10 @@ async def clear_user_history(user_id: str) -> str:
     Creator aylik kotasi audits satirlarini sayar. Satirlari fiziksel silmek
     ayni ayin ucretsiz haklarini yeniden acardi. Bunun yerine rapor ve hedefe
     ait alanlar bosaltilir; kullanim ve muhasebe icin gerekli alanlar kalir.
-    Herhangi bir aktif is varken temizleme reddedilir: worker daha sonra
-    silinen raporu tekrar yazmasin. Bir sure esigi koymak guvenli degildir;
-    geciken ama hâlâ kosan isler raporu yeniden olusturabilir.
+    Aktif is varken temizleme reddedilir: worker daha sonra silinen raporu
+    tekrar yazmasin. Eski private akisindan kalmis, 24 saati gecmis queued
+    satirlari once temizlenir; o satirlar API'nin 20 dakikalik terk esigini
+    coktan asmistir.
     """
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
         return "error"
@@ -1779,6 +1780,22 @@ async def clear_user_history(user_id: str) -> str:
             "result_json": None,
         }
         async with httpx.AsyncClient() as client:
+            # Older private scans created a queued audits row but never removed
+            # it. Such jobs have long exceeded the API's 20-minute abandoned
+            # job limit; scrub only queued rows older than a full day before checking
+            # for genuinely active scans. Keep the same owner filter.
+            stale_before = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+            stale = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/audits",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                params={"user_id": f"eq.{user_id}",
+                        "status": "eq.queued",
+                        "created_at": f"lt.{stale_before}"},
+                json=scrub, timeout=20,
+            )
+            if stale.status_code not in (200, 204):
+                logger.warning("clear_user_history stale cleanup failed: %s", stale.status_code)
+                return "error"
             active = await client.get(
                 f"{SUPABASE_URL}/rest/v1/audits",
                 headers=_headers(),
