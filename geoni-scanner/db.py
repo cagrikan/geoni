@@ -1765,13 +1765,13 @@ async def clear_user_history(user_id: str) -> str:
     Creator aylik kotasi audits satirlarini sayar. Satirlari fiziksel silmek
     ayni ayin ucretsiz haklarini yeniden acardi. Bunun yerine rapor ve hedefe
     ait alanlar bosaltilir; kullanim ve muhasebe icin gerekli alanlar kalir.
-    Aktif is varken temizleme reddedilir: worker daha sonra
-    silinen raporu tekrar yazmasin.
+    Herhangi bir aktif is varken temizleme reddedilir: worker daha sonra
+    silinen raporu tekrar yazmasin. Bir sure esigi koymak guvenli degildir;
+    geciken ama hâlâ kosan isler raporu yeniden olusturabilir.
     """
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
         return "error"
     try:
-        stale_before = (datetime.now(timezone.utc) - timedelta(minutes=60)).strftime("%Y-%m-%dT%H:%M:%SZ")
         scrub = {
             "status": "deleted", "domain": None, "name": None,
             "role": None, "company": None, "location": None,
@@ -1784,7 +1784,6 @@ async def clear_user_history(user_id: str) -> str:
                 headers=_headers(),
                 params={"user_id": f"eq.{user_id}",
                         "status": "in.(queued,crawling,indexing,scoring,partial)",
-                        "created_at": f"gte.{stale_before}",
                         "select": "id", "limit": "1"}, timeout=10,
             )
             if active.status_code != 200:
@@ -1801,20 +1800,6 @@ async def clear_user_history(user_id: str) -> str:
             )
             if result.status_code not in (200, 204):
                 logger.warning("clear_user_history patch failed: %s %s", result.status_code, result.text[:200])
-                return "error"
-            # Terk edilmiş iş sonsuza kadar temizlemeyi engellemesin. Eski aktif
-            # satırlar status kapısından çıkar; 60 dakika, ölçülen en uzun
-            # taramanın (44 dk) üstünde güvenlik payı bırakır.
-            stale = await client.patch(
-                f"{SUPABASE_URL}/rest/v1/audits",
-                headers={**_headers(), "Prefer": "return=minimal"},
-                params={"user_id": f"eq.{user_id}",
-                        "status": "in.(queued,crawling,indexing,scoring,partial)",
-                        "created_at": f"lt.{stale_before}"},
-                json=scrub, timeout=20,
-            )
-            if stale.status_code not in (200, 204):
-                logger.warning("clear_user_history stale patch failed: %s", stale.status_code)
                 return "error"
             # Kayıtlı hedefler kalır. Artık raporu olmayan son skoru gösterme.
             watch = await client.patch(

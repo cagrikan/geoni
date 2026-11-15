@@ -25,7 +25,7 @@ def test_clear_history_scrubs_only_owner_and_keeps_usage_rows(monkeypatch):
 
     _mock_client(monkeypatch, respond)
     assert asyncio.run(db.clear_user_history("owner-123")) == "ok"
-    assert len(calls) == 4
+    assert len(calls) == 3
     assert all("user_id=eq.owner-123" in str(r.url) for r in calls)
     patch = calls[1]
     assert patch.method == "PATCH" and "/rest/v1/audits" in str(patch.url)
@@ -34,8 +34,7 @@ def test_clear_history_scrubs_only_owner_and_keeps_usage_rows(monkeypatch):
     assert body["status"] == "deleted"
     assert all(body[k] is None for k in ("domain", "name", "role", "company", "location", "topic", "linkedin_url", "score", "result_json"))
     assert "user_id" not in body and "created_at" not in body and "credits_spent" not in body
-    assert calls[2].method == "PATCH" and "created_at=lt." in str(calls[2].url)
-    assert calls[3].method == "PATCH" and "/rest/v1/watchlist" in str(calls[3].url)
+    assert calls[2].method == "PATCH" and "/rest/v1/watchlist" in str(calls[2].url)
 
 
 def test_clear_history_rejects_active_scan_before_any_mutation(monkeypatch):
@@ -48,6 +47,7 @@ def test_clear_history_rejects_active_scan_before_any_mutation(monkeypatch):
     _mock_client(monkeypatch, respond)
     assert asyncio.run(db.clear_user_history("owner-123")) == "active"
     assert len(calls) == 1 and calls[0].method == "GET"
+    assert "created_at" not in str(calls[0].url)
 
 
 def test_clear_history_fails_closed_when_check_fails(monkeypatch):
