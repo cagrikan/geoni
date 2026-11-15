@@ -81,13 +81,13 @@ from db import (
     promo_kodu_kullan, promo_toplu_uret, promo_parti_ozeti,
     create_pending_audit, create_pending_brand_check, pending_satiri_sil, update_audit_status, get_audit_row, get_auth_email,
     purge_private_result,
-    save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits, get_credit_balance,
+    save_audit, save_brand_check, get_user_id_from_token, check_is_premium, get_total_scan_count, deduct_credits, get_credit_balance, is_deleted_audit,
     tarama_bedelini_iade_et,
     is_strict_admin, get_admin_summary, get_admin_scans_daily, get_admin_credits_stats, get_admin_provider_usage,
     admin_list_users, admin_list_audits, admin_get_audit, admin_adjust_credits, admin_set_is_admin,
     get_manual_balances, set_manual_balance, get_manual_topups_total, list_manual_topups, add_manual_topup,
     get_credit_packages, record_purchase, get_admin_sales_stats, get_pricing_tiers, add_pricing_tier, delete_pricing_tier,
-    get_credit_transaction, transaction_exists, record_refund, get_package_by_apple_product_id, delete_user_account,
+    get_credit_transaction, transaction_exists, record_refund, get_package_by_apple_product_id, delete_user_account, clear_user_history,
     update_user_social, get_share_result, get_ai_friendly_list,
     get_or_create_referral_code, count_referred, set_referred_by, referral_earned,
     REFERRAL_REWARD_CREDITS,
@@ -1290,12 +1290,21 @@ def _failed_govdesi(job_id: str, err) -> dict:
 @app.get("/api/audit/{job_id}")
 async def get_audit_status(job_id: str):
     _valid_job_id(job_id)
+    if job_id in jobs_store and jobs_store[job_id].get("status") == "complete":
+        deleted = await is_deleted_audit(job_id)
+        if deleted is None:
+            raise ApiHata(503, "sonuc_kontrol_edilemedi")
+        if deleted:
+            jobs_store.pop(job_id, None)
+            raise ApiHata(410, "gecmis_rapor_silindi")
     if job_id not in jobs_store:
         # SQS modu: is baska process'te (worker) kosuyor — durum DB'den okunur.
         # Bu ayni zamanda API yeniden baslasa bile eski islerin sonucunu verir.
         row = await get_audit_row(job_id) if sqs_enabled() else None
         if row is None:
             raise ApiHata(404, "tarama_bulunamadi")
+        if row["status"] == "deleted":
+            raise ApiHata(410, "gecmis_rapor_silindi")
         if row["status"] == "complete":
             sonuc = row.get("result_json")
             # 🔒 OZEL TARAMA: sonuc teslim edilir edilmez satirdan SILINIR.
@@ -1626,6 +1635,13 @@ def _satir_yasi_sn(created_at) -> float | None:
 @app.get("/api/brand-check/{job_id}")
 async def get_brand_check_status(job_id: str):
     _valid_job_id(job_id)
+    if job_id in brand_checks_store and brand_checks_store[job_id].get("status") == "complete":
+        deleted = await is_deleted_audit(job_id)
+        if deleted is None:
+            raise ApiHata(503, "sonuc_kontrol_edilemedi")
+        if deleted:
+            brand_checks_store.pop(job_id, None)
+            raise ApiHata(410, "gecmis_rapor_silindi")
     if job_id not in brand_checks_store:
         # Ozel (private) tarama DB'ye HIC yazilmaz; bellek miss'inde tek yedegi
         # paylasimli depodur (kor denetim 2026-08-04). Bu olmadan cok-instance'ta
@@ -1641,6 +1657,8 @@ async def get_brand_check_status(job_id: str):
         row = await get_audit_row(job_id)
         if row is None:
             raise ApiHata(404, "tarama_bulunamadi")
+        if row["status"] == "deleted":
+            raise ApiHata(410, "gecmis_rapor_silindi")
         if row["status"] == "complete":
             return {"job_id": job_id, "status": "complete", "result": row.get("result_json")}
         if row["status"] == "failed":
@@ -2650,6 +2668,18 @@ async def delete_me(http_request: Request):
     ok = await delete_user_account(user_id)
     if not ok:
         raise ApiHata(500, "hesap_silinemedi")
+    return {"success": True}
+
+
+@app.delete("/api/me/history")
+async def delete_me_history(http_request: Request):
+    """Kullanıcının kayıtlı raporlarını temizle; kullanım defterini koru."""
+    user_id = await _require_user(http_request)
+    outcome = await clear_user_history(user_id)
+    if outcome == "active":
+        raise ApiHata(409, "gecmis_aktif_tarama")
+    if outcome != "ok":
+        raise ApiHata(500, "gecmis_silinemedi")
     return {"success": True}
 
 class CheckoutRequest(BaseModel):

@@ -257,6 +257,27 @@ async def get_audit_row(job_id: str) -> dict | None:
         return None
 
 
+async def is_deleted_audit(job_id: str) -> bool | None:
+    """Bellekteki eski sonucun silinmis DB raporunu tekrar acmasini engelle.
+
+    None DB okunamadi demektir; cagiran sonuc icerigini fail-closed tutar.
+    """
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            r = await client.get(
+                f"{SUPABASE_URL}/rest/v1/audits",
+                headers=_headers(),
+                params={"id": f"eq.{job_id}", "status": "eq.deleted", "select": "id", "limit": "1"},
+                timeout=8,
+            )
+            return bool(r.json()) if r.status_code == 200 else None
+    except Exception as e:
+        logger.warning("is_deleted_audit(%s) failed: %s", job_id, e)
+        return None
+
+
 async def _maliyeti_sifirla(client, job_id: str, user_id: str, amount: int, ne: str,
                             sebep: str = "bilinmiyor"):
     """Dusum BASARISIZ olduysa satirdaki maliyeti gercege cek (0).
@@ -1736,6 +1757,79 @@ async def update_user_social(user_id: str, linkedin_url: str, instagram_handle: 
     except Exception as e:
         logger.warning(f"update_user_social error: {e}")
         return False
+
+
+async def clear_user_history(user_id: str) -> str:
+    """Rapor icerigini sil, kota/odeme icin gereken anonim kullanim izini tut.
+
+    Creator aylik kotasi audits satirlarini sayar. Satirlari fiziksel silmek
+    ayni ayin ucretsiz haklarini yeniden acardi. Bunun yerine rapor ve hedefe
+    ait alanlar bosaltilir; kullanim ve muhasebe icin gerekli alanlar kalir.
+    Aktif is varken temizleme reddedilir: worker daha sonra
+    silinen raporu tekrar yazmasin.
+    """
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY or not user_id:
+        return "error"
+    try:
+        stale_before = (datetime.now(timezone.utc) - timedelta(minutes=60)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        scrub = {
+            "status": "deleted", "domain": None, "name": None,
+            "role": None, "company": None, "location": None,
+            "topic": None, "linkedin_url": None, "score": None,
+            "result_json": None,
+        }
+        async with httpx.AsyncClient() as client:
+            active = await client.get(
+                f"{SUPABASE_URL}/rest/v1/audits",
+                headers=_headers(),
+                params={"user_id": f"eq.{user_id}",
+                        "status": "in.(queued,crawling,indexing,scoring,partial)",
+                        "created_at": f"gte.{stale_before}",
+                        "select": "id", "limit": "1"}, timeout=10,
+            )
+            if active.status_code != 200:
+                logger.warning("clear_user_history active check failed: %s", active.status_code)
+                return "error"
+            if active.json():
+                return "active"
+            result = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/audits",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                params={"user_id": f"eq.{user_id}",
+                        "or": "(status.is.null,status.not.in.(queued,crawling,indexing,scoring,partial,deleted))"},
+                json=scrub, timeout=20,
+            )
+            if result.status_code not in (200, 204):
+                logger.warning("clear_user_history patch failed: %s %s", result.status_code, result.text[:200])
+                return "error"
+            # Terk edilmiş iş sonsuza kadar temizlemeyi engellemesin. Eski aktif
+            # satırlar status kapısından çıkar; 60 dakika, ölçülen en uzun
+            # taramanın (44 dk) üstünde güvenlik payı bırakır.
+            stale = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/audits",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                params={"user_id": f"eq.{user_id}",
+                        "status": "in.(queued,crawling,indexing,scoring,partial)",
+                        "created_at": f"lt.{stale_before}"},
+                json=scrub, timeout=20,
+            )
+            if stale.status_code not in (200, 204):
+                logger.warning("clear_user_history stale patch failed: %s", stale.status_code)
+                return "error"
+            # Kayıtlı hedefler kalır. Artık raporu olmayan son skoru gösterme.
+            watch = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/watchlist",
+                headers={**_headers(), "Prefer": "return=minimal"},
+                params={"user_id": f"eq.{user_id}"},
+                json={"last_score": None}, timeout=10,
+            )
+            if watch.status_code not in (200, 204):
+                logger.warning("clear_user_history watchlist reset failed: %s", watch.status_code)
+                return "error"
+            return "ok"
+    except Exception as e:
+        logger.warning("clear_user_history error: %s", e)
+        return "error"
 
 
 async def delete_user_account(user_id: str) -> bool:

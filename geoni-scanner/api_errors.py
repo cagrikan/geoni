@@ -90,6 +90,22 @@ MESAJLAR: dict[str, dict[str, str]] = {
         "tr": "Hesap silinemedi, lütfen tekrar deneyin.",
         "en": "Your account could not be deleted, please try again.",
     },
+    "gecmis_aktif_tarama": {
+        "tr": "Devam eden tarama bitince geçmişi silebilirsiniz.",
+        "en": "You can delete history after the current scan finishes.",
+    },
+    "gecmis_silinemedi": {
+        "tr": "Geçmiş silinemedi, lütfen tekrar deneyin.",
+        "en": "History could not be deleted. Please try again.",
+    },
+    "gecmis_rapor_silindi": {
+        "tr": "Bu rapor geçmişten silindi.",
+        "en": "This report was deleted from history.",
+    },
+    "sonuc_kontrol_edilemedi": {
+        "tr": "Sonuç şu anda doğrulanamadı. Lütfen tekrar deneyin.",
+        "en": "The result could not be verified right now. Please try again.",
+    },
     "referans_kodu_olusturulamadi": {
         "tr": "Referans kodu oluşturulamadı, lütfen tekrar deneyin.",
         "en": "Your referral code could not be created, please try again.",

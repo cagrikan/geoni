@@ -54,7 +54,7 @@ def test_tamamlanma_yazisi_UPSERT():
 def test_terk_edilmis_is_BASARISIZ_doner():
     """Sonsuz "kosuyor" ekrani 404'ten kotudur: istemci yeniden bile denemez."""
     i = MAIN.index("async def get_brand_check_status")
-    govde = MAIN[i:i + 2500]
+    govde = MAIN[i:i + 3500]
     assert "_satir_yasi_sn(" in govde
     assert "1200" in govde, "esik yok"
     assert govde.index("_satir_yasi_sn(") < govde.index('return {"job_id": job_id, "status": row["status"]'), \
